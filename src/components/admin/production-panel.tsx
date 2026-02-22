@@ -5,6 +5,7 @@ import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import { CalendarIcon, Copy, Loader2 } from "lucide-react"
 
+import { getProduction, type ProductionResponse } from "@/actions/production"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -22,28 +23,42 @@ import {
 } from "@/components/ui/table"
 import { toast } from "sonner"
 
-import {
-  calculateProduction,
-  getFlavorEmoji,
-  type ProductionResult,
-} from "@/src/data/production-mock"
+const flavorEmojis: Record<string, string> = {
+  "Clásica": "🍰",
+  Hippo: "🦛",
+  Pistacho: "🟢",
+  "Mango-Maracuyá": "🥭",
+  Lotus: "🧁",
+  Gofio: "🌾",
+  Nutella: "🍫",
+  Tiramisú: "☕",
+  "Polvito Uruguayo": "✨",
+}
+
+function getFlavorEmoji(flavor: string): string {
+  return flavorEmojis[flavor] ?? ""
+}
 
 function formatDMY(d: Date): string {
   return format(d, "dd/MM/yyyy")
 }
 
+function formatISODate(d: Date): string {
+  return format(d, "yyyy-MM-dd")
+}
+
 export function ProductionPanel() {
   const [rangeMode, setRangeMode] = useState<"single" | "range">("range")
   const [singleDate, setSingleDate] = useState<Date | undefined>(new Date())
-  const [dateFrom, setDateFrom] = useState<Date | undefined>(new Date(2026, 1, 18))
-  const [dateTo, setDateTo] = useState<Date | undefined>(new Date(2026, 1, 22))
+  const [dateFrom, setDateFrom] = useState<Date | undefined>(new Date())
+  const [dateTo, setDateTo] = useState<Date | undefined>(new Date())
   const [includeTartas, setIncludeTartas] = useState(true)
   const [includeCajitas, setIncludeCajitas] = useState(true)
   const [loading, setLoading] = useState(false)
-  const [result, setResult] = useState<ProductionResult | null>(null)
+  const [result, setResult] = useState<ProductionResponse | null>(null)
   const [rangeLabel, setRangeLabel] = useState("")
 
-  const handleCalculate = useCallback(() => {
+  const handleCalculate = useCallback(async () => {
     const from = rangeMode === "single" ? singleDate : dateFrom
     const to = rangeMode === "single" ? singleDate : dateTo
 
@@ -57,20 +72,31 @@ export function ProductionPanel() {
     }
 
     setLoading(true)
-    // Simulate async delay
-    setTimeout(() => {
-      const data = calculateProduction(from, to, {
-        tartas: includeTartas,
-        cajitas: includeCajitas,
+
+    try {
+      const types: Array<"cake" | "box"> = []
+      if (includeTartas) types.push("cake")
+      if (includeCajitas) types.push("box")
+
+      const data = await getProduction({
+        mode: rangeMode,
+        day: rangeMode === "single" ? formatISODate(from) : undefined,
+        from: rangeMode === "range" ? formatISODate(from) : undefined,
+        to: rangeMode === "range" ? formatISODate(to) : undefined,
+        types,
       })
+
       setResult(data)
       setRangeLabel(
         rangeMode === "single"
           ? formatDMY(from)
           : `${formatDMY(from)} → ${formatDMY(to)}`
       )
+    } catch {
+      toast.error("No se pudo calcular la producción")
+    } finally {
       setLoading(false)
-    }, 400)
+    }
   }, [rangeMode, singleDate, dateFrom, dateTo, includeTartas, includeCajitas])
 
   const handleCopy = useCallback(() => {
@@ -78,17 +104,17 @@ export function ProductionPanel() {
     const lines: string[] = []
     lines.push(`Rango: ${rangeLabel}`)
     lines.push("")
-    if (result.tartas.length > 0) {
-      lines.push(`TARTAS (${result.totalTartas})`)
-      for (const l of result.tartas) {
-        lines.push(`  ${l.flavor} ${getFlavorEmoji(l.flavor)} — ${l.units}`)
+    if (result.cakes.length > 0) {
+      lines.push(`TARTAS (${result.totals.cakes})`)
+      for (const l of result.cakes) {
+        lines.push(`  ${l.flavor} ${getFlavorEmoji(l.flavor)} — ${l.qty}`)
       }
       lines.push("")
     }
-    if (result.cajitas.length > 0) {
-      lines.push(`CAJITAS (${result.totalCajitas})`)
-      for (const l of result.cajitas) {
-        lines.push(`  ${l.flavor} ${getFlavorEmoji(l.flavor)} — ${l.units}`)
+    if (result.boxes.length > 0) {
+      lines.push(`CAJITAS (${result.totals.boxes})`)
+      for (const l of result.boxes) {
+        lines.push(`  ${l.flavor} ${getFlavorEmoji(l.flavor)} — ${l.qty}`)
       }
     }
     navigator.clipboard.writeText(lines.join("\n")).then(() => {
@@ -98,12 +124,9 @@ export function ProductionPanel() {
 
   return (
     <div className="flex flex-col gap-6">
-      {/* Rango */}
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-sm font-bold uppercase tracking-wider">
-            Rango
-          </CardTitle>
+          <CardTitle className="text-sm font-bold uppercase tracking-wider">Rango</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           <RadioGroup
@@ -113,7 +136,7 @@ export function ProductionPanel() {
           >
             <div className="flex items-center gap-2">
               <RadioGroupItem value="single" id="mode-single" />
-              <Label htmlFor="mode-single" className="text-sm">{"Un d\u00eda"}</Label>
+              <Label htmlFor="mode-single" className="text-sm">Un día</Label>
             </div>
             <div className="flex items-center gap-2">
               <RadioGroupItem value="range" id="mode-range" />
@@ -141,12 +164,9 @@ export function ProductionPanel() {
         </CardContent>
       </Card>
 
-      {/* Tipos */}
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-sm font-bold uppercase tracking-wider">
-            Tipos a incluir
-          </CardTitle>
+          <CardTitle className="text-sm font-bold uppercase tracking-wider">Tipos a incluir</CardTitle>
         </CardHeader>
         <CardContent className="flex gap-6">
           <div className="flex items-center gap-2">
@@ -168,7 +188,6 @@ export function ProductionPanel() {
         </CardContent>
       </Card>
 
-      {/* Actions */}
       <div className="flex flex-wrap gap-3">
         <Button onClick={handleCalculate} disabled={loading}>
           {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
@@ -181,18 +200,16 @@ export function ProductionPanel() {
           className="border-green-600 text-green-700 hover:bg-green-50 hover:text-green-800"
         >
           <Copy className="mr-2 h-4 w-4" />
-          {"Copiar producción"}
+          Copiar producción
         </Button>
       </div>
 
-      {/* Range label */}
       {rangeLabel && (
         <p className="text-sm text-muted-foreground">
           <span className="font-semibold text-foreground">Rango:</span> {rangeLabel}
         </p>
       )}
 
-      {/* Results */}
       {loading && (
         <div className="flex items-center justify-center py-12">
           <Loader2 className="h-6 w-6 animate-spin text-primary" />
@@ -201,16 +218,13 @@ export function ProductionPanel() {
 
       {!loading && result && (
         <div className="grid gap-4 md:grid-cols-2">
-          {/* Tartas */}
           {includeTartas && (
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-base">
-                  Tartas ({result.totalTartas})
-                </CardTitle>
+                <CardTitle className="text-base">Tartas ({result.totals.cakes})</CardTitle>
               </CardHeader>
               <CardContent>
-                {result.tartas.length === 0 ? (
+                {result.cakes.length === 0 ? (
                   <p className="py-6 text-center text-sm text-muted-foreground">
                     No hay resultados en el rango
                   </p>
@@ -223,13 +237,13 @@ export function ProductionPanel() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {result.tartas.map((line) => (
+                      {result.cakes.map((line) => (
                         <TableRow key={line.flavor}>
                           <TableCell className="font-medium">
                             {line.flavor} {getFlavorEmoji(line.flavor)}
                           </TableCell>
                           <TableCell className="text-right font-bold tabular-nums">
-                            {line.units}
+                            {line.qty}
                           </TableCell>
                         </TableRow>
                       ))}
@@ -240,16 +254,13 @@ export function ProductionPanel() {
             </Card>
           )}
 
-          {/* Cajitas */}
           {includeCajitas && (
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-base">
-                  Cajitas ({result.totalCajitas})
-                </CardTitle>
+                <CardTitle className="text-base">Cajitas ({result.totals.boxes})</CardTitle>
               </CardHeader>
               <CardContent>
-                {result.cajitas.length === 0 ? (
+                {result.boxes.length === 0 ? (
                   <p className="py-6 text-center text-sm text-muted-foreground">
                     No hay resultados en el rango
                   </p>
@@ -262,13 +273,13 @@ export function ProductionPanel() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {result.cajitas.map((line) => (
+                      {result.boxes.map((line) => (
                         <TableRow key={line.flavor}>
                           <TableCell className="font-medium">
                             {line.flavor} {getFlavorEmoji(line.flavor)}
                           </TableCell>
                           <TableCell className="text-right font-bold tabular-nums">
-                            {line.units}
+                            {line.qty}
                           </TableCell>
                         </TableRow>
                       ))}
@@ -284,8 +295,6 @@ export function ProductionPanel() {
   )
 }
 
-/* ── DatePicker helper ─────────────────────────────────────────────── */
-
 function DatePicker({
   date,
   onSelect,
@@ -297,10 +306,7 @@ function DatePicker({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button
-          variant="outline"
-          className="w-full justify-start text-left font-normal"
-        >
+        <Button variant="outline" className="w-full justify-start text-left font-normal">
           <CalendarIcon className="mr-2 h-4 w-4 text-muted-foreground" />
           {date ? format(date, "dd/MM/yyyy") : "Seleccionar fecha"}
         </Button>
