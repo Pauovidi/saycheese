@@ -1,0 +1,64 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  --background: #fffdf8;
+  --foreground: #3b2314;
+  --card: #ffffff;
+  --card-foreground: #3b2314;
+  --popover: #ffffff;
+  --popover-foreground: #3b2314;
+  --primary: #A16336;
+  --primary-foreground: #fffdf8;
+  --secondary: #FFF8EC;
+  --secondary-foreground: #3b2314;
+  --muted: #FFF3DC;
+  --muted-foreground: #8b6f5a;
+  --accent: #FFDD98;
+  --accent-foreground: #3b2314;
+  --destructive: #dc2626;
+  --destructive-foreground: #dc2626;
+  --border: #e8d9c5;
+  --input: #e8d9c5;
+  --ring: #A16336;
+  --radius: 0px;
+}
+
+@theme inline {
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: 'Geist Mono', 'Geist Mono Fallback';
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius));
+  --radius-md: calc(var(--radius));
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius));
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
