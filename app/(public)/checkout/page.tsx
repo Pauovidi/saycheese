@@ -1,4 +1,6 @@
 import type { Metadata } from "next"
+
+import { Toaster } from "@/components/ui/sonner"
 import { CheckoutSummary } from "@/src/components/checkout-summary"
 
 export const metadata: Metadata = {
@@ -14,6 +16,7 @@ export default function CheckoutPage() {
         </h1>
         <CheckoutSummary />
       </div>
+      <Toaster position="bottom-center" />
     </section>
   )
 }
