@@ -1,5 +1,4 @@
 import type { Metadata } from "next"
-import Link from "next/link"
 
 import { AdminLogoutButton } from "@/src/components/admin/admin-logout-button"
 
@@ -20,15 +19,7 @@ export default function AdminLayout({
           <h1 className="text-sm font-bold uppercase tracking-[0.15em] text-foreground">
             SayCheese Admin
           </h1>
-          <nav className="flex items-center gap-4">
-            <Link
-              href="/admin/produccion"
-              className="text-xs font-bold uppercase tracking-wider text-primary"
-            >
-              Producción
-            </Link>
-            <AdminLogoutButton />
-          </nav>
+          <AdminLogoutButton />
         </div>
       </header>
       <div className="mx-auto max-w-5xl px-4 py-6">{children}</div>

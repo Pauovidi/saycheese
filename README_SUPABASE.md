@@ -1,14 +1,29 @@
-# Supabase setup para Admin Producción
+# Supabase setup para Admin + Checkout
 
 ## 1) Crear proyecto y Auth
 1. Crea un proyecto en Supabase.
 2. En **Authentication > Providers**, activa **Email** (email/password).
-3. En **Project Settings > API**, copia:
-   - `Project URL` -> `NEXT_PUBLIC_SUPABASE_URL`
-   - `anon public` -> `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+3. Crea un único usuario admin en **Authentication > Users**.
+4. (Recomendado) desactiva los signups públicos para mantener single-admin.
 
-## 2) Ejecutar SQL (Schema + RLS)
-En el SQL Editor de Supabase ejecuta este bloque:
+## 2) Variables de entorno
+### Local (`.env.local`)
+```bash
+NEXT_PUBLIC_SUPABASE_URL=https://<project-ref>.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon-key>
+SUPABASE_SERVICE_ROLE_KEY=<service-role-key>
+ADMIN_EMAIL=admin@dominio.com
+```
+
+### Vercel
+Configura las mismas variables en **Project Settings > Environment Variables**:
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY` (solo server)
+- `ADMIN_EMAIL`
+
+## 3) SQL base (schema + RLS)
+Ejecuta este bloque en SQL Editor:
 
 ```sql
 create extension if not exists pgcrypto;
@@ -19,6 +34,7 @@ create table if not exists public.orders (
   delivery_date date not null,
   status text not null default 'pending',
   customer_name text null,
+  customer_email text null,
   phone text null,
   notes text null,
   created_at timestamptz not null default now()
@@ -57,8 +73,7 @@ for delete using (auth.uid() = user_id);
 create policy "order_items_select_own" on public.order_items
 for select using (
   exists (
-    select 1
-    from public.orders
+    select 1 from public.orders
     where orders.id = order_items.order_id
       and orders.user_id = auth.uid()
   )
@@ -67,8 +82,7 @@ for select using (
 create policy "order_items_insert_own" on public.order_items
 for insert with check (
   exists (
-    select 1
-    from public.orders
+    select 1 from public.orders
     where orders.id = order_items.order_id
       and orders.user_id = auth.uid()
   )
@@ -77,16 +91,13 @@ for insert with check (
 create policy "order_items_update_own" on public.order_items
 for update using (
   exists (
-    select 1
-    from public.orders
+    select 1 from public.orders
     where orders.id = order_items.order_id
       and orders.user_id = auth.uid()
   )
-)
-with check (
+) with check (
   exists (
-    select 1
-    from public.orders
+    select 1 from public.orders
     where orders.id = order_items.order_id
       and orders.user_id = auth.uid()
   )
@@ -95,35 +106,24 @@ with check (
 create policy "order_items_delete_own" on public.order_items
 for delete using (
   exists (
-    select 1
-    from public.orders
+    select 1 from public.orders
     where orders.id = order_items.order_id
       and orders.user_id = auth.uid()
   )
 );
 ```
 
-## 3) Variables de entorno
-### Local
-Añade en `.env.local`:
+## 4) Migración incremental (si ya existe `orders`)
+Si tu tabla `orders` ya estaba creada, ejecuta:
 
-```bash
-NEXT_PUBLIC_SUPABASE_URL=https://<project-ref>.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon-key>
+```sql
+alter table public.orders
+add column if not exists customer_email text;
 ```
 
-### Vercel
-En **Project Settings > Environment Variables**, configura las mismas dos variables para Preview/Production.
-
-## 4) Crear usuario admin
-Crear usuario desde dashboard:
-1. Authentication > Users.
-2. Add user (email + password).
-3. Usa ese login en `/admin/login`.
-
 ## 5) Flujo de prueba
-1. Arranca la app.
-2. Ve a `/admin/login` e inicia sesión.
-3. Entra en `/admin/produccion`.
-4. Selecciona rango/tipos y pulsa **Calcular**.
-5. Usa **Copiar producción** para copiar resumen de tartas/cajitas.
+1. Añade productos al carrito.
+2. Ve a `/checkout`, completa email, teléfono y fecha.
+3. Pulsa **Confirmar pedido** (crea `orders` + `order_items` vía API server con service role).
+4. Inicia sesión en `/admin/login` con `ADMIN_EMAIL`.
+5. Abre `/admin/produccion` y revisa producción + listado de pedidos.

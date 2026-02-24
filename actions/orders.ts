@@ -14,6 +14,7 @@ const createOrderSchema = z.object({
   delivery_date: z.string(),
   status: z.string().default("pending"),
   customer_name: z.string().optional(),
+  customer_email: z.string().email(),
   phone: z.string().optional(),
   notes: z.string().optional(),
   items: z.array(orderItemSchema).min(1),
@@ -24,6 +25,7 @@ const updateOrderSchema = z.object({
   delivery_date: z.string().optional(),
   status: z.string().optional(),
   customer_name: z.string().nullable().optional(),
+  customer_email: z.string().email().nullable().optional(),
   phone: z.string().nullable().optional(),
   notes: z.string().nullable().optional(),
 })
@@ -48,6 +50,7 @@ export async function createOrder(payload: z.infer<typeof createOrderSchema>) {
       delivery_date: parsed.delivery_date,
       status: parsed.status,
       customer_name: parsed.customer_name,
+      customer_email: parsed.customer_email,
       phone: parsed.phone,
       notes: parsed.notes,
     })
@@ -76,7 +79,7 @@ export async function listOrders() {
   const supabase = await createClient()
   const { data, error } = await supabase
     .from("orders")
-    .select("id, delivery_date, status, customer_name, phone, notes, created_at, order_items(id, type, flavor, qty)")
+    .select("id, delivery_date, status, customer_name, customer_email, phone, notes, created_at, order_items(id, type, flavor, qty)")
     .order("delivery_date", { ascending: true })
 
   if (error) {
