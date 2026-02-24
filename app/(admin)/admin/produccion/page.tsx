@@ -1,3 +1,6 @@
+export const dynamic = "force-dynamic"
+export const revalidate = 0
+
 import { Toaster } from "@/components/ui/sonner"
 import { createClient } from "@/lib/supabase/server"
 import { ProductionPanel } from "@/src/components/admin/production-panel"
