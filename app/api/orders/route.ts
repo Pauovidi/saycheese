@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 
-import { createAdminClient, getAdminUid } from "@/lib/supabase/admin"
+import { getAdminClient, getAdminUid } from "@/lib/supabase/admin"
 
 const orderPayloadSchema = z.object({
   customer_name: z.string().min(1).optional(),
@@ -23,7 +23,7 @@ export async function POST(request: Request) {
     const body = await request.json()
     const payload = orderPayloadSchema.parse(body)
     const adminUid = await getAdminUid()
-    const supabase = createAdminClient()
+    const supabase = getAdminClient()
 
     const { data: order, error: orderError } = await supabase
       .from("orders")
