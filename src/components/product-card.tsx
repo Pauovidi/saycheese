@@ -18,7 +18,9 @@ export function ProductCard({ product, priority = false }: ProductCardProps) {
   const hasBothFormats = !!sibling
 
   // The card starts showing whichever format was passed in
-  const [selectedFormat, setSelectedFormat] = useState<"tarta" | "cajita">(product.format)
+  const [selectedFormat, setSelectedFormat] = useState<"tarta" | "cajita">(
+    hasBothFormats ? "tarta" : product.format,
+  )
 
   // The actual product to display depends on the selected format
   const displayProduct =
@@ -62,24 +64,24 @@ export function ProductCard({ product, priority = false }: ProductCardProps) {
         {hasBothFormats && (
           <div className="mt-2 flex gap-0 self-start border border-border">
             <button
-              onClick={() => setSelectedFormat("cajita")}
-              className={`px-3 py-1.5 text-[10px] font-medium uppercase tracking-wider transition-colors sm:text-xs ${
-                selectedFormat === "cajita"
-                  ? "bg-primary text-primary-foreground"
-                  : "bg-transparent text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              Cajita
-            </button>
-            <button
               onClick={() => setSelectedFormat("tarta")}
-              className={`border-l border-border px-3 py-1.5 text-[10px] font-medium uppercase tracking-wider transition-colors sm:text-xs ${
+              className={`px-3 py-1.5 text-[10px] font-medium uppercase tracking-wider transition-colors sm:text-xs ${
                 selectedFormat === "tarta"
                   ? "bg-primary text-primary-foreground"
                   : "bg-transparent text-muted-foreground hover:text-foreground"
               }`}
             >
               Tarta
+            </button>
+            <button
+              onClick={() => setSelectedFormat("cajita")}
+              className={`border-l border-border px-3 py-1.5 text-[10px] font-medium uppercase tracking-wider transition-colors sm:text-xs ${
+                selectedFormat === "cajita"
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-transparent text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              Cajita
             </button>
           </div>
         )}

@@ -18,7 +18,7 @@ export function ManifestoSection() {
             <div className="relative mt-8 aspect-[3/4] overflow-hidden bg-secondary">
               <Image
                 src="/images/fachada.webp"
-                alt="Interior de la galer&iacute;a"
+                alt="Interior de la galería"
                 fill
                 className="object-cover"
               />
