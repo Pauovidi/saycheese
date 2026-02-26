@@ -2,7 +2,7 @@
 
 import Image from "next/image"
 import { useRouter } from "next/navigation"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Minus, Plus } from "lucide-react"
 import { useCart } from "@/src/context/cart-context"
 import type { Product } from "@/src/data/products"
@@ -24,6 +24,12 @@ export function ProductDetail({ product }: ProductDetailProps) {
   const router = useRouter()
   const sibling = getSibling(product)
   const hasBothFormats = !!sibling
+
+  useEffect(() => {
+    if (hasBothFormats && product.format === "cajita" && sibling) {
+      router.replace(`/producto/${sibling.slug}`)
+    }
+  }, [hasBothFormats, product.format, router, sibling])
 
   function switchFormat(format: "tarta" | "cajita") {
     if (format === product.format) return
@@ -65,24 +71,24 @@ export function ProductDetail({ product }: ProductDetailProps) {
           {hasBothFormats && (
             <div className="mt-4 flex gap-0 self-start border border-border">
               <button
-                onClick={() => switchFormat("cajita")}
-                className={`px-5 py-2.5 text-xs font-medium uppercase tracking-wider transition-colors ${
-                  product.format === "cajita"
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-transparent text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                Cajita &mdash; {(sibling && product.format === "tarta" ? sibling : product).priceText}
-              </button>
-              <button
                 onClick={() => switchFormat("tarta")}
-                className={`border-l border-border px-5 py-2.5 text-xs font-medium uppercase tracking-wider transition-colors ${
+                className={`px-5 py-2.5 text-xs font-medium uppercase tracking-wider transition-colors ${
                   product.format === "tarta"
                     ? "bg-primary text-primary-foreground"
                     : "bg-transparent text-muted-foreground hover:text-foreground"
                 }`}
               >
                 Tarta &mdash; {(sibling && product.format === "cajita" ? sibling : product).priceText}
+              </button>
+              <button
+                onClick={() => switchFormat("cajita")}
+                className={`border-l border-border px-5 py-2.5 text-xs font-medium uppercase tracking-wider transition-colors ${
+                  product.format === "cajita"
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-transparent text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                Cajita &mdash; {(sibling && product.format === "tarta" ? sibling : product).priceText}
               </button>
             </div>
           )}
