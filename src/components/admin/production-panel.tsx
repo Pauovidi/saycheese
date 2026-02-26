@@ -54,6 +54,7 @@ export function ProductionPanel() {
   const [dateTo, setDateTo] = useState<Date | undefined>(new Date())
   const [includeTartas, setIncludeTartas] = useState(true)
   const [includeCajitas, setIncludeCajitas] = useState(true)
+  const [includeDone, setIncludeDone] = useState(false)
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<ProductionResponse | null>(null)
   const [rangeLabel, setRangeLabel] = useState("")
@@ -84,6 +85,7 @@ export function ProductionPanel() {
         from: rangeMode === "range" ? formatISODate(from) : undefined,
         to: rangeMode === "range" ? formatISODate(to) : undefined,
         types,
+        includeDone,
       })
 
       setResult(data)
@@ -97,7 +99,7 @@ export function ProductionPanel() {
     } finally {
       setLoading(false)
     }
-  }, [rangeMode, singleDate, dateFrom, dateTo, includeTartas, includeCajitas])
+  }, [rangeMode, singleDate, dateFrom, dateTo, includeTartas, includeCajitas, includeDone])
 
   const handleCopy = useCallback(() => {
     if (!result) return
@@ -168,7 +170,7 @@ export function ProductionPanel() {
         <CardHeader className="pb-3">
           <CardTitle className="text-sm font-bold uppercase tracking-wider">Tipos a incluir</CardTitle>
         </CardHeader>
-        <CardContent className="flex gap-6">
+        <CardContent className="flex flex-wrap gap-6">
           <div className="flex items-center gap-2">
             <Checkbox
               id="type-tartas"
@@ -184,6 +186,14 @@ export function ProductionPanel() {
               onCheckedChange={(v) => setIncludeCajitas(v === true)}
             />
             <Label htmlFor="type-cajitas" className="text-sm">Cajitas</Label>
+          </div>
+          <div className="flex items-center gap-2">
+            <Checkbox
+              id="include-done"
+              checked={includeDone}
+              onCheckedChange={(v) => setIncludeDone(Boolean(v))}
+            />
+            <Label htmlFor="include-done" className="text-sm">Incluir hechos</Label>
           </div>
         </CardContent>
       </Card>

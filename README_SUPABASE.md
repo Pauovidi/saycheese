@@ -159,3 +159,5 @@ Aplica la migración `supabase/migrations/202602240001_add_cancel_fields_and_pho
 
 
 - Ejecuta la migración nueva `supabase/migrations/202602260001_add_phone_normalized_and_cancel.sql` en Supabase SQL Editor antes de usar búsqueda/anulación en admin.
+
+- Ejecuta la migración `supabase/migrations/202602260002_add_done_fields.sql` en Supabase SQL Editor para habilitar marcado de pedidos como hechos.

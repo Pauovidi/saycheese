@@ -41,6 +41,10 @@ const searchOrdersByPhoneSchema = z.object({
   phoneQuery: z.string(),
 })
 
+const markDoneSchema = z.object({
+  orderId: z.string().uuid(),
+})
+
 function normalizePhone(value: string) {
   return value.replace(/\D/g, "")
 }
@@ -189,6 +193,57 @@ export async function cancelOrder(orderId: string, reason?: string) {
     return { ok: true }
   } catch (error) {
     const message = error instanceof Error ? error.message : "Error al anular pedido"
+    return { ok: false, error: message }
+  }
+}
+
+
+export async function markOrderDone(orderId: string) {
+  try {
+    const parsed = markDoneSchema.parse({ orderId })
+    const supabase = await createClient()
+
+    const { error } = await supabase
+      .from("orders")
+      .update({
+        status: "done",
+        done_at: new Date().toISOString(),
+      })
+      .eq("id", parsed.orderId)
+      .neq("status", "cancelled")
+
+    if (error) {
+      return { ok: false, error: error.message }
+    }
+
+    return { ok: true }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Error al marcar pedido como hecho"
+    return { ok: false, error: message }
+  }
+}
+
+export async function reopenOrder(orderId: string) {
+  try {
+    const parsed = markDoneSchema.parse({ orderId })
+    const supabase = await createClient()
+
+    const { error } = await supabase
+      .from("orders")
+      .update({
+        status: "pending",
+        done_at: null,
+      })
+      .eq("id", parsed.orderId)
+      .eq("status", "done")
+
+    if (error) {
+      return { ok: false, error: error.message }
+    }
+
+    return { ok: true }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Error al reabrir pedido"
     return { ok: false, error: message }
   }
 }
