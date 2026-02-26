@@ -30,6 +30,25 @@ const updateOrderSchema = z.object({
   notes: z.string().nullable().optional(),
 })
 
+const deleteOrderSchema = z.object({ id: z.string().uuid() })
+
+const cancelOrderSchema = z.object({
+  orderId: z.string().uuid(),
+  reason: z.string().trim().max(300).optional(),
+})
+
+const searchOrdersByPhoneSchema = z.object({
+  phoneQuery: z.string(),
+})
+
+const markDoneSchema = z.object({
+  orderId: z.string().uuid(),
+})
+
+function normalizePhone(value: string) {
+  return value.replace(/\D/g, "")
+}
+
 export async function createOrder(payload: z.infer<typeof createOrderSchema>) {
   const parsed = createOrderSchema.parse(payload)
   const supabase = await createClient()
@@ -79,7 +98,8 @@ export async function listOrders() {
   const supabase = await createClient()
   const { data, error } = await supabase
     .from("orders")
-    .select("id, delivery_date, status, customer_name, customer_email, phone, notes, created_at, order_items(id, type, flavor, qty)")
+    .select("id, delivery_date, status, customer_name, customer_email, phone, notes, created_at, cancelled_at, cancelled_reason, order_items(id, type, flavor, qty)")
+    .neq("status", "cancelled")
     .order("delivery_date", { ascending: true })
 
   if (error) {
@@ -108,8 +128,6 @@ export async function updateOrder(payload: z.infer<typeof updateOrderSchema>) {
   return data
 }
 
-const deleteOrderSchema = z.object({ id: z.string().uuid() })
-
 export async function deleteOrder(payload: z.infer<typeof deleteOrderSchema>) {
   const parsed = deleteOrderSchema.parse(payload)
   const supabase = await createClient()
@@ -120,4 +138,112 @@ export async function deleteOrder(payload: z.infer<typeof deleteOrderSchema>) {
   }
 
   return { success: true }
+}
+
+export async function searchOrdersByPhone(phoneQuery: string) {
+  try {
+    const parsed = searchOrdersByPhoneSchema.parse({ phoneQuery })
+    const supabase = await createClient()
+
+    const q = normalizePhone(parsed.phoneQuery)
+
+    if (q.length < 6) {
+      return { ok: false, error: "Introduce al menos 6 dígitos", results: [] as unknown[] }
+    }
+
+    const { data, error } = await supabase
+      .from("orders")
+      .select(
+        "id, delivery_date, status, customer_name, customer_email, phone, created_at, cancelled_at, cancelled_reason, order_items(type, flavor, qty)"
+      )
+      .neq("status", "cancelled")
+      .like("phone_normalized", `%${q}%`)
+      .order("created_at", { ascending: false })
+      .limit(20)
+
+    if (error) {
+      return { ok: false, error: error.message, results: [] as unknown[] }
+    }
+
+    return { ok: true, results: data ?? [] }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Error al buscar pedidos"
+    return { ok: false, error: message, results: [] as unknown[] }
+  }
+}
+
+export async function cancelOrder(orderId: string, reason?: string) {
+  try {
+    const parsed = cancelOrderSchema.parse({ orderId, reason })
+    const supabase = await createClient()
+
+    const { error } = await supabase
+      .from("orders")
+      .update({
+        status: "cancelled",
+        cancelled_at: new Date().toISOString(),
+        cancelled_reason: parsed.reason || null,
+      })
+      .eq("id", parsed.orderId)
+
+    if (error) {
+      return { ok: false, error: error.message }
+    }
+
+    return { ok: true }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Error al anular pedido"
+    return { ok: false, error: message }
+  }
+}
+
+
+export async function markOrderDone(orderId: string) {
+  try {
+    const parsed = markDoneSchema.parse({ orderId })
+    const supabase = await createClient()
+
+    const { error } = await supabase
+      .from("orders")
+      .update({
+        status: "done",
+        done_at: new Date().toISOString(),
+      })
+      .eq("id", parsed.orderId)
+      .neq("status", "cancelled")
+
+    if (error) {
+      return { ok: false, error: error.message }
+    }
+
+    return { ok: true }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Error al marcar pedido como hecho"
+    return { ok: false, error: message }
+  }
+}
+
+export async function reopenOrder(orderId: string) {
+  try {
+    const parsed = markDoneSchema.parse({ orderId })
+    const supabase = await createClient()
+
+    const { error } = await supabase
+      .from("orders")
+      .update({
+        status: "pending",
+        done_at: null,
+      })
+      .eq("id", parsed.orderId)
+      .eq("status", "done")
+
+    if (error) {
+      return { ok: false, error: error.message }
+    }
+
+    return { ok: true }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Error al reabrir pedido"
+    return { ok: false, error: message }
+  }
 }
