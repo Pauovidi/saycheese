@@ -157,3 +157,5 @@ Aplica la migración `supabase/migrations/202602240001_add_cancel_fields_and_pho
 - Indexar `orders.phone` para acelerar búsqueda en admin.
 - Documentar estados incluyendo `cancelled` en `orders.status`.
 
+
+- Ejecuta la migración nueva `supabase/migrations/202602260001_add_phone_normalized_and_cancel.sql` en Supabase SQL Editor antes de usar búsqueda/anulación en admin.

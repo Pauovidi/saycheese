@@ -1,11 +1,10 @@
 "use client"
 
 import { useState, useTransition } from "react"
+import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 
-import { cancelOrder, searchOrdersByPhone } from "@/actions/orders"
-import { Input } from "@/components/ui/input"
-import { Button } from "@/components/ui/button"
+import { cancelOrder } from "@/actions/orders"
 import { CancelOrderDialog } from "@/src/components/admin/cancel-order-dialog"
 
 type OrderItem = {
@@ -14,38 +13,24 @@ type OrderItem = {
   qty: number
 }
 
-type OrderResult = {
+type LatestOrder = {
   id: string
   delivery_date: string
   customer_name: string | null
   customer_email: string | null
   phone: string | null
   status: string
-  cancelled_at?: string | null
   order_items: OrderItem[] | null
 }
 
-export function AdminOrderSearch() {
-  const [phoneQuery, setPhoneQuery] = useState("")
-  const [results, setResults] = useState<OrderResult[]>([])
-  const [errorMessage, setErrorMessage] = useState<string | null>(null)
-  const [isPending, startTransition] = useTransition()
+type LatestOrdersProps = {
+  initialOrders: LatestOrder[]
+}
 
-  function handleSearch() {
-    setErrorMessage(null)
-
-    startTransition(async () => {
-      const response = await searchOrdersByPhone(phoneQuery)
-
-      if (!response.ok) {
-        setResults([])
-        setErrorMessage(response.error)
-        return
-      }
-
-      setResults((response.results as OrderResult[]) ?? [])
-    })
-  }
+export function LatestOrders({ initialOrders }: LatestOrdersProps) {
+  const router = useRouter()
+  const [orders, setOrders] = useState(initialOrders)
+  const [, startTransition] = useTransition()
 
   function handleCancel(orderId: string, reason?: string) {
     startTransition(async () => {
@@ -56,35 +41,23 @@ export function AdminOrderSearch() {
         return
       }
 
-      setResults((prev) => prev.filter((order) => order.id !== orderId))
+      setOrders((prev) => prev.filter((order) => order.id !== orderId))
       toast.success("Pedido anulado")
+      router.refresh()
     })
   }
 
   return (
     <section className="mt-8 rounded-lg border border-border bg-card p-4">
       <h2 className="mb-4 text-sm font-bold uppercase tracking-wider text-foreground">
-        Buscar pedido
+        Últimos pedidos
       </h2>
 
-      <div className="mb-4 flex flex-col gap-3 md:flex-row">
-        <Input
-          placeholder="Buscar por teléfono"
-          value={phoneQuery}
-          onChange={(event) => setPhoneQuery(event.target.value)}
-        />
-        <Button onClick={handleSearch} disabled={isPending}>
-          Buscar
-        </Button>
-      </div>
-
-      {errorMessage ? <p className="mb-3 text-sm text-red-600">{errorMessage}</p> : null}
-
-      {results.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No hay resultados.</p>
+      {orders.length === 0 ? (
+        <p className="text-sm text-muted-foreground">Todavía no hay pedidos.</p>
       ) : (
         <div className="space-y-4">
-          {results.map((order) => (
+          {orders.map((order) => (
             <article key={order.id} className="rounded border border-border p-3">
               <p className="text-sm font-semibold">
                 Entrega: <span className="font-normal">{order.delivery_date}</span>
@@ -92,10 +65,6 @@ export function AdminOrderSearch() {
               <p className="text-sm text-muted-foreground">
                 {order.customer_name || "Sin nombre"} · {order.customer_email || "Sin email"} · {order.phone || "Sin teléfono"}
               </p>
-              <p className="mt-1 text-xs uppercase tracking-wider text-muted-foreground">
-                Estado: {order.status}
-              </p>
-
               <ul className="mt-2 list-disc pl-5 text-sm">
                 {(order.order_items ?? []).map((item, idx) => (
                   <li key={`${order.id}-${idx}`}>

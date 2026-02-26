@@ -38,8 +38,7 @@ const cancelOrderSchema = z.object({
 })
 
 const searchOrdersByPhoneSchema = z.object({
-  phoneQuery: z.string().min(1, "Introduce un teléfono"),
-  includeCancelled: z.boolean().optional().default(false),
+  phoneQuery: z.string(),
 })
 
 function normalizePhone(value: string) {
@@ -137,52 +136,59 @@ export async function deleteOrder(payload: z.infer<typeof deleteOrderSchema>) {
   return { success: true }
 }
 
-export async function searchOrdersByPhone(phoneQuery: string, includeCancelled = false) {
-  const parsed = searchOrdersByPhoneSchema.parse({ phoneQuery, includeCancelled })
-  const supabase = await createClient()
+export async function searchOrdersByPhone(phoneQuery: string) {
+  try {
+    const parsed = searchOrdersByPhoneSchema.parse({ phoneQuery })
+    const supabase = await createClient()
 
-  const normalizedDigits = normalizePhone(parsed.phoneQuery)
-  const rawPattern = `%${parsed.phoneQuery.trim()}%`
-  const normalizedPattern = `%${normalizedDigits}%`
+    const q = normalizePhone(parsed.phoneQuery)
 
-  let query = supabase
-    .from("orders")
-    .select(
-      "id, created_at, delivery_date, customer_name, customer_email, phone, status, cancelled_at, cancelled_reason, order_items(type, flavor, qty)"
-    )
-    .or(`phone.ilike.${rawPattern},phone.ilike.${normalizedPattern}`)
-    .order("created_at", { ascending: false })
-    .limit(20)
+    if (q.length < 6) {
+      return { ok: false, error: "Introduce al menos 6 dígitos", results: [] as unknown[] }
+    }
 
-  if (!parsed.includeCancelled) {
-    query = query.neq("status", "cancelled")
+    const { data, error } = await supabase
+      .from("orders")
+      .select(
+        "id, delivery_date, status, customer_name, customer_email, phone, created_at, cancelled_at, cancelled_reason, order_items(type, flavor, qty)"
+      )
+      .neq("status", "cancelled")
+      .like("phone_normalized", `%${q}%`)
+      .order("created_at", { ascending: false })
+      .limit(20)
+
+    if (error) {
+      return { ok: false, error: error.message, results: [] as unknown[] }
+    }
+
+    return { ok: true, results: data ?? [] }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Error al buscar pedidos"
+    return { ok: false, error: message, results: [] as unknown[] }
   }
-
-  const { data, error } = await query
-
-  if (error) {
-    throw new Error(error.message)
-  }
-
-  return data ?? []
 }
 
 export async function cancelOrder(orderId: string, reason?: string) {
-  const parsed = cancelOrderSchema.parse({ orderId, reason })
-  const supabase = await createClient()
+  try {
+    const parsed = cancelOrderSchema.parse({ orderId, reason })
+    const supabase = await createClient()
 
-  const { error } = await supabase
-    .from("orders")
-    .update({
-      status: "cancelled",
-      cancelled_at: new Date().toISOString(),
-      cancelled_reason: parsed.reason || null,
-    })
-    .eq("id", parsed.orderId)
+    const { error } = await supabase
+      .from("orders")
+      .update({
+        status: "cancelled",
+        cancelled_at: new Date().toISOString(),
+        cancelled_reason: parsed.reason || null,
+      })
+      .eq("id", parsed.orderId)
 
-  if (error) {
-    throw new Error(error.message)
+    if (error) {
+      return { ok: false, error: error.message }
+    }
+
+    return { ok: true }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Error al anular pedido"
+    return { ok: false, error: message }
   }
-
-  return { ok: true }
 }
