@@ -12,6 +12,7 @@ const productionInputSchema = z
     to: z.string().optional(),
     types: z.array(z.enum(["cake", "box"]))
       .min(1, "Selecciona al menos un tipo"),
+    includeDone: z.boolean().optional().default(false),
   })
   .superRefine((data, ctx) => {
     if (data.mode === "single" && !data.day) {
@@ -60,8 +61,14 @@ export async function getProduction(input: z.infer<typeof productionInputSchema>
 
   let query = supabase
     .from("order_items")
-    .select("type, flavor, qty, orders!inner(delivery_date)")
+    .select("type, flavor, qty, orders!inner(delivery_date, status)")
     .in("type", parsed.types)
+
+  if (parsed.includeDone) {
+    query = query.in("orders.status", ["pending", "done"])
+  } else {
+    query = query.eq("orders.status", "pending")
+  }
 
   if (parsed.mode === "single" && parsed.day) {
     query = query.eq("orders.delivery_date", parsed.day)

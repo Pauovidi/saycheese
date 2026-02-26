@@ -149,3 +149,15 @@ add column if not exists customer_email text;
 4. Recibirás email de confirmación con fecha final programada.
 5. Inicia sesión en `/admin/login` con `ADMIN_EMAIL`.
 6. Abre `/admin/produccion` y revisa producción + listado de pedidos.
+
+
+## 7) Migración para anulación de pedidos y búsqueda por teléfono
+Aplica la migración `supabase/migrations/202602240001_add_cancel_fields_and_phone_index.sql` para:
+- Añadir `cancelled_at` y `cancelled_reason` en `orders`.
+- Indexar `orders.phone` para acelerar búsqueda en admin.
+- Documentar estados incluyendo `cancelled` en `orders.status`.
+
+
+- Ejecuta la migración nueva `supabase/migrations/202602260001_add_phone_normalized_and_cancel.sql` en Supabase SQL Editor antes de usar búsqueda/anulación en admin.
+
+- Ejecuta la migración `supabase/migrations/202602260002_add_done_fields.sql` en Supabase SQL Editor para habilitar marcado de pedidos como hechos.
