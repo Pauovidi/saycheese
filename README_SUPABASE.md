@@ -13,16 +13,37 @@ NEXT_PUBLIC_SUPABASE_URL=https://<project-ref>.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon-key>
 SUPABASE_SERVICE_ROLE_KEY=<service-role-key>
 ADMIN_EMAIL=admin@dominio.com
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=465
+SMTP_SECURE=true
+SMTP_USER=tu-cuenta@gmail.com
+SMTP_PASS=<app-password-de-16-caracteres>
+SMTP_FROM="SayCheese <tu-cuenta@gmail.com>"
 ```
 
 ### Vercel
-Configura las mismas variables en **Project Settings > Environment Variables**:
+Configura estas variables en **Project Settings > Environment Variables**:
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - `SUPABASE_SERVICE_ROLE_KEY` (solo server)
 - `ADMIN_EMAIL`
+- `SMTP_HOST` (recomendado: `smtp.gmail.com`)
+- `SMTP_PORT` (`465` o `587`)
+- `SMTP_SECURE` (`true` para 465, `false` para 587)
+- `SMTP_USER`
+- `SMTP_PASS` (App Password, no la contraseña normal)
+- `SMTP_FROM`
 
-## 3) SQL base (schema + RLS)
+> Nota: en Vercel no uses puerto 25 para SMTP. Usa 465/587.
+
+## 3) Gmail App Password (recomendado)
+Para usar Gmail SMTP de forma segura:
+1. Activa la verificación en 2 pasos (2FA) en tu cuenta de Google.
+2. Ve a **Cuenta de Google > Seguridad > Contraseñas de aplicaciones**.
+3. Crea una contraseña de app nueva para "Mail".
+4. Copia los 16 caracteres y pégalos en `SMTP_PASS`.
+
+## 4) SQL base (schema + RLS)
 Ejecuta este bloque en SQL Editor:
 
 ```sql
@@ -113,7 +134,7 @@ for delete using (
 );
 ```
 
-## 4) Migración incremental (si ya existe `orders`)
+## 5) Migración incremental (si ya existe `orders`)
 Si tu tabla `orders` ya estaba creada, ejecuta:
 
 ```sql
@@ -121,9 +142,18 @@ alter table public.orders
 add column if not exists customer_email text;
 ```
 
-## 5) Flujo de prueba
+## 6) Flujo de prueba
 1. Añade productos al carrito.
-2. Ve a `/checkout`, completa email, teléfono y fecha.
+2. Ve a `/checkout`, completa email, teléfono y (opcionalmente) fecha.
 3. Pulsa **Confirmar pedido** (crea `orders` + `order_items` vía API server con service role).
-4. Inicia sesión en `/admin/login` con `ADMIN_EMAIL`.
-5. Abre `/admin/produccion` y revisa producción + listado de pedidos.
+4. Recibirás email de confirmación con fecha final programada.
+5. Inicia sesión en `/admin/login` con `ADMIN_EMAIL`.
+6. Abre `/admin/produccion` y revisa producción + listado de pedidos.
+
+
+## 7) Migración para anulación de pedidos y búsqueda por teléfono
+Aplica la migración `supabase/migrations/202602240001_add_cancel_fields_and_phone_index.sql` para:
+- Añadir `cancelled_at` y `cancelled_reason` en `orders`.
+- Indexar `orders.phone` para acelerar búsqueda en admin.
+- Documentar estados incluyendo `cancelled` en `orders.status`.
+

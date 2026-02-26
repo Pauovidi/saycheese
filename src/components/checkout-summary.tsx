@@ -15,15 +15,9 @@ const checkoutSchema = z.object({
   customer_name: z.string().optional(),
   customer_email: z.string().email("Email inválido"),
   phone: z.string().min(6, "Teléfono inválido"),
-  delivery_date: z.string().date("Fecha de entrega inválida"),
+  delivery_date: z.string().date("Fecha de entrega inválida").optional(),
   notes: z.string().optional(),
 })
-
-function tomorrow() {
-  const d = new Date()
-  d.setDate(d.getDate() + 1)
-  return d.toISOString().slice(0, 10)
-}
 
 export function CheckoutSummary() {
   const router = useRouter()
@@ -32,7 +26,7 @@ export function CheckoutSummary() {
   const [customerName, setCustomerName] = useState("")
   const [customerEmail, setCustomerEmail] = useState("")
   const [phone, setPhone] = useState("")
-  const [deliveryDate, setDeliveryDate] = useState(tomorrow())
+  const [deliveryDate, setDeliveryDate] = useState("")
   const [notes, setNotes] = useState("")
 
   const payloadItems = useMemo(
@@ -64,7 +58,7 @@ export function CheckoutSummary() {
       customer_name: customerName || undefined,
       customer_email: customerEmail,
       phone,
-      delivery_date: deliveryDate,
+      delivery_date: deliveryDate || undefined,
       notes: notes || undefined,
     })
 
@@ -92,7 +86,14 @@ export function CheckoutSummary() {
       }
 
       clearCart()
-      toast.success("Pedido creado")
+      const finalDate = data.delivery_date_final as string | undefined
+      const warningEmail = data.warningEmail as boolean | undefined
+
+      toast.success(
+        warningEmail
+          ? `Pedido creado para ${finalDate}. No se pudo enviar el email de confirmación.`
+          : `Pedido creado para ${finalDate}. Te enviamos un email de confirmación.`
+      )
       router.push("/")
       router.refresh()
     } catch (error) {
@@ -137,14 +138,16 @@ export function CheckoutSummary() {
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="delivery-date">Fecha de entrega *</Label>
+          <Label htmlFor="delivery-date">¿Necesitas la tarta para alguna fecha en concreto?</Label>
           <Input
             id="delivery-date"
             type="date"
-            required
             value={deliveryDate}
             onChange={(e) => setDeliveryDate(e.target.value)}
           />
+          <p className="text-xs text-muted-foreground">
+            Si no indicas fecha, se programará para dentro de 3 días (aprox.).
+          </p>
         </div>
         <div className="space-y-2 md:col-span-2">
           <Label htmlFor="order-notes">Notas (opcional)</Label>

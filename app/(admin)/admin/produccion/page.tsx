@@ -1,5 +1,9 @@
+export const dynamic = "force-dynamic"
+export const revalidate = 0
+
 import { Toaster } from "@/components/ui/sonner"
 import { createClient } from "@/lib/supabase/server"
+import { AdminOrderSearch } from "@/src/components/admin/order-search"
 import { ProductionPanel } from "@/src/components/admin/production-panel"
 
 type OrderItem = {
@@ -24,6 +28,7 @@ export default async function ProduccionPage() {
   const { data } = await supabase
     .from("orders")
     .select("id, created_at, delivery_date, customer_name, customer_email, phone, status, order_items(type, flavor, qty)")
+    .neq("status", "cancelled")
     .order("created_at", { ascending: false })
     .limit(30)
 
@@ -33,6 +38,8 @@ export default async function ProduccionPage() {
     <>
       <h1 className="mb-6 text-xl font-bold text-foreground">Producción</h1>
       <ProductionPanel />
+
+      <AdminOrderSearch />
 
       <section className="mt-8 rounded-lg border border-border bg-card p-4">
         <h2 className="mb-4 text-sm font-bold uppercase tracking-wider text-foreground">

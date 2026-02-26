@@ -30,6 +30,22 @@ const updateOrderSchema = z.object({
   notes: z.string().nullable().optional(),
 })
 
+const deleteOrderSchema = z.object({ id: z.string().uuid() })
+
+const cancelOrderSchema = z.object({
+  orderId: z.string().uuid(),
+  reason: z.string().trim().max(300).optional(),
+})
+
+const searchOrdersByPhoneSchema = z.object({
+  phoneQuery: z.string().min(1, "Introduce un teléfono"),
+  includeCancelled: z.boolean().optional().default(false),
+})
+
+function normalizePhone(value: string) {
+  return value.replace(/\D/g, "")
+}
+
 export async function createOrder(payload: z.infer<typeof createOrderSchema>) {
   const parsed = createOrderSchema.parse(payload)
   const supabase = await createClient()
@@ -79,7 +95,8 @@ export async function listOrders() {
   const supabase = await createClient()
   const { data, error } = await supabase
     .from("orders")
-    .select("id, delivery_date, status, customer_name, customer_email, phone, notes, created_at, order_items(id, type, flavor, qty)")
+    .select("id, delivery_date, status, customer_name, customer_email, phone, notes, created_at, cancelled_at, cancelled_reason, order_items(id, type, flavor, qty)")
+    .neq("status", "cancelled")
     .order("delivery_date", { ascending: true })
 
   if (error) {
@@ -108,8 +125,6 @@ export async function updateOrder(payload: z.infer<typeof updateOrderSchema>) {
   return data
 }
 
-const deleteOrderSchema = z.object({ id: z.string().uuid() })
-
 export async function deleteOrder(payload: z.infer<typeof deleteOrderSchema>) {
   const parsed = deleteOrderSchema.parse(payload)
   const supabase = await createClient()
@@ -120,4 +135,54 @@ export async function deleteOrder(payload: z.infer<typeof deleteOrderSchema>) {
   }
 
   return { success: true }
+}
+
+export async function searchOrdersByPhone(phoneQuery: string, includeCancelled = false) {
+  const parsed = searchOrdersByPhoneSchema.parse({ phoneQuery, includeCancelled })
+  const supabase = await createClient()
+
+  const normalizedDigits = normalizePhone(parsed.phoneQuery)
+  const rawPattern = `%${parsed.phoneQuery.trim()}%`
+  const normalizedPattern = `%${normalizedDigits}%`
+
+  let query = supabase
+    .from("orders")
+    .select(
+      "id, created_at, delivery_date, customer_name, customer_email, phone, status, cancelled_at, cancelled_reason, order_items(type, flavor, qty)"
+    )
+    .or(`phone.ilike.${rawPattern},phone.ilike.${normalizedPattern}`)
+    .order("created_at", { ascending: false })
+    .limit(20)
+
+  if (!parsed.includeCancelled) {
+    query = query.neq("status", "cancelled")
+  }
+
+  const { data, error } = await query
+
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  return data ?? []
+}
+
+export async function cancelOrder(orderId: string, reason?: string) {
+  const parsed = cancelOrderSchema.parse({ orderId, reason })
+  const supabase = await createClient()
+
+  const { error } = await supabase
+    .from("orders")
+    .update({
+      status: "cancelled",
+      cancelled_at: new Date().toISOString(),
+      cancelled_reason: parsed.reason || null,
+    })
+    .eq("id", parsed.orderId)
+
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  return { ok: true }
 }
