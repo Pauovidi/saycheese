@@ -6,7 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "import:ph": "node scripts/import-personalizados-export.mjs",
+    "import:ph:apply": "node scripts/import-personalizados-export.mjs --apply true",
+    "import:ph:report": "node -e \"const fs=require('fs');const p='out/import-scraped-report.json';if(!fs.existsSync(p)){console.error('No report found: '+p);process.exit(1)}const r=JSON.parse(fs.readFileSync(p,'utf8'));console.log(JSON.stringify(r.stats,null,2))\""
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",

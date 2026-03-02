@@ -11,6 +11,10 @@ export interface Product {
   portionInfo?: string
   weightInfo?: string
   images: string[]
+  imagesSource?: string
+  descriptionHtml?: string
+  excerpt?: string
+  legacyUrl?: string
   featured: boolean
 }
 
