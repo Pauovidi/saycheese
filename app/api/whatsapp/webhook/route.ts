@@ -6,23 +6,19 @@ const GRAPH_API_BASE = "https://graph.facebook.com/v23.0"
 
 function parseIncoming(payload: any) {
   const message = payload?.entry?.[0]?.changes?.[0]?.value?.messages?.[0]
-  if (!message) {
-    return null
-  }
+  if (!message) return null
 
   return {
     text: message.text?.body as string | undefined,
-    phone: message.from as string | undefined,
     waId: message.from as string | undefined,
   }
 }
 
-async function sendWhatsappText(to: string, text: string) {
+async function sendWhatsappText(to: string, body: string) {
   const token = process.env.WHATSAPP_ACCESS_TOKEN
   const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID
-
   if (!token || !phoneNumberId) {
-    throw new Error("Faltan WHATSAPP_ACCESS_TOKEN o WHATSAPP_PHONE_NUMBER_ID")
+    throw new Error("Faltan variables de WhatsApp Cloud API")
   }
 
   const response = await fetch(`${GRAPH_API_BASE}/${phoneNumberId}/messages`, {
@@ -34,13 +30,12 @@ async function sendWhatsappText(to: string, text: string) {
     body: JSON.stringify({
       messaging_product: "whatsapp",
       to,
-      text: { body: text },
+      text: { body },
     }),
   })
 
   if (!response.ok) {
-    const detail = await response.text()
-    throw new Error(`Error enviando WhatsApp: ${detail}`)
+    throw new Error(await response.text())
   }
 }
 
@@ -60,21 +55,20 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const payload = await request.json()
-    const incoming = parseIncoming(payload)
+    const incoming = parseIncoming(await request.json())
 
     if (!incoming?.text || !incoming.waId) {
       return NextResponse.json({ ok: true, skipped: true })
     }
 
-    const result = await handleMessage({
-      sessionId: `wa:${incoming.waId}`,
+    const response = await handleMessage({
+      sessionId: incoming.waId,
       message: incoming.text,
-      phone: incoming.phone,
+      phone: incoming.waId,
       channel: "whatsapp",
     })
 
-    await sendWhatsappText(incoming.waId, result.text)
+    await sendWhatsappText(incoming.waId, response.text)
 
     return NextResponse.json({ ok: true })
   } catch (error) {

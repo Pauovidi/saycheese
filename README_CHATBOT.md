@@ -1,12 +1,17 @@
-# Chatbot híbrido (Web + WhatsApp)
+# Chatbot híbrido (Web + WhatsApp) con memoria y recordatorios
 
 ## Variables de entorno
 
 - `OPENAI_API_KEY`
-- `OPENAI_MODEL` (opcional, default: `gpt-5-mini`)
-- `WHATSAPP_VERIFY_TOKEN`
+- `OPENAI_MODEL` (opcional, default `gpt-5-mini`)
+- `HUMAN_SUPPORT_PHONE_E164`
+- `HUMAN_SUPPORT_WHATSAPP_LINK`
+- `CRON_SECRET`
 - `WHATSAPP_ACCESS_TOKEN`
 - `WHATSAPP_PHONE_NUMBER_ID`
+- `WHATSAPP_VERIFY_TOKEN`
+- `WHATSAPP_TEMPLATE_REMINDER_NAME` (ej: `order_reminder_24h`)
+- `WHATSAPP_TEMPLATE_LANG` (ej: `es_ES`)
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - `SUPABASE_SERVICE_ROLE_KEY`
@@ -14,33 +19,45 @@
 
 ## Endpoints
 
-- `POST /api/chat`
-  - Input: `{ sessionId, message, phone? }`
-  - Usa OpenAI Responses API + tools para:
-    - `get_store_hours`
-    - `get_flavors_and_sizes`
-    - `get_product_info`
-    - `create_order`
-    - `cancel_order`
+- `POST /api/chat`: chat web con motor único y memoria persistente.
+- `GET /api/whatsapp/webhook`: verificación Meta (`hub.verify_token` + `hub.challenge`).
+- `POST /api/whatsapp/webhook`: recibe mensaje, reutiliza `handleMessage`, responde por Graph API.
+- `GET /api/cron/send-reminders`: envío de recordatorios por plantilla WhatsApp, protegido por `CRON_SECRET`.
 
-- `GET /api/whatsapp/webhook`
-  - Verificación Meta: valida `hub.verify_token` contra `WHATSAPP_VERIFY_TOKEN`
-  - Responde con `hub.challenge`
+## Memoria persistente
 
-- `POST /api/whatsapp/webhook`
-  - Recibe evento WhatsApp Cloud API
-  - Extrae texto y `wa_id/from`
-  - Reutiliza el mismo motor de chat (`handleMessage`)
-  - Envía respuesta con Graph API `/{WHATSAPP_PHONE_NUMBER_ID}/messages`
+Se guarda en Supabase con:
+- `chat_users`
+- `chat_messages`
+- `chat_user_state` (`summary`, `bot_paused_until`, `last_openai_response_id`)
 
-## Notas de WhatsApp Cloud API
+El motor carga summary + últimos 20 mensajes antes de llamar a OpenAI.
+Cuando la conversación crece, genera resumen y poda mensajes antiguos.
 
-- Dentro de la ventana de 24h se permite responder con texto libre.
-- Fuera de 24h Meta exige plantillas (`templates`).
-- En esta v1 solo se implementa respuesta libre dentro de ventana.
+## Handoff a humano
 
-## Fuente de productos y alérgenos
+Hay tool `handoff_to_human`.
+Además se activa automáticamente si:
+- el usuario lo pide explícitamente (humano/persona/agente)
+- no hay respuesta segura (ej. alérgenos no presentes o pedido ambiguo)
 
-- Fuente de verdad: `src/data/products.ts`.
-- El bot no debe inventar alérgenos.
-- Si no hay info explícita en la descripción del producto, responde: `no lo veo en la ficha`.
+Cuando hay handoff, el bot se pausa 2h (`bot_paused_until`).
+
+## Recordatorios
+
+- Al crear pedido con fecha por defecto (+3 días): `reminder_at = created_at + 48h`.
+- Al crear pedido con fecha explícita: `reminder_at = delivery_date (hora de creación) - 24h`.
+- Se guarda `reminder_status='pending'` y el cron marca `sent` o `failed`.
+
+## WhatsApp y ventana de 24h
+
+- Dentro de 24h se puede responder con texto libre.
+- Fuera de 24h se requiere **template** de WhatsApp.
+- Los recordatorios usan template (`WHATSAPP_TEMPLATE_REMINDER_NAME`).
+
+## Vercel Cron
+
+Se añadió `vercel.json` para ejecutar cada 15 minutos:
+- path: `/api/cron/send-reminders?secret=CRON_SECRET`
+
+Recomendación: en producción usar header `x-cron-secret` desde el scheduler si está disponible.

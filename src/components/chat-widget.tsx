@@ -3,42 +3,38 @@
 import { MessageCircle, Send, X } from "lucide-react"
 import { useMemo, useState } from "react"
 
-type Message = { role: "user" | "assistant"; text: string }
+type ChatMessage = { role: "user" | "assistant"; text: string }
 
 const QUICK_ACTIONS = [
-  "¿Cuál es el horario de tienda?",
-  "¿Qué sabores y tamaños tenéis?",
-  "Quiero saber ingredientes y alérgenos de pistacho",
+  "¿Cuál es el horario?",
+  "¿Qué sabores y tamaños hay?",
+  "¿Qué alérgenos tiene pistacho?",
   "Quiero hacer un pedido",
-  "Quiero anular mi pedido",
+  "Quiero hablar con una persona",
 ]
 
 export function ChatWidget() {
-  const [open, setOpen] = useState(false)
+  const [isOpen, setIsOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [input, setInput] = useState("")
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      role: "assistant",
-      text: "¡Hola! Soy el asistente de SayCheese. Te ayudo con pedidos, sabores, horario y anulaciones.",
-    },
+  const [messages, setMessages] = useState<ChatMessage[]>([
+    { role: "assistant", text: "¡Hola! Te ayudo con pedidos, sabores, alérgenos y horarios." },
   ])
 
   const sessionId = useMemo(() => {
     if (typeof window === "undefined") return "server"
-    const key = "saycheese_chat_session"
-    const existing = window.localStorage.getItem(key)
+    const key = "chat_session_id"
+    const existing = localStorage.getItem(key)
     if (existing) return existing
     const created = crypto.randomUUID()
-    window.localStorage.setItem(key, created)
+    localStorage.setItem(key, created)
     return created
   }, [])
 
   async function sendMessage(text: string) {
-    const trimmed = text.trim()
-    if (!trimmed) return
+    if (!text.trim()) return
 
-    setMessages((prev) => [...prev, { role: "user", text: trimmed }])
+    setMessages((prev) => [...prev, { role: "user", text }])
     setInput("")
     setLoading(true)
 
@@ -46,29 +42,13 @@ export function ChatWidget() {
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sessionId,
-          message: trimmed,
-        }),
+        body: JSON.stringify({ sessionId, message: text }),
       })
 
       const data = await response.json()
-
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          text: data?.reply || "No pude responder ahora mismo.",
-        },
-      ])
+      setMessages((prev) => [...prev, { role: "assistant", text: data.reply ?? "No pude responder ahora." }])
     } catch {
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          text: "Hubo un error de conexión. Inténtalo de nuevo.",
-        },
-      ])
+      setMessages((prev) => [...prev, { role: "assistant", text: "Error de red. Inténtalo de nuevo." }])
     } finally {
       setLoading(false)
     }
@@ -76,12 +56,12 @@ export function ChatWidget() {
 
   return (
     <div className="fixed bottom-6 right-6 z-50">
-      {open && (
+      {isOpen && (
         <div className="mb-3 flex h-[520px] w-[340px] flex-col overflow-hidden rounded-2xl border bg-white shadow-2xl">
           <div className="flex items-center justify-between border-b px-4 py-3">
             <p className="text-sm font-semibold">Asistente SayCheese</p>
-            <button aria-label="Cerrar chat" onClick={() => setOpen(false)}>
-              <X size={18} />
+            <button onClick={() => setIsOpen(false)} aria-label="Cerrar chat">
+              <X size={16} />
             </button>
           </div>
 
@@ -96,7 +76,7 @@ export function ChatWidget() {
                 {message.text}
               </div>
             ))}
-            {loading && <div className="text-xs text-neutral-500">Escribiendo...</div>}
+            {loading && <p className="text-xs text-neutral-500">Escribiendo...</p>}
           </div>
 
           <div className="border-t p-3">
@@ -106,7 +86,6 @@ export function ChatWidget() {
                   key={action}
                   className="rounded-full border px-2 py-1 text-xs hover:bg-neutral-100"
                   onClick={() => sendMessage(action)}
-                  disabled={loading}
                 >
                   {action}
                 </button>
@@ -122,9 +101,9 @@ export function ChatWidget() {
             >
               <input
                 className="h-10 flex-1 rounded-lg border px-3 text-sm outline-none"
-                placeholder="Escribe tu mensaje..."
                 value={input}
                 onChange={(event) => setInput(event.target.value)}
+                placeholder="Escribe aquí..."
               />
               <button className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-black text-white" disabled={loading}>
                 <Send size={16} />
@@ -135,8 +114,8 @@ export function ChatWidget() {
       )}
 
       <button
-        onClick={() => setOpen((prev) => !prev)}
-        className="flex h-14 w-14 items-center justify-center rounded-full bg-black text-white shadow-xl transition hover:scale-105"
+        onClick={() => setIsOpen((prev) => !prev)}
+        className="flex h-14 w-14 items-center justify-center rounded-full bg-black text-white shadow-lg"
         aria-label="Abrir chat"
       >
         <MessageCircle size={24} />

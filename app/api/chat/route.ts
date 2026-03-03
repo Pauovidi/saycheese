@@ -3,17 +3,15 @@ import { z } from "zod"
 
 import { handleMessage } from "@/lib/chatbot/engine"
 
-const payloadSchema = z.object({
-  message: z.string().min(1),
+const chatSchema = z.object({
   sessionId: z.string().min(1),
+  message: z.string().min(1),
   phone: z.string().optional(),
 })
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json()
-    const payload = payloadSchema.parse(body)
-
+    const payload = chatSchema.parse(await request.json())
     const result = await handleMessage({
       sessionId: payload.sessionId,
       message: payload.message,

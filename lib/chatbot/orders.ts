@@ -2,6 +2,8 @@ import "server-only"
 
 import { z } from "zod"
 
+import { isKnownFlavor } from "@/lib/chatbot/products"
+import { addDaysToToday, computeReminderAt } from "@/lib/chatbot/reminders"
 import { getAdminClient, getAdminUid } from "@/lib/supabase/admin"
 
 const createOrderInputSchema = z.object({
@@ -21,22 +23,31 @@ const createOrderInputSchema = z.object({
     .min(1),
 })
 
-function addDaysToToday(days: number) {
-  const date = new Date()
-  date.setDate(date.getDate() + days)
-  return date.toISOString().slice(0, 10)
-}
-
 function normalizePhone(value: string) {
   return value.replace(/\D/g, "")
 }
 
 export async function createChatOrder(input: unknown) {
   const payload = createOrderInputSchema.parse(input)
+
+  if (payload.items.some((item) => !isKnownFlavor(item.flavor))) {
+    return {
+      ok: false as const,
+      error: "Pedido ambiguo: no identifiqué uno o más sabores.",
+      shouldHandoff: true,
+    }
+  }
+
   const adminUid = await getAdminUid()
   const supabase = getAdminClient()
-
+  const createdAt = new Date()
+  const usedDefaultDeliveryDate = !payload.delivery_date
   const deliveryDateFinal = payload.delivery_date || addDaysToToday(3)
+  const reminderAt = computeReminderAt({
+    createdAt,
+    deliveryDate: deliveryDateFinal,
+    usedDefaultDeliveryDate,
+  })
 
   const { data: order, error: orderError } = await supabase
     .from("orders")
@@ -48,6 +59,8 @@ export async function createChatOrder(input: unknown) {
       customer_email: payload.customer_email ?? null,
       phone: payload.phone,
       notes: payload.notes,
+      reminder_at: reminderAt,
+      reminder_status: "pending",
     })
     .select("id")
     .single()
@@ -68,7 +81,7 @@ export async function createChatOrder(input: unknown) {
     throw new Error(itemsError.message)
   }
 
-  return { orderId: order.id, deliveryDate: deliveryDateFinal }
+  return { ok: true as const, orderId: order.id, deliveryDate: deliveryDateFinal, reminderAt }
 }
 
 export async function cancelChatOrder(phone: string, hint?: string) {
@@ -81,19 +94,14 @@ export async function cancelChatOrder(phone: string, hint?: string) {
     .neq("status", "cancelled")
     .like("phone_normalized", `%${normalizedPhone}%`)
 
-  const withHint = hint?.trim()
-  const finalQuery = withHint ? query.ilike("id", `${withHint}%`) : query
-
+  const finalQuery = hint?.trim() ? query.ilike("id", `${hint.trim()}%`) : query
   const { data, error } = await finalQuery.order("created_at", { ascending: false }).limit(1)
 
-  if (error) {
-    throw new Error(error.message)
-  }
+  if (error) throw new Error(error.message)
 
   const order = data?.[0]
-
   if (!order) {
-    return { ok: false as const, message: "No encontré un pedido activo para ese teléfono." }
+    return { ok: false as const, error: "No encontré un pedido activo para ese teléfono.", shouldHandoff: true }
   }
 
   const { error: cancelError } = await supabase
@@ -101,9 +109,7 @@ export async function cancelChatOrder(phone: string, hint?: string) {
     .update({ status: "cancelled", cancelled_at: new Date().toISOString() })
     .eq("id", order.id)
 
-  if (cancelError) {
-    throw new Error(cancelError.message)
-  }
+  if (cancelError) throw new Error(cancelError.message)
 
   return { ok: true as const, orderId: order.id }
 }
