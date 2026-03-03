@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 
 import { sendOrderConfirmation } from "@/lib/mailer"
+import { addDaysToToday, computeReminderAt } from "@/lib/chatbot/reminders"
 import { getAdminClient, getAdminUid } from "@/lib/supabase/admin"
 
 const orderPayloadSchema = z.object({
@@ -21,19 +22,16 @@ const orderPayloadSchema = z.object({
     .min(1),
 })
 
-function addDaysToToday(days: number) {
-  const date = new Date()
-  date.setDate(date.getDate() + days)
-  return date.toISOString().slice(0, 10)
-}
-
 export async function POST(request: Request) {
   try {
     const body = await request.json()
     const payload = orderPayloadSchema.parse(body)
     const adminUid = await getAdminUid()
     const supabase = getAdminClient()
+    const createdAt = new Date()
+    const usedDefaultDeliveryDate = !payload.delivery_date
     const deliveryDateFinal = payload.delivery_date || addDaysToToday(3)
+    const reminderAt = computeReminderAt({ createdAt, deliveryDate: deliveryDateFinal, usedDefaultDeliveryDate })
 
     const { data: order, error: orderError } = await supabase
       .from("orders")
@@ -45,6 +43,8 @@ export async function POST(request: Request) {
         customer_email: payload.customer_email,
         phone: payload.phone,
         notes: payload.notes,
+        reminder_at: reminderAt,
+        reminder_status: "pending",
       })
       .select("id")
       .single()
