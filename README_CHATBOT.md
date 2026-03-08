@@ -20,6 +20,7 @@
 ## Endpoints
 
 - `POST /api/chat`: chat web con motor único y memoria persistente.
+  - 429 se maneja con mensaje amable + retries.
 - `GET /api/whatsapp/webhook`: verificación Meta (`hub.verify_token` + `hub.challenge`).
 - `POST /api/whatsapp/webhook`: recibe mensaje, reutiliza `handleMessage`, responde por Graph API.
 - `GET /api/cron/send-reminders`: envío de recordatorios por plantilla WhatsApp, protegido por `CRON_SECRET`.
