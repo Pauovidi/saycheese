@@ -2,6 +2,7 @@ import "server-only"
 
 import OpenAI from "openai"
 
+import { computeEarliestPickupDate, hasSpanishDateIntent, parseSpanishRequestedDate, validateOrSuggestDate } from "@/lib/chatbot/dates"
 import {
   getOrCreateUser,
   getPauseState,
@@ -28,11 +29,16 @@ type HandleMessageInput = {
 
 const STORE_HOURS = process.env.STORE_HOURS ?? "Lunes a sábado de 09:00 a 19:00 (domingos cerrado)."
 const SUMMARY_THRESHOLD = 30
+const CHATBOT_TIMEZONE = process.env.CHATBOT_TIMEZONE ?? "Europe/Madrid"
 
 const SYSTEM_PROMPT = `Eres el asistente de SayCheese.
 Responde en español, claro y breve.
 No inventes alérgenos/ingredientes. Si no están en la ficha, di exactamente: "no lo veo en la ficha".
 Pedidos: teléfono obligatorio, email opcional.
+No se hacen envíos; solo recogida en tienda.
+Nunca uses "recogerte"; usa "recogerla" o "recoger".
+Plazo mínimo de 3 días; valida cualquier fecha solicitada.
+Si no puedes interpretar una fecha pedida por el usuario, pregunta exactamente: "¿para qué día la necesitas?".
 Si el usuario pide humano o hay incertidumbre crítica, usa tool handoff_to_human.`
 
 const HANDOFF_TEXT =
@@ -53,6 +59,10 @@ function getOpenAIClient() {
 function shouldRequestHandoff(message: string) {
   const normalized = message.toLowerCase()
   return HANDOFF_KEYWORDS.some((word) => normalized.includes(word))
+}
+
+function sanitizeAssistantText(text: string) {
+  return text.replace(/\brecogerte\b/gi, "recogerla")
 }
 
 async function activateHandoff(userId: string, reason?: string) {
@@ -117,6 +127,19 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
   }
 
   const context = await loadContext(userId)
+
+  const now = new Date()
+  const earliestPickupDate = computeEarliestPickupDate(now, CHATBOT_TIMEZONE)
+  const requestedDate = parseSpanishRequestedDate(message, now, CHATBOT_TIMEZONE).requestedDate
+  const hasDateIntent = hasSpanishDateIntent(message)
+  const dateValidation = requestedDate ? validateOrSuggestDate(requestedDate, earliestPickupDate) : undefined
+
+  if (hasDateIntent && !requestedDate) {
+    const text = "¿para qué día la necesitas?"
+    await saveMessage(userId, "assistant", text)
+    await maybeSummarizeConversation(openai, userId, [...context.messagesLastN, { role: "user", content: message }, { role: "assistant", content: text }])
+    return { text }
+  }
 
   let safetyEscalate = false
 
@@ -251,8 +274,13 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
     return { ok: false, error: `Tool no soportada: ${name}` }
   }
 
+  const dateContextLine = requestedDate
+    ? `Fecha solicitada interpretada: ${requestedDate}. Fecha minima permitida: ${earliestPickupDate}. Resultado validacion: ${dateValidation?.ok ? "valida" : "inferior a minima"}.`
+    : `Fecha minima permitida para recogida: ${earliestPickupDate}.`
+
   const openAIInput: any[] = [
     { role: "system", content: SYSTEM_PROMPT },
+    { role: "system", content: `Contexto de fecha (${CHATBOT_TIMEZONE}): ${dateContextLine}` },
     ...(context.summary ? [{ role: "system", content: `Resumen persistente: ${context.summary}` }] : []),
     ...context.messagesLastN.map((item) => ({ role: item.role, content: item.content })),
     { role: "user", content: `Canal=${channel}. ${phone ? `Teléfono=${phone}.` : ""} Mensaje=${message}` },
@@ -276,7 +304,7 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
 
   await setLastOpenAIResponseId(userId, response.id)
 
-  let text = response.output_text?.trim() || "No pude responder ahora mismo."
+  let text = sanitizeAssistantText(response.output_text?.trim() || "No pude responder ahora mismo.")
 
   if (safetyEscalate) {
     const handoff = await activateHandoff(userId, "Incertidumbre crítica")

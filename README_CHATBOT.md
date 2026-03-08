@@ -43,6 +43,12 @@ Además se activa automáticamente si:
 
 Cuando hay handoff, el bot se pausa 2h (`bot_paused_until`).
 
+## Regla de 3 días y recogida
+
+El chatbot solo ofrece recogida en tienda (sin envíos) y evita el copy "recogerte".
+La fecha mínima de producción es `hoy + 3 días` en `Europe/Madrid`; si el cliente pide antes, propone automáticamente la mínima disponible.
+Si no puede interpretar la fecha solicitada, responde: "¿para qué día la necesitas?".
+
 ## Recordatorios
 
 - Al crear pedido con fecha por defecto (+3 días): `reminder_at = created_at + 48h`.

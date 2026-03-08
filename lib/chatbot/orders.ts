@@ -2,8 +2,9 @@ import "server-only"
 
 import { z } from "zod"
 
+import { computeEarliestPickupDate, validateOrSuggestDate } from "@/lib/chatbot/dates"
 import { isKnownFlavor } from "@/lib/chatbot/products"
-import { addDaysToToday, computeReminderAt } from "@/lib/chatbot/reminders"
+import { computeReminderAt } from "@/lib/chatbot/reminders"
 import { getAdminClient, getAdminUid } from "@/lib/supabase/admin"
 
 const createOrderInputSchema = z.object({
@@ -29,6 +30,9 @@ function normalizePhone(value: string) {
 
 export async function createChatOrder(input: unknown) {
   const payload = createOrderInputSchema.parse(input)
+  const timezone = process.env.CHATBOT_TIMEZONE ?? "Europe/Madrid"
+  const createdAt = new Date()
+  const earliestPickupDate = computeEarliestPickupDate(createdAt, timezone)
 
   if (payload.items.some((item) => !isKnownFlavor(item.flavor))) {
     return {
@@ -38,11 +42,23 @@ export async function createChatOrder(input: unknown) {
     }
   }
 
+  if (payload.delivery_date) {
+    const validatedDate = validateOrSuggestDate(payload.delivery_date, earliestPickupDate)
+    if (!validatedDate.ok) {
+      return {
+        ok: false as const,
+        error: `Por plazo de elaboración, lo antes posible sería el ${validatedDate.finalDate}.`,
+        earliestDate: validatedDate.finalDate,
+        requestedDate: payload.delivery_date,
+        shouldHandoff: false,
+      }
+    }
+  }
+
   const adminUid = await getAdminUid()
   const supabase = getAdminClient()
-  const createdAt = new Date()
   const usedDefaultDeliveryDate = !payload.delivery_date
-  const deliveryDateFinal = payload.delivery_date || addDaysToToday(3)
+  const deliveryDateFinal = payload.delivery_date || earliestPickupDate
   const reminderAt = computeReminderAt({
     createdAt,
     deliveryDate: deliveryDateFinal,
