@@ -26,6 +26,11 @@ type HandleMessageInput = {
   channel: "web" | "whatsapp"
 }
 
+export type ChatEngineError = Error & {
+  status?: number
+  code?: string
+}
+
 const STORE_HOURS = process.env.STORE_HOURS ?? "Lunes a sábado de 09:00 a 19:00 (domingos cerrado)."
 const SUMMARY_THRESHOLD = 30
 
@@ -41,13 +46,58 @@ const HANDOFF_TEXT =
   `${process.env.HUMAN_SUPPORT_WHATSAPP_LINK ? `WhatsApp: ${process.env.HUMAN_SUPPORT_WHATSAPP_LINK}` : ""}`
 
 const HANDOFF_KEYWORDS = ["humano", "persona", "agente", "asesor", "operador"]
+const RETRY_DELAYS_MS = [500, 1500] as const
 
 function getOpenAIClient() {
   const apiKey = process.env.OPENAI_API_KEY
   if (!apiKey) {
-    throw new Error("OPENAI_API_KEY no configurada")
+    const error = new Error("Missing OPENAI_API_KEY") as ChatEngineError
+    error.status = 500
+    error.code = "missing_openai_api_key"
+    throw error
   }
   return new OpenAI({ apiKey })
+}
+
+function normalizeError(error: unknown): ChatEngineError {
+  if (error instanceof Error) {
+    return error as ChatEngineError
+  }
+  return new Error(typeof error === "string" ? error : "OpenAI request failed") as ChatEngineError
+}
+
+function isRetryableStatus(status?: number) {
+  return status === 429 || status === 503
+}
+
+function withJitter(delayMs: number) {
+  return delayMs + Math.floor(Math.random() * 250)
+}
+
+function wait(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+async function createResponseWithRetry(openai: OpenAI, params: any) {
+  let lastError: ChatEngineError | null = null
+
+  for (let attempt = 0; attempt < RETRY_DELAYS_MS.length + 1; attempt += 1) {
+    try {
+      return await openai.responses.create(params)
+    } catch (error) {
+      const normalized = normalizeError(error)
+      const status = normalized.status
+
+      if (!isRetryableStatus(status) || attempt >= RETRY_DELAYS_MS.length) {
+        throw normalized
+      }
+
+      lastError = normalized
+      await wait(withJitter(RETRY_DELAYS_MS[attempt]))
+    }
+  }
+
+  throw lastError ?? new Error("OpenAI request failed")
 }
 
 function shouldRequestHandoff(message: string) {
@@ -74,7 +124,7 @@ async function maybeSummarizeConversation(openai: OpenAI, userId: string, messag
     return
   }
 
-  const summaryResponse = await openai.responses.create({
+  const summaryResponse = await createResponseWithRetry(openai, {
     model: process.env.OPENAI_MODEL ?? "gpt-5-mini",
     input: [
       {
@@ -258,7 +308,7 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
     { role: "user", content: `Canal=${channel}. ${phone ? `Teléfono=${phone}.` : ""} Mensaje=${message}` },
   ]
 
-  let response = await openai.responses.create({ model, input: openAIInput, tools })
+  let response = await createResponseWithRetry(openai, { model, input: openAIInput, tools })
 
   for (let i = 0; i < 4; i += 1) {
     const calls = response.output.filter((entry) => entry.type === "function_call")
@@ -271,7 +321,12 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
       outputs.push({ type: "function_call_output", call_id: call.call_id, output: JSON.stringify(result) })
     }
 
-    response = await openai.responses.create({ model, previous_response_id: response.id, input: outputs, tools })
+    response = await createResponseWithRetry(openai, {
+      model,
+      previous_response_id: response.id,
+      input: outputs,
+      tools,
+    })
   }
 
   await setLastOpenAIResponseId(userId, response.id)
