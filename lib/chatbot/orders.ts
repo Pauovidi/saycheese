@@ -2,9 +2,14 @@ import "server-only"
 
 import { z } from "zod"
 
+import { earliestPickupDateISO } from "@/lib/chatbot/dates"
 import { isKnownFlavor } from "@/lib/chatbot/products"
-import { addDaysToToday, computeReminderAt } from "@/lib/chatbot/reminders"
+import { computeReminderAt } from "@/lib/chatbot/reminders"
 import { getAdminClient, getAdminUid } from "@/lib/supabase/admin"
+
+const LEAD_DAYS_RAW = Number.parseInt(process.env.CHATBOT_LEAD_DAYS ?? "3", 10)
+const LEAD_DAYS = Number.isFinite(LEAD_DAYS_RAW) && LEAD_DAYS_RAW > 0 ? LEAD_DAYS_RAW : 3
+const SHOP_TZ = process.env.SHOP_TZ ?? "Europe/Madrid"
 
 const createOrderInputSchema = z.object({
   customer_name: z.string().min(1).optional(),
@@ -29,6 +34,8 @@ function normalizePhone(value: string) {
 
 export async function createChatOrder(input: unknown) {
   const payload = createOrderInputSchema.parse(input)
+  const createdAt = new Date()
+  const earliest = earliestPickupDateISO(createdAt, LEAD_DAYS, SHOP_TZ)
 
   if (payload.items.some((item) => !isKnownFlavor(item.flavor))) {
     return {
@@ -38,11 +45,18 @@ export async function createChatOrder(input: unknown) {
     }
   }
 
+  if (payload.delivery_date && payload.delivery_date < earliest) {
+    return {
+      ok: false as const,
+      error: `Para esa fecha no llegamos. La primera fecha disponible es ${earliest}.`,
+      shouldHandoff: false,
+    }
+  }
+
   const adminUid = await getAdminUid()
   const supabase = getAdminClient()
-  const createdAt = new Date()
   const usedDefaultDeliveryDate = !payload.delivery_date
-  const deliveryDateFinal = payload.delivery_date || addDaysToToday(3)
+  const deliveryDateFinal = payload.delivery_date || earliest
   const reminderAt = computeReminderAt({
     createdAt,
     deliveryDate: deliveryDateFinal,

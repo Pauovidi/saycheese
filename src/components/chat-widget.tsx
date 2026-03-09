@@ -1,7 +1,7 @@
 "use client"
 
 import { MessageCircle, Send, X } from "lucide-react"
-import { useMemo, useState } from "react"
+import { useState } from "react"
 
 type ChatMessage = { role: "user" | "assistant"; text: string }
 
@@ -13,23 +13,27 @@ const QUICK_ACTIONS = [
   "Quiero hablar con una persona",
 ]
 
+const EXTERNAL_ID_KEY = "saycheese_chat_external_id"
+
+function getOrCreateExternalId() {
+  if (typeof window === "undefined") return "server"
+
+  const existing = localStorage.getItem(EXTERNAL_ID_KEY)
+  if (existing) return existing
+
+  const created = crypto.randomUUID()
+  localStorage.setItem(EXTERNAL_ID_KEY, created)
+  return created
+}
+
 export function ChatWidget() {
   const [isOpen, setIsOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [input, setInput] = useState("")
+  const [externalId, setExternalId] = useState(getOrCreateExternalId)
   const [messages, setMessages] = useState<ChatMessage[]>([
     { role: "assistant", text: "¡Hola! Te ayudo con pedidos, sabores, alérgenos y horarios." },
   ])
-
-  const sessionId = useMemo(() => {
-    if (typeof window === "undefined") return "server"
-    const key = "chat_session_id"
-    const existing = localStorage.getItem(key)
-    if (existing) return existing
-    const created = crypto.randomUUID()
-    localStorage.setItem(key, created)
-    return created
-  }, [])
 
   async function sendMessage(text: string) {
     if (!text.trim()) return
@@ -42,10 +46,16 @@ export function ChatWidget() {
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId, message: text }),
+        body: JSON.stringify({ external_id: externalId, message: text }),
       })
 
       const data = await response.json()
+
+      if (typeof data.external_id === "string" && data.external_id && data.external_id !== externalId) {
+        localStorage.setItem(EXTERNAL_ID_KEY, data.external_id)
+        setExternalId(data.external_id)
+      }
+
       setMessages((prev) => [...prev, { role: "assistant", text: data.reply ?? "No pude responder ahora." }])
     } catch {
       setMessages((prev) => [...prev, { role: "assistant", text: "Error de red. Inténtalo de nuevo." }])
