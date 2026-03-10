@@ -24,7 +24,7 @@ export async function POST(request: Request) {
       channel: "web",
     })
 
-    return NextResponse.json({ ok: true, reply: result.text, external_id: externalId })
+    return NextResponse.json({ ok: true, reply: result.text, handoff: result.handoff, external_id: externalId })
   } catch (error) {
     const message = error instanceof Error ? error.message : "Error interno"
     return NextResponse.json({ ok: false, error: message }, { status: 500 })

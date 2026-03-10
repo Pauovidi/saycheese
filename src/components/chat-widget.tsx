@@ -1,9 +1,19 @@
 "use client"
 
 import { MessageCircle, Send, X } from "lucide-react"
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 
-type ChatMessage = { role: "user" | "assistant"; text: string }
+type Handoff = {
+  type: "whatsapp"
+  label: "WhatsApp"
+  href: string
+}
+
+type ChatMessage = {
+  role: "user" | "assistant"
+  text: string
+  handoff?: Handoff
+}
 
 const QUICK_ACTIONS = [
   "¿Cuál es el horario?",
@@ -14,6 +24,7 @@ const QUICK_ACTIONS = [
 ]
 
 const EXTERNAL_ID_KEY = "saycheese_chat_external_id"
+const DEFAULT_WHATSAPP_MESSAGE = "Hola, quiero hacer un pedido."
 
 function getOrCreateExternalId() {
   if (typeof window === "undefined") return "server"
@@ -26,14 +37,34 @@ function getOrCreateExternalId() {
   return created
 }
 
+function buildWhatsAppLink(baseUrl: string) {
+  const separator = baseUrl.includes("?") ? "&" : "?"
+  return `${baseUrl}${separator}text=${encodeURIComponent(DEFAULT_WHATSAPP_MESSAGE)}`
+}
+
 export function ChatWidget() {
   const [isOpen, setIsOpen] = useState(false)
+  const [isMobile, setIsMobile] = useState(false)
   const [loading, setLoading] = useState(false)
   const [input, setInput] = useState("")
   const [externalId, setExternalId] = useState(getOrCreateExternalId)
   const [messages, setMessages] = useState<ChatMessage[]>([
     { role: "assistant", text: "¡Hola! Te ayudo con pedidos, sabores, alérgenos y horarios." },
   ])
+
+  const botWhatsappLink = useMemo(() => {
+    const base = process.env.NEXT_PUBLIC_BOT_WHATSAPP_LINK ?? process.env.BOT_WHATSAPP_LINK ?? "https://wa.me/34681147149"
+    return buildWhatsAppLink(base)
+  }, [])
+
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 767px)")
+    const update = () => setIsMobile(media.matches)
+
+    update()
+    media.addEventListener("change", update)
+    return () => media.removeEventListener("change", update)
+  }, [])
 
   async function sendMessage(text: string) {
     if (!text.trim()) return
@@ -56,7 +87,14 @@ export function ChatWidget() {
         setExternalId(data.external_id)
       }
 
-      setMessages((prev) => [...prev, { role: "assistant", text: data.reply ?? "No pude responder ahora." }])
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          text: data.reply ?? "No pude responder ahora.",
+          handoff: data.handoff,
+        },
+      ])
     } catch {
       setMessages((prev) => [...prev, { role: "assistant", text: "Error de red. Inténtalo de nuevo." }])
     } finally {
@@ -67,7 +105,7 @@ export function ChatWidget() {
   return (
     <div className="fixed bottom-6 right-6 z-50">
       {isOpen && (
-        <div className="mb-3 flex h-[520px] w-[340px] flex-col overflow-hidden rounded-2xl border bg-white shadow-2xl">
+        <div className="mb-3 flex h-[520px] w-[340px] max-w-[92vw] flex-col overflow-hidden rounded-2xl border bg-white shadow-2xl">
           <div className="flex items-center justify-between border-b px-4 py-3">
             <p className="text-sm font-semibold">Asistente SayCheese</p>
             <button onClick={() => setIsOpen(false)} aria-label="Cerrar chat">
@@ -83,7 +121,19 @@ export function ChatWidget() {
                   message.role === "user" ? "ml-auto bg-black text-white" : "bg-white"
                 }`}
               >
-                {message.text}
+                <p>{message.text}</p>
+                {message.handoff?.href && (
+                  <a
+                    href={message.handoff.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-2 inline-flex items-center gap-2 rounded-lg border border-green-700 bg-green-600 px-3 py-1.5 text-xs font-semibold text-white"
+                    aria-label="Abrir WhatsApp con soporte humano"
+                  >
+                    <span aria-hidden="true">💬</span>
+                    {message.handoff.label}
+                  </a>
+                )}
               </div>
             ))}
             {loading && <p className="text-xs text-neutral-500">Escribiendo...</p>}
@@ -123,13 +173,37 @@ export function ChatWidget() {
         </div>
       )}
 
-      <button
-        onClick={() => setIsOpen((prev) => !prev)}
-        className="flex h-14 w-14 items-center justify-center rounded-full bg-black text-white shadow-lg"
-        aria-label="Abrir chat"
-      >
-        <MessageCircle size={24} />
-      </button>
+      {isMobile ? (
+        <div className="flex flex-col items-end gap-2">
+          {!isOpen && (
+            <button
+              onClick={() => setIsOpen(true)}
+              className="text-xs text-black underline-offset-2 hover:underline"
+              aria-label="Abrir chat web"
+            >
+              Prefiero chat web
+            </button>
+          )}
+          <a
+            href={botWhatsappLink}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex h-14 items-center justify-center gap-2 rounded-full bg-green-600 px-5 text-sm font-semibold text-white shadow-lg"
+            aria-label="Pedir por WhatsApp"
+          >
+            <span aria-hidden="true">💬</span>
+            Pedir por WhatsApp
+          </a>
+        </div>
+      ) : (
+        <button
+          onClick={() => setIsOpen((prev) => !prev)}
+          className="flex h-14 w-14 items-center justify-center rounded-full bg-black text-white shadow-lg"
+          aria-label="Abrir chat"
+        >
+          <MessageCircle size={24} />
+        </button>
+      )}
     </div>
   )
 }

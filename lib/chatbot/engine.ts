@@ -27,6 +27,17 @@ type HandleMessageInput = {
   channel: "web" | "whatsapp"
 }
 
+type HandoffPayload = {
+  type: "whatsapp"
+  label: "WhatsApp"
+  href: string
+}
+
+type HandleMessageResult = {
+  text: string
+  handoff?: HandoffPayload
+}
+
 type OrderState = {
   inOrderFlow?: boolean
   flavor?: string
@@ -41,24 +52,32 @@ type OrderState = {
 const LEAD_DAYS_RAW = Number.parseInt(process.env.CHATBOT_LEAD_DAYS ?? "3", 10)
 const LEAD_DAYS = Number.isFinite(LEAD_DAYS_RAW) && LEAD_DAYS_RAW > 0 ? LEAD_DAYS_RAW : 3
 const SHOP_TZ = process.env.SHOP_TZ ?? "Europe/Madrid"
-const STORE_HOURS_TEXT = "Lunes a sábado de 09:00 a 19:00. Domingos cerrado."
+const STORE_HOURS_TEXT =
+  "Domingo: 10:00–14:00\n" +
+  "Miércoles: 16:30–20:30\n" +
+  "Jueves: 16:30–20:30\n" +
+  "Viernes: 16:30–20:30\n" +
+  "Sábado: 10:00–13:00\n" +
+  "Lunes y martes: descanso"
 const POLICY_TEXT = "Solo recogida en tienda. No hacemos envíos."
 const SUMMARY_THRESHOLD = 30
 const ORDER_STATE_PREFIX = "__ORDER_STATE__:"
+
+const HUMAN_SUPPORT_PHONE_E164 = process.env.HUMAN_SUPPORT_PHONE_E164 ?? "+34681147149"
+const HUMAN_SUPPORT_WHATSAPP_LINK = process.env.HUMAN_SUPPORT_WHATSAPP_LINK ?? "https://wa.me/34681147149"
 
 const SYSTEM_PROMPT = `Eres el asistente de SayCheese.
 Responde en español, claro y breve.
 No inventes alérgenos/ingredientes. Si no están en la ficha, di exactamente: "no lo veo en la ficha".
 Política obligatoria: ${POLICY_TEXT}
+Horario oficial de tienda (no inventes ni alteres):
+${STORE_HOURS_TEXT}
 Nunca uses "recogerte" ni "recibir" para pedidos; usa "recoger"/"recogida".
 Plazo mínimo obligatorio: ${LEAD_DAYS} días naturales.
 Si puedes responder sin tools, responde directo y no llames tools.
 Si el usuario pide humano o hay incertidumbre crítica, usa tool handoff_to_human.`
 
-const HANDOFF_TEXT =
-  `Te paso con una persona del equipo. ` +
-  `Puedes contactar en ${process.env.HUMAN_SUPPORT_PHONE_E164 ?? "(configurar HUMAN_SUPPORT_PHONE_E164)"}. ` +
-  `${process.env.HUMAN_SUPPORT_WHATSAPP_LINK ? `WhatsApp: ${process.env.HUMAN_SUPPORT_WHATSAPP_LINK}` : ""}`
+const HANDOFF_WEB_TEXT = "Te paso con una persona del equipo."
 
 const HANDOFF_KEYWORDS = ["humano", "persona", "agente", "asesor", "operador"]
 
@@ -86,6 +105,23 @@ function sanitizeAssistantText(text: string) {
   return text
     .replace(/\brecogerte\b/gi, "recogerla")
     .replace(/\brecibir\b/gi, "recoger")
+}
+
+function buildHandoffPayload(channel: "web" | "whatsapp"): HandleMessageResult {
+  if (channel === "whatsapp") {
+    return {
+      text: `Te atiende un humano. Escríbenos por WhatsApp aquí: ${HUMAN_SUPPORT_WHATSAPP_LINK} o llama al ${HUMAN_SUPPORT_PHONE_E164}`,
+    }
+  }
+
+  return {
+    text: HANDOFF_WEB_TEXT,
+    handoff: {
+      type: "whatsapp",
+      label: "WhatsApp",
+      href: HUMAN_SUPPORT_WHATSAPP_LINK,
+    },
+  }
 }
 
 function extractOrderState(messages: { role: string; content: string }[]): OrderState {
@@ -194,17 +230,20 @@ function missingFieldsText(state: OrderState) {
   return `Me falta ${missing.join(", ")} para confirmar el pedido.`
 }
 
-async function activateHandoff(userId: string, reason?: string) {
+async function activateHandoff(userId: string, channel: "web" | "whatsapp", reason?: string) {
   const until = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString()
   await setPauseState(userId, until)
+
+  const payload = buildHandoffPayload(channel)
   return {
     handedOff: true,
     reason: reason ?? "Usuario pide asistencia humana",
     contact: {
-      phone: process.env.HUMAN_SUPPORT_PHONE_E164 ?? null,
-      whatsappLink: process.env.HUMAN_SUPPORT_WHATSAPP_LINK ?? null,
+      phone: HUMAN_SUPPORT_PHONE_E164,
+      whatsappLink: HUMAN_SUPPORT_WHATSAPP_LINK,
     },
-    message: HANDOFF_TEXT,
+    message: payload.text,
+    handoff: payload.handoff,
   }
 }
 
@@ -235,16 +274,16 @@ async function maybeSummarizeConversation(openai: OpenAI, userId: string, messag
   }
 }
 
-async function saveAndReply(userId: string, text: string, state?: OrderState) {
+async function saveAndReply(userId: string, text: string, state?: OrderState, handoff?: HandoffPayload): Promise<HandleMessageResult> {
   const safeText = sanitizeAssistantText(text)
   if (state) {
     await persistOrderState(userId, state)
   }
   await saveMessage(userId, "assistant", safeText)
-  return { text: safeText }
+  return handoff ? { text: safeText, handoff } : { text: safeText }
 }
 
-export async function handleMessage({ sessionId, message, phone, channel }: HandleMessageInput) {
+export async function handleMessage({ sessionId, message, phone, channel }: HandleMessageInput): Promise<HandleMessageResult> {
   const model = process.env.OPENAI_MODEL ?? "gpt-4.1-mini"
 
   const { userId } = await getOrCreateUser({ channel, externalId: sessionId, phone })
@@ -252,16 +291,17 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
   const pauseState = await getPauseState(userId)
   if (pauseState.botPausedUntil && pauseState.botPausedUntil > new Date()) {
     await saveMessage(userId, "user", message)
-    await saveMessage(userId, "assistant", HANDOFF_TEXT)
-    return { text: HANDOFF_TEXT }
+    const handoffPayload = buildHandoffPayload(channel)
+    await saveMessage(userId, "assistant", handoffPayload.text)
+    return handoffPayload
   }
 
   await saveMessage(userId, "user", message)
 
   if (shouldRequestHandoff(message)) {
-    const handoff = await activateHandoff(userId, "Solicitud explícita")
+    const handoff = await activateHandoff(userId, channel, "Solicitud explícita")
     await saveMessage(userId, "assistant", handoff.message)
-    return { text: handoff.message }
+    return handoff.handoff ? { text: handoff.message, handoff: handoff.handoff } : { text: handoff.message }
   }
 
   const context = await loadContext(userId)
@@ -274,7 +314,7 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
   }
 
   if (hasScheduleIntent(message)) {
-    return saveAndReply(userId, `${STORE_HOURS_TEXT} ${POLICY_TEXT}`)
+    return saveAndReply(userId, `${STORE_HOURS_TEXT}\n${POLICY_TEXT}`)
   }
 
   if (hasAllergensIntent(message)) {
@@ -381,7 +421,7 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
     {
       type: "function",
       name: "get_store_hours",
-      description: "Devuelve horario de tienda",
+      description: "Devuelve horario de tienda oficial",
       parameters: { type: "object", properties: {}, additionalProperties: false },
     },
     {
@@ -460,9 +500,9 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
   const toolRunner = async (name: string, rawArgs: string, fallbackPhone?: string) => {
     const args = (rawArgs ? JSON.parse(rawArgs) : {}) as Record<string, unknown>
 
-    if (name === "get_store_hours") return { hours: STORE_HOURS_TEXT }
+    if (name === "get_store_hours") return { hours: STORE_HOURS_TEXT, policy: POLICY_TEXT }
     if (name === "get_flavors_and_sizes") return { flavors: listFlavorsAndSizes() }
-    if (name === "handoff_to_human") return activateHandoff(userId, String(args.reason ?? "handoff"))
+    if (name === "handoff_to_human") return activateHandoff(userId, channel, String(args.reason ?? "handoff"))
 
     if (name === "get_product_info") {
       const product = findProductBySlugOrFlavor(String(args.query ?? ""))
@@ -547,15 +587,16 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
   await setLastOpenAIResponseId(userId, response.id)
 
   let text = sanitizeAssistantText(response.output_text?.trim() || "No pude responder ahora mismo.")
+  let handoff: HandoffPayload | undefined
 
   if (safetyEscalate) {
-    const handoff = await activateHandoff(userId, "Incertidumbre crítica")
-    text = `${text}\n\n${handoff.message}`
+    const escalated = await activateHandoff(userId, channel, "Incertidumbre crítica")
+    text = `${text}\n\n${escalated.message}`
+    handoff = escalated.handoff
   }
 
   await saveMessage(userId, "assistant", text)
   await maybeSummarizeConversation(openai, userId, [...context.messagesLastN, { role: "user", content: message }, { role: "assistant", content: text }])
 
-  return { text }
+  return handoff ? { text, handoff } : { text }
 }
-
