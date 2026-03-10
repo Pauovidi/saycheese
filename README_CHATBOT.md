@@ -6,6 +6,8 @@
 - `OPENAI_MODEL` (opcional, default `gpt-5-mini`)
 - `HUMAN_SUPPORT_PHONE_E164`
 - `HUMAN_SUPPORT_WHATSAPP_LINK`
+- BOT_WHATSAPP_LINK (CTA móvil a WhatsApp)
+- NEXT_PUBLIC_BOT_WHATSAPP_LINK (opcional para cliente web)
 - `CRON_SECRET`
 - `WHATSAPP_ACCESS_TOKEN`
 - `WHATSAPP_PHONE_NUMBER_ID`
@@ -61,3 +63,4 @@ Se añadió `vercel.json` para ejecutar cada 15 minutos:
 - path: `/api/cron/send-reminders?secret=CRON_SECRET`
 
 Recomendación: en producción usar header `x-cron-secret` desde el scheduler si está disponible.
+
