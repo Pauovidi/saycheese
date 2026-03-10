@@ -18,12 +18,32 @@ interface ProductDetailProps {
   product: Product
 }
 
+const ALLERGEN_BADGES = [
+  { key: "leche", label: "Leche", emoji: "🥛" },
+  { key: "huevo", label: "Huevo", emoji: "🥚" },
+  { key: "gluten", label: "Gluten", emoji: "🌾" },
+  { key: "frutos", label: "Frutos de cáscara", emoji: "🌰" },
+  { key: "soja", label: "Soja", emoji: "🫘" },
+] as const
+
+function getAllergenBadges(allergens?: string) {
+  if (!allergens) return []
+
+  const normalized = allergens
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+
+  return ALLERGEN_BADGES.filter((item) => normalized.includes(item.key))
+}
+
 export function ProductDetail({ product }: ProductDetailProps) {
   const [quantity, setQuantity] = useState(1)
   const { addItem } = useCart()
   const router = useRouter()
   const sibling = getSibling(product)
   const hasBothFormats = !!sibling
+  const allergenBadges = getAllergenBadges(product.allergens)
 
   useEffect(() => {
     if (hasBothFormats && product.format === "cajita" && sibling) {
@@ -107,8 +127,30 @@ export function ProductDetail({ product }: ProductDetailProps) {
           </div>
 
           <p className="mt-6 text-sm leading-relaxed text-muted-foreground">
-            {product.fullDescription || product.shortDescription}
+            {product.description || product.fullDescription || product.shortDescription}
           </p>
+
+          {product.format === "tarta" && product.allergens && (
+            <>
+              <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+                <strong className="font-semibold text-foreground">Alérgenos:</strong> {product.allergens}
+              </p>
+
+              {allergenBadges.length > 0 && (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {allergenBadges.map((badge) => (
+                    <span
+                      key={badge.key}
+                      className="inline-flex items-center gap-1 rounded-full border border-border bg-secondary px-2.5 py-1 text-xs text-foreground"
+                    >
+                      <span aria-hidden="true">{badge.emoji}</span>
+                      <span>{badge.label}</span>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
 
           {/* Quantity + Hacer pedido */}
           <div className="mt-8 flex items-center gap-4">
@@ -156,18 +198,18 @@ export function ProductDetail({ product }: ProductDetailProps) {
               </AccordionItem>
               <AccordionItem value="conservacion">
                 <AccordionTrigger className="text-xs font-bold uppercase tracking-[0.15em] text-foreground">
-                  {"Conservaci\u00f3n / Env\u00edo"}
+                  {"Conservación / Envío"}
                 </AccordionTrigger>
                 <AccordionContent className="text-xs leading-relaxed text-muted-foreground">
-                  {"Env\u00edo refrigerado en 24-48 h. La tarta se conserva 5 d\u00edas en nevera (2-4 \u00b0C). No congelar. Al recibir tu pedido, col\u00f3cala directamente en la nevera. S\u00e1cala 15-20 minutos antes de consumir."}
+                  {"Envío refrigerado en 24-48 h. La tarta se conserva 5 días en nevera (2-4 °C). No congelar. Al recibir tu pedido, colócala directamente en la nevera. Sácala 15-20 minutos antes de consumir."}
                 </AccordionContent>
               </AccordionItem>
               <AccordionItem value="alergenos">
                 <AccordionTrigger className="text-xs font-bold uppercase tracking-[0.15em] text-foreground">
-                  {"Al\u00e9rgenos"}
+                  {"Alérgenos"}
                 </AccordionTrigger>
                 <AccordionContent className="text-xs leading-relaxed text-muted-foreground">
-                  {"Todas nuestras tartas contienen l\u00e1cteos, huevo y gluten. Algunas variedades contienen frutos secos (pistacho) o soja. Consulta la ficha de cada sabor para m\u00e1s detalles."}
+                  {"Todas nuestras tartas contienen lácteos, huevo y gluten. Algunas variedades contienen frutos secos (pistacho) o soja. Consulta la ficha de cada sabor para más detalles."}
                 </AccordionContent>
               </AccordionItem>
             </Accordion>
