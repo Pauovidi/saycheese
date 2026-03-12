@@ -2,7 +2,7 @@ import "server-only"
 
 import OpenAI from "openai"
 
-import { earliestPickupDateISO, formatDateEs, parseSpanishDesiredDate } from "@/lib/chatbot/dates"
+import { formatDateEs, parseSpanishDesiredDate, resolveRequestedPickupDate } from "@/lib/chatbot/dates"
 import {
   getOrCreateUser,
   getPauseState,
@@ -22,6 +22,7 @@ import {
 import {
   buildHumanSupportMessage,
   buildUnconfirmedProductInfoMessage,
+  CLOSED_PICKUP_DAYS_COPY,
   FORMAT_SIZE_COPY,
   getCustomerFacingFormatLabel,
   HUMAN_SUPPORT_PHONE_E164,
@@ -363,33 +364,45 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
     }
 
     if (parsedDate?.kind === "date") {
+      const resolution = resolveRequestedPickupDate(parsedDate.iso, now, LEAD_DAYS, SHOP_TZ)
       state.desiredDate = parsedDate.iso
 
-      const earliest = earliestPickupDateISO(now, LEAD_DAYS, SHOP_TZ)
-      if (parsedDate.iso < earliest) {
-        state.suggestedDate = earliest
+      if (resolution.kind === "too_soon") {
+        state.suggestedDate = resolution.earliestDate
         state.finalDate = undefined
         state.awaitingConfirm = true
 
         return saveAndReply(
           userId,
-          `Para ${formatDateEs(parsedDate.iso, SHOP_TZ)} no llegamos; primera disponible ${formatDateEs(earliest, SHOP_TZ)}. ¿Te va bien?\n${STORE_HOURS_TEXT}\nNecesito tu teléfono para confirmar el pedido.`,
+          `Aún no llegamos a ${formatDateEs(resolution.requestedDate, SHOP_TZ)} porque trabajamos con un mínimo de ${LEAD_DAYS} días. La primera fecha disponible sería ${formatDateEs(resolution.earliestDate, SHOP_TZ)}. ¿Te va bien?\n${STORE_HOURS_TEXT}\nNecesito tu teléfono para confirmar el pedido.`,
           state
         )
       }
 
-      state.finalDate = parsedDate.iso
+      if (resolution.kind === "closed") {
+        state.suggestedDate = resolution.nextAvailableDate
+        state.finalDate = undefined
+        state.awaitingConfirm = true
+
+        return saveAndReply(
+          userId,
+          `No, el ${formatDateEs(resolution.requestedDate, SHOP_TZ)} no hacemos recogidas porque ${CLOSED_PICKUP_DAYS_COPY}. La siguiente fecha disponible sería ${formatDateEs(resolution.nextAvailableDate, SHOP_TZ)}. Si te va bien, te lo apunto para ese día.`,
+          state
+        )
+      }
+
+      state.finalDate = resolution.pickupDate
       state.suggestedDate = undefined
       state.awaitingConfirm = false
     }
 
     if (!state.finalDate) {
-      return saveAndReply(userId, "¿Para qué día la necesitas? Puedes decirme una fecha como 16/03 o un día de la semana.", state)
+      return saveAndReply(userId, "¿Para qué día la necesitas? Puedes decirme una fecha como 16/03, el 18 o un día de la semana.", state)
     }
 
     const missing = missingFieldsText(state)
     if (missing) {
-      const dateText = `Apunto recogida para ${formatDateEs(state.finalDate, SHOP_TZ)}.`
+      const dateText = `Sí, puedo apuntarlo para ${formatDateEs(state.finalDate, SHOP_TZ)}.`
       const phoneHint = state.phone ? "" : " Necesito tu teléfono para confirmar el pedido."
       return saveAndReply(userId, `${dateText} ${missing}${phoneHint}`, state)
     }

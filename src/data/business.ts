@@ -4,6 +4,7 @@ export const HUMAN_SUPPORT_WHATSAPP_LINK = "https://wa.me/34681147149"
 
 export const PICKUP_ONLY_COPY = "Solo recogida en tienda. No hacemos envíos."
 export const FORMAT_SIZE_COPY = "Siempre trabajamos con 2 tamaños: grande y cajita."
+export const CLOSED_PICKUP_DAYS_COPY = "lunes y martes estamos cerrados"
 
 export type ProductFormat = "tarta" | "cajita"
 export type OrderItemType = "cake" | "box"
@@ -31,6 +32,7 @@ export const STORE_HOURS_LINES = [
 
 export const STORE_HOURS_TEXT = STORE_HOURS_LINES.join("\n")
 export const STORE_HOURS_INLINE_TEXT = STORE_HOURS_LINES.join(" ")
+export const OPEN_PICKUP_WEEKDAY_INDEXES = [0, 3, 4, 5, 6] as const
 
 export function getCustomerFacingFormatLabel(format: ProductFormat) {
   return CUSTOMER_FACING_FORMAT_LABELS[format]
@@ -38,6 +40,10 @@ export function getCustomerFacingFormatLabel(format: ProductFormat) {
 
 export function getOrderItemTypeLabel(type: OrderItemType) {
   return ORDER_ITEM_TYPE_LABELS[type]
+}
+
+export function isPickupWeekdayOpen(weekday: number) {
+  return OPEN_PICKUP_WEEKDAY_INDEXES.includes(weekday as typeof OPEN_PICKUP_WEEKDAY_INDEXES[number])
 }
 
 export function buildHumanSupportMessage(prefix = "Te atiende una persona del equipo aquí:") {
