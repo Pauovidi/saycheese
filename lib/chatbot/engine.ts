@@ -15,10 +15,20 @@ import {
 } from "@/lib/chatbot/memory"
 import { cancelChatOrder, createChatOrder } from "@/lib/chatbot/orders"
 import {
-  extractAllergensAndIngredients,
+  findFlavorFactsByQuery,
   findProductBySlugOrFlavor,
   listFlavorsAndSizes,
 } from "@/lib/chatbot/products"
+import {
+  buildHumanSupportMessage,
+  buildUnconfirmedProductInfoMessage,
+  FORMAT_SIZE_COPY,
+  getCustomerFacingFormatLabel,
+  HUMAN_SUPPORT_PHONE_E164,
+  HUMAN_SUPPORT_WHATSAPP_LINK,
+  PICKUP_ONLY_COPY,
+  STORE_HOURS_TEXT,
+} from "@/src/data/business"
 
 type HandleMessageInput = {
   sessionId: string
@@ -41,24 +51,19 @@ type OrderState = {
 const LEAD_DAYS_RAW = Number.parseInt(process.env.CHATBOT_LEAD_DAYS ?? "3", 10)
 const LEAD_DAYS = Number.isFinite(LEAD_DAYS_RAW) && LEAD_DAYS_RAW > 0 ? LEAD_DAYS_RAW : 3
 const SHOP_TZ = process.env.SHOP_TZ ?? "Europe/Madrid"
-const STORE_HOURS_TEXT = "Lunes a sábado de 09:00 a 19:00. Domingos cerrado."
-const POLICY_TEXT = "Solo recogida en tienda. No hacemos envíos."
 const SUMMARY_THRESHOLD = 30
 const ORDER_STATE_PREFIX = "__ORDER_STATE__:"
 
 const SYSTEM_PROMPT = `Eres el asistente de SayCheese.
 Responde en español, claro y breve.
-No inventes alérgenos/ingredientes. Si no están en la ficha, di exactamente: "no lo veo en la ficha".
-Política obligatoria: ${POLICY_TEXT}
+No inventes datos de producto. Si faltan ingredientes o alérgenos confirmados, ofrece atención humana.
+Política obligatoria: ${PICKUP_ONLY_COPY}
 Nunca uses "recogerte" ni "recibir" para pedidos; usa "recoger"/"recogida".
 Plazo mínimo obligatorio: ${LEAD_DAYS} días naturales.
 Si puedes responder sin tools, responde directo y no llames tools.
 Si el usuario pide humano o hay incertidumbre crítica, usa tool handoff_to_human.`
 
-const HANDOFF_TEXT =
-  `Te paso con una persona del equipo. ` +
-  `Puedes contactar en ${process.env.HUMAN_SUPPORT_PHONE_E164 ?? "(configurar HUMAN_SUPPORT_PHONE_E164)"}. ` +
-  `${process.env.HUMAN_SUPPORT_WHATSAPP_LINK ? `WhatsApp: ${process.env.HUMAN_SUPPORT_WHATSAPP_LINK}` : ""}`
+const HANDOFF_TEXT = buildHumanSupportMessage("Te atiende una persona del equipo aquí:")
 
 const HANDOFF_KEYWORDS = ["humano", "persona", "agente", "asesor", "operador"]
 
@@ -116,7 +121,7 @@ function extractPhoneFromText(text: string) {
 function parseFormat(text: string): "tarta" | "cajita" | undefined {
   const normalized = normalize(text)
   if (/\bcajita\b/.test(normalized)) return "cajita"
-  if (/\btarta\b/.test(normalized)) return "tarta"
+  if (/\b(tarta|grande)\b/.test(normalized)) return "tarta"
   return undefined
 }
 
@@ -150,7 +155,7 @@ function hasScheduleIntent(text: string) {
 }
 
 function hasFlavorsIntent(text: string) {
-  return /sabor|tamano|tamaño|formato|tarta|cajita|precio/i.test(normalize(text))
+  return /sabor|tamano|tamaño|formato|tarta|grande|cajita|precio/i.test(normalize(text))
 }
 
 function hasAllergensIntent(text: string) {
@@ -158,36 +163,77 @@ function hasAllergensIntent(text: string) {
 }
 
 function hasOrderIntent(text: string) {
-  return /quiero|pedido|encargar|tarta|cajita|para\s/i.test(normalize(text))
+  return /quiero|pedido|encargar|tarta|grande|cajita|para\s/i.test(normalize(text))
 }
 
 function buildFlavorsReply() {
   const flavors = listFlavorsAndSizes()
   const lines = flavors.map((entry) => {
-    const sizes = entry.sizes.map((size) => `${size.format}: ${size.priceText}`).join(" | ")
+    const sizes = entry.sizes.map((size) => `${size.label}: ${size.priceText}`).join(" | ")
     return `- ${entry.flavor}: ${sizes}`
   })
 
-  return `Siempre trabajamos con 2 tamaños: Tarta y Cajita.\n${lines.join("\n")}\n${POLICY_TEXT}`
+  return `${FORMAT_SIZE_COPY}\n${lines.join("\n")}\n${PICKUP_ONLY_COPY}`
 }
 
-function buildIngredientsReply(message: string) {
+function requestedProductFacts(message: string) {
+  const normalized = normalize(message)
+  const asksIngredients = /\bingrediente/.test(normalized)
+  const asksAllergens = /\balergen/.test(normalized)
+  const asksGenericComposition = /\b(contiene|lleva)\b/.test(normalized)
+
+  return {
+    wantsIngredients: asksIngredients || asksGenericComposition,
+    wantsAllergens: asksAllergens || asksGenericComposition || (!asksIngredients && !asksAllergens),
+  }
+}
+
+function buildProductFactsReply(message: string) {
   const product = detectProductMention(message)
   if (!product) {
-    return "Dime qué sabor quieres revisar y te paso ingredientes y alérgenos."
+    return "Dime qué sabor quieres revisar y te paso la información confirmada."
   }
 
-  const detail = extractAllergensAndIngredients(product.fullDescription ?? product.shortDescription)
-  const allergens = detail.allergens.length ? detail.allergens.join(", ") : "no lo veo en la ficha"
-  const ingredients = detail.ingredients.length ? detail.ingredients.join(", ") : "no lo veo en la ficha"
+  const facts = findFlavorFactsByQuery(product.category)
+  if (!facts) {
+    return buildUnconfirmedProductInfoMessage()
+  }
 
-  return `Para ${product.name}: ingredientes ${ingredients}. Alérgenos ${allergens}.`
+  const { wantsAllergens, wantsIngredients } = requestedProductFacts(message)
+  const sections: string[] = []
+  const missingSections: string[] = []
+
+  if (wantsIngredients) {
+    if (facts.ingredients.length) {
+      sections.push(`Ingredientes confirmados: ${facts.ingredients.join(", ")}.`)
+    } else {
+      missingSections.push("ingredientes")
+    }
+  }
+
+  if (wantsAllergens) {
+    if (facts.allergens.length) {
+      sections.push(`Alérgenos confirmados: ${facts.allergens.join(", ")}.`)
+    } else {
+      missingSections.push("alérgenos")
+    }
+  }
+
+  if (!sections.length) {
+    return buildUnconfirmedProductInfoMessage()
+  }
+
+  if (!missingSections.length) {
+    return `Para ${facts.label}: ${sections.join(" ")}`
+  }
+
+  return `Para ${facts.label}: ${sections.join(" ")} No tengo confirmado ${missingSections.join(" ni ")} ahora mismo. ${buildHumanSupportMessage("Te atiende un humano aquí:")}`
 }
 
 function missingFieldsText(state: OrderState) {
   const missing: string[] = []
   if (!state.flavor) missing.push("sabor")
-  if (!state.format) missing.push("formato (tarta o cajita)")
+  if (!state.format) missing.push("formato (grande o cajita)")
   if (!state.phone) missing.push("teléfono")
 
   if (!missing.length) return ""
@@ -201,8 +247,8 @@ async function activateHandoff(userId: string, reason?: string) {
     handedOff: true,
     reason: reason ?? "Usuario pide asistencia humana",
     contact: {
-      phone: process.env.HUMAN_SUPPORT_PHONE_E164 ?? null,
-      whatsappLink: process.env.HUMAN_SUPPORT_WHATSAPP_LINK ?? null,
+      phone: HUMAN_SUPPORT_PHONE_E164,
+      whatsappLink: HUMAN_SUPPORT_WHATSAPP_LINK,
     },
     message: HANDOFF_TEXT,
   }
@@ -274,11 +320,11 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
   }
 
   if (hasScheduleIntent(message)) {
-    return saveAndReply(userId, `${STORE_HOURS_TEXT} ${POLICY_TEXT}`)
+    return saveAndReply(userId, STORE_HOURS_TEXT)
   }
 
   if (hasAllergensIntent(message)) {
-    return saveAndReply(userId, buildIngredientsReply(message))
+    return saveAndReply(userId, buildProductFactsReply(message))
   }
 
   if (hasFlavorsIntent(message) && !hasOrderIntent(message)) {
@@ -292,7 +338,6 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
     const product = detectProductMention(message)
     if (product) {
       state.flavor = product.category
-      state.format = state.format ?? product.format
     }
 
     const format = parseFormat(message)
@@ -328,7 +373,7 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
 
         return saveAndReply(
           userId,
-          `Para ${formatDateEs(parsedDate.iso, SHOP_TZ)} no llegamos; primera disponible ${formatDateEs(earliest, SHOP_TZ)}. ¿Te va bien? ${STORE_HOURS_TEXT} Necesito tu teléfono para confirmar el pedido.`,
+          `Para ${formatDateEs(parsedDate.iso, SHOP_TZ)} no llegamos; primera disponible ${formatDateEs(earliest, SHOP_TZ)}. ¿Te va bien?\n${STORE_HOURS_TEXT}\nNecesito tu teléfono para confirmar el pedido.`,
           state
         )
       }
@@ -339,12 +384,12 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
     }
 
     if (!state.finalDate) {
-      return saveAndReply(userId, "¿Para qué día la necesitas?", state)
+      return saveAndReply(userId, "¿Para qué día la necesitas? Puedes decirme una fecha como 16/03 o un día de la semana.", state)
     }
 
     const missing = missingFieldsText(state)
     if (missing) {
-      const dateText = `Puedes recogerla el ${formatDateEs(state.finalDate, SHOP_TZ)}. ¿A qué hora te viene bien dentro del horario?`
+      const dateText = `Apunto recogida para ${formatDateEs(state.finalDate, SHOP_TZ)}.`
       const phoneHint = state.phone ? "" : " Necesito tu teléfono para confirmar el pedido."
       return saveAndReply(userId, `${dateText} ${missing}${phoneHint}`, state)
     }
@@ -369,7 +414,7 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
     const nextState: OrderState = { inOrderFlow: false }
     return saveAndReply(
       userId,
-      `Pedido creado. Recogida el ${formatDateEs(created.deliveryDate, SHOP_TZ)}. Te enviaremos confirmación por WhatsApp/email si aplica. ${POLICY_TEXT}`,
+      `Pedido creado. Recogida el ${formatDateEs(created.deliveryDate, SHOP_TZ)}. ${PICKUP_ONLY_COPY}`,
       nextState
     )
   }
@@ -393,7 +438,7 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
     {
       type: "function",
       name: "get_product_info",
-      description: "Da ingredientes/alérgenos por sabor o slug",
+      description: "Da ingredientes y alérgenos confirmados por sabor o slug",
       parameters: {
         type: "object",
         properties: { query: { type: "string" } },
@@ -471,20 +516,20 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
         return { found: false, message: "No encontré ese producto." }
       }
 
-      const detail = extractAllergensAndIngredients(product.fullDescription ?? product.shortDescription)
-      if (!detail.allergens.length) {
+      const facts = findFlavorFactsByQuery(product.category)
+      if (!facts?.allergens.length && !facts?.ingredients.length) {
         safetyEscalate = true
       }
 
       return {
         found: true,
         product: {
-          name: product.name,
-          format: product.format,
-          description: product.fullDescription ?? product.shortDescription,
-          allergens: detail.allergens,
-          ingredients: detail.ingredients,
-          fallback: detail.allergens.length || detail.ingredients.length ? undefined : "no lo veo en la ficha",
+          name: facts?.label ?? product.name,
+          format: getCustomerFacingFormatLabel(product.format),
+          description: facts?.sourceProduct.fullDescription ?? facts?.sourceProduct.shortDescription ?? product.fullDescription ?? product.shortDescription,
+          allergens: facts?.allergens ?? [],
+          ingredients: facts?.ingredients ?? [],
+          fallback: facts?.allergens.length || facts?.ingredients.length ? undefined : buildUnconfirmedProductInfoMessage(),
         },
       }
     }

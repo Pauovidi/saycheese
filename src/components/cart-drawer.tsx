@@ -4,6 +4,7 @@ import { useEffect } from "react"
 import Link from "next/link"
 import Image from "next/image"
 import { X, Minus, Plus, Trash2 } from "lucide-react"
+import { getCustomerFacingFormatLabel } from "@/src/data/business"
 import { useCart } from "@/src/context/cart-context"
 
 export function CartDrawer() {
@@ -75,7 +76,7 @@ export function CartDrawer() {
                           {item.product.name}
                         </p>
                         <span className="mt-0.5 inline-block bg-accent px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-accent-foreground">
-                          {item.product.format === "tarta" ? "Tarta" : "Cajita"}
+                          {getCustomerFacingFormatLabel(item.product.format)}
                         </span>
                       </div>
                       <button

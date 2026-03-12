@@ -36,7 +36,7 @@ export function ChatWidget() {
   ])
 
   async function sendMessage(text: string) {
-    if (!text.trim()) return
+    if (loading || !text.trim()) return
 
     setMessages((prev) => [...prev, { role: "user", text }])
     setInput("")
@@ -81,7 +81,7 @@ export function ChatWidget() {
                 key={`${message.role}-${index}`}
                 className={`max-w-[90%] rounded-xl px-3 py-2 text-sm ${
                   message.role === "user" ? "ml-auto bg-black text-white" : "bg-white"
-                }`}
+                } whitespace-pre-line`}
               >
                 {message.text}
               </div>
@@ -96,6 +96,7 @@ export function ChatWidget() {
                   key={action}
                   className="rounded-full border px-2 py-1 text-xs hover:bg-neutral-100"
                   onClick={() => sendMessage(action)}
+                  disabled={loading}
                 >
                   {action}
                 </button>
@@ -114,6 +115,7 @@ export function ChatWidget() {
                 value={input}
                 onChange={(event) => setInput(event.target.value)}
                 placeholder="Escribe aquí..."
+                disabled={loading}
               />
               <button className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-black text-white" disabled={loading}>
                 <Send size={16} />

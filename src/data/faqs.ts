@@ -1,3 +1,10 @@
+import {
+  buildHumanSupportMessage,
+  FORMAT_SIZE_COPY,
+  PICKUP_ONLY_COPY,
+  STORE_HOURS_TEXT,
+} from "@/src/data/business"
+
 export interface FAQ {
   question: string
   answer: string
@@ -7,32 +14,36 @@ export const faqs: FAQ[] = [
   {
     question: "\u00bfC\u00f3mo puedo hacer un pedido?",
     answer:
-      "Puedes hacer tu pedido a trav\u00e9s de nuestra web seleccionando los productos que desees y a\u00f1adi\u00e9ndolos al carrito. Tambi\u00e9n puedes contactarnos directamente por WhatsApp o tel\u00e9fono al n\u00famero que aparece en la secci\u00f3n de contacto.",
+      `Puedes hacer tu pedido desde la web o escribirnos directamente. ${buildHumanSupportMessage("Te atendemos también aquí:")}`,
   },
   {
-    question: "\u00bfCu\u00e1les son los formatos disponibles?",
+    question: "\u00bfCu\u00e1les son los tama\u00f1os disponibles?",
     answer:
-      "Ofrecemos dos formatos: Cajita (400 g, ideal para 1-2 personas, 12 \u20ac) y Tarta completa (1,7 kg, 10-12 raciones, 35 \u20ac). Ambos formatos est\u00e1n disponibles en la mayor\u00eda de sabores.",
+      `${FORMAT_SIZE_COPY} Cajita: 400 g, ideal para 1-2 personas, 12 €. Grande: 1,7 kg, 10-12 raciones, 35 €.`,
   },
   {
     question: "\u00bfHac\u00e9is env\u00edos?",
     answer:
-      "S\u00ed, realizamos env\u00edos refrigerados. El env\u00edo se realiza en cajas isot\u00e9rmicas con gel refrigerante para garantizar la cadena de fr\u00edo. Cons\u00faltanos disponibilidad de env\u00edo a tu zona a trav\u00e9s de contacto.",
+      PICKUP_ONLY_COPY,
   },
   {
-    question: "\u00bfC\u00f3mo debo conservar la tarta al recibirla?",
+    question: "\u00bfCu\u00e1l es el horario?",
+    answer: STORE_HOURS_TEXT,
+  },
+  {
+    question: "\u00bfC\u00f3mo debo conservar el pedido al recogerlo?",
     answer:
-      "Al recibir tu pedido, retira la tarta de la caja isot\u00e9rmica y col\u00f3cala directamente en la nevera (2-4 \u00b0C). Se conserva hasta 5 d\u00edas en nevera. S\u00e1cala 15-20 minutos antes de consumirla para disfrutar de toda su cremosidad. No congelar.",
+      "Guarda tu pedido en nevera (2-4 °C) y consúmelo en un máximo de 5 días. Sácalo 15-20 minutos antes para disfrutar mejor la textura. No congelar.",
   },
   {
     question: "\u00bfContienen al\u00e9rgenos?",
     answer:
-      "Todas nuestras tartas contienen l\u00e1cteos, huevo y gluten. Algunas variedades contienen frutos secos (pistacho) o soja. Si tienes alguna alergia o intolerancia, no dudes en contactarnos antes de realizar tu pedido.",
+      "Cada sabor muestra sus alérgenos confirmados en la ficha de producto. Si necesitas revisar un caso concreto antes de pedir, escríbenos y te confirmamos el dato.",
   },
   {
-    question: "\u00bfLas tartas son aptas para cel\u00edacos o veganos?",
+    question: "\u00bfLos productos son aptos para cel\u00edacos o veganos?",
     answer:
-      "Actualmente nuestras tartas no son aptas para cel\u00edacos ni veganos, ya que contienen gluten, l\u00e1cteos y huevo. Estamos trabajando en nuevas opciones. S\u00edguenos en redes para estar al tanto.",
+      "Actualmente nuestros productos no son aptos para celíacos ni veganos, ya que contienen gluten, lácteos y huevo. Estamos trabajando en nuevas opciones.",
   },
   {
     question: "\u00bfPuedo hacer un pedido personalizado?",
@@ -47,7 +58,7 @@ export const faqs: FAQ[] = [
   {
     question: "\u00bfPuedo devolver un pedido?",
     answer:
-      "Al tratarse de productos alimentarios perecederos, no aceptamos devoluciones una vez entregado el pedido. Sin embargo, si tu tarta ha llegado en mal estado o no corresponde con lo que pediste, contacta con nosotros en las 24 horas siguientes a la entrega y lo solucionaremos.",
+      "Al tratarse de productos alimentarios perecederos, no aceptamos devoluciones una vez entregado el pedido. Si al recogerlo ves cualquier incidencia, dínoslo cuanto antes y lo revisamos contigo.",
   },
   {
     question: "\u00bfTen\u00e9is tienda f\u00edsica?",

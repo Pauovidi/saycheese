@@ -8,15 +8,13 @@ import { toast } from "sonner"
 
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
+import { getCustomerFacingFormatLabel, PICKUP_ONLY_COPY } from "@/src/data/business"
 import { useCart } from "@/src/context/cart-context"
 
 const checkoutSchema = z.object({
   customer_name: z.string().optional(),
-  customer_email: z.string().email("Email inválido"),
   phone: z.string().min(6, "Teléfono inválido"),
   delivery_date: z.string().date("Fecha de entrega inválida").optional(),
-  notes: z.string().optional(),
 })
 
 export function CheckoutSummary() {
@@ -24,10 +22,8 @@ export function CheckoutSummary() {
   const { items, subtotal, clearCart } = useCart()
   const [loading, setLoading] = useState(false)
   const [customerName, setCustomerName] = useState("")
-  const [customerEmail, setCustomerEmail] = useState("")
   const [phone, setPhone] = useState("")
   const [deliveryDate, setDeliveryDate] = useState("")
-  const [notes, setNotes] = useState("")
 
   const payloadItems = useMemo(
     () =>
@@ -56,10 +52,8 @@ export function CheckoutSummary() {
   async function handleConfirmOrder() {
     const parsed = checkoutSchema.safeParse({
       customer_name: customerName || undefined,
-      customer_email: customerEmail,
       phone,
       delivery_date: deliveryDate || undefined,
-      notes: notes || undefined,
     })
 
     if (!parsed.success) {
@@ -87,13 +81,7 @@ export function CheckoutSummary() {
 
       clearCart()
       const finalDate = data.delivery_date_final as string | undefined
-      const warningEmail = data.warningEmail as boolean | undefined
-
-      toast.success(
-        warningEmail
-          ? `Pedido creado para ${finalDate}. No se pudo enviar el email de confirmación.`
-          : `Pedido creado para ${finalDate}. Te enviamos un email de confirmación.`
-      )
+      toast.success(`Pedido creado para ${finalDate}. ${PICKUP_ONLY_COPY}`)
       router.push("/")
       router.refresh()
     } catch (error) {
@@ -117,17 +105,6 @@ export function CheckoutSummary() {
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="customer-email">Email *</Label>
-          <Input
-            id="customer-email"
-            type="email"
-            required
-            value={customerEmail}
-            onChange={(e) => setCustomerEmail(e.target.value)}
-            placeholder="tu@email.com"
-          />
-        </div>
-        <div className="space-y-2">
           <Label htmlFor="customer-phone">Teléfono *</Label>
           <Input
             id="customer-phone"
@@ -137,8 +114,8 @@ export function CheckoutSummary() {
             placeholder="600123123"
           />
         </div>
-        <div className="space-y-2">
-          <Label htmlFor="delivery-date">¿Necesitas la tarta para alguna fecha en concreto?</Label>
+        <div className="space-y-2 md:col-span-2">
+          <Label htmlFor="delivery-date">¿Para qué fecha quieres recoger el pedido?</Label>
           <Input
             id="delivery-date"
             type="date"
@@ -148,15 +125,6 @@ export function CheckoutSummary() {
           <p className="text-xs text-muted-foreground">
             Si no indicas fecha, se programará para dentro de 3 días (aprox.).
           </p>
-        </div>
-        <div className="space-y-2 md:col-span-2">
-          <Label htmlFor="order-notes">Notas (opcional)</Label>
-          <Textarea
-            id="order-notes"
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            placeholder="Detalles de entrega o recogida"
-          />
         </div>
       </div>
 
@@ -171,7 +139,7 @@ export function CheckoutSummary() {
                 {item.product.name}
               </p>
               <p className="mt-1 text-xs text-muted-foreground">
-                {item.product.format === "tarta" ? "Tarta" : "Cajita"} · Cantidad: {item.quantity}
+                {getCustomerFacingFormatLabel(item.product.format)} · Cantidad: {item.quantity}
               </p>
             </div>
             <p className="text-sm font-medium text-foreground">
@@ -195,7 +163,7 @@ export function CheckoutSummary() {
       </button>
 
       <p className="text-center text-xs text-muted-foreground">
-        Esta es una página de demostración. No se realizará ningún cargo real.
+        {PICKUP_ONLY_COPY}
       </p>
     </div>
   )

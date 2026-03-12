@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { useEffect, useState } from "react"
 import { Minus, Plus } from "lucide-react"
 import { useCart } from "@/src/context/cart-context"
+import { getCustomerFacingFormatLabel, PICKUP_ONLY_COPY } from "@/src/data/business"
 import type { Product } from "@/src/data/products"
 import { getSibling } from "@/src/data/products"
 import {
@@ -77,7 +78,7 @@ export function ProductDetail({ product }: ProductDetailProps) {
             </div>
           )}
           <span className="absolute left-3 top-3 bg-accent px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-accent-foreground">
-            {product.format === "tarta" ? "Tarta" : "Cajita"}
+            {getCustomerFacingFormatLabel(product.format)}
           </span>
         </div>
 
@@ -98,7 +99,7 @@ export function ProductDetail({ product }: ProductDetailProps) {
                     : "bg-transparent text-muted-foreground hover:text-foreground"
                 }`}
               >
-                Tarta &mdash; {(sibling && product.format === "cajita" ? sibling : product).priceText}
+                Grande &mdash; {(sibling && product.format === "cajita" ? sibling : product).priceText}
               </button>
               <button
                 onClick={() => switchFormat("cajita")}
@@ -193,15 +194,15 @@ export function ProductDetail({ product }: ProductDetailProps) {
                 </AccordionTrigger>
                 <AccordionContent className="text-xs leading-relaxed text-muted-foreground">
                   <p><strong>Cajita:</strong> 400 g. Formato individual o para compartir.</p>
-                  <p className="mt-1"><strong>Tarta:</strong> 1,7 kg. 10-12 raciones. Formato grande.</p>
+                  <p className="mt-1"><strong>Grande:</strong> 1,7 kg. 10-12 raciones.</p>
                 </AccordionContent>
               </AccordionItem>
               <AccordionItem value="conservacion">
                 <AccordionTrigger className="text-xs font-bold uppercase tracking-[0.15em] text-foreground">
-                  {"Conservación / Envío"}
+                  {"Conservación / Recogida"}
                 </AccordionTrigger>
                 <AccordionContent className="text-xs leading-relaxed text-muted-foreground">
-                  {"Envío refrigerado en 24-48 h. La tarta se conserva 5 días en nevera (2-4 °C). No congelar. Al recibir tu pedido, colócala directamente en la nevera. Sácala 15-20 minutos antes de consumir."}
+                  {`${PICKUP_ONLY_COPY} Una vez recogido tu pedido, consérvalo en nevera (2-4 °C) hasta 5 días. Sácalo 15-20 minutos antes de consumir. No congelar.`}
                 </AccordionContent>
               </AccordionItem>
               <AccordionItem value="alergenos">
@@ -209,7 +210,7 @@ export function ProductDetail({ product }: ProductDetailProps) {
                   {"Alérgenos"}
                 </AccordionTrigger>
                 <AccordionContent className="text-xs leading-relaxed text-muted-foreground">
-                  {"Todas nuestras tartas contienen lácteos, huevo y gluten. Algunas variedades contienen frutos secos (pistacho) o soja. Consulta la ficha de cada sabor para más detalles."}
+                  {"Consulta la ficha de cada sabor para ver los alérgenos confirmados de ese producto."}
                 </AccordionContent>
               </AccordionItem>
             </Accordion>
