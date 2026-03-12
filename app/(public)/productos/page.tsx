@@ -3,7 +3,7 @@ import { TiendaContent } from "@/src/components/tienda/tienda-content"
 
 export const metadata: Metadata = {
   title: "Productos | SayCheese",
-  description: "Descubre todos nuestros cheesecakes artesanales. Formato grande y cajita.",
+  description: "Descubre todas nuestras tartas de queso artesanas. Cajitas y tartas completas.",
 }
 
 export default function TiendaPage() {

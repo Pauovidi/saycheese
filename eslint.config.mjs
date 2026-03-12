@@ -1,6 +1,6 @@
 import nextVitals from "eslint-config-next/core-web-vitals"
 
-const config = [
+export default [
   ...nextVitals,
   {
     rules: {
@@ -9,5 +9,3 @@ const config = [
     },
   },
 ]
-
-export default config

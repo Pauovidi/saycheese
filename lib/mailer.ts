@@ -1,7 +1,5 @@
 import nodemailer from "nodemailer"
 
-import { getOrderItemTypeLabel } from "@/src/data/business"
-
 type OrderMailItem = {
   type: "cake" | "box"
   flavor: string
@@ -44,7 +42,7 @@ export async function sendOrderConfirmation(input: SendOrderConfirmationInput) {
   const { transporter, from } = createTransporter()
 
   const itemsText = input.items
-    .map((item) => `- ${getOrderItemTypeLabel(item.type)} · ${item.flavor} · x${item.qty}`)
+    .map((item) => `- ${item.type === "cake" ? "Tarta" : "Cajita"} · ${item.flavor} · x${item.qty}`)
     .join("\n")
 
   const text = [
@@ -70,7 +68,7 @@ export async function sendOrderConfirmation(input: SendOrderConfirmationInput) {
       ${input.items
         .map(
           (item) =>
-            `<li>${getOrderItemTypeLabel(item.type)} · ${item.flavor} · x${item.qty}</li>`
+            `<li>${item.type === "cake" ? "Tarta" : "Cajita"} · ${item.flavor} · x${item.qty}</li>`
         )
         .join("")}
     </ul>

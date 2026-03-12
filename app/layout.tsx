@@ -5,7 +5,7 @@ import "./globals.css"
 export const metadata: Metadata = {
   title: "SayCheese | Pastelería de Autor",
   description:
-    "Galería de cheesecakes artesanales. Cada pieza, una obra maestra.",
+    "Galería de tartas de queso artesanas. Cada pieza, una obra maestra.",
   icons: {
     icon: "/favicon.png",
     apple: "/favicon.png",

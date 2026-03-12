@@ -21,20 +21,18 @@ SMTP_PASS=<app-password-de-16-caracteres>
 SMTP_FROM="SayCheese <tu-cuenta@gmail.com>"
 ```
 
-> SMTP ya no es necesario para el checkout web actual, que no solicita email al cliente. Mantén estas variables solo si vas a reactivar confirmaciones por correo en otro flujo.
-
 ### Vercel
 Configura estas variables en **Project Settings > Environment Variables**:
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - `SUPABASE_SERVICE_ROLE_KEY` (solo server)
 - `ADMIN_EMAIL`
-- `SMTP_HOST` (opcional, solo si reactivas confirmaciones por email)
-- `SMTP_PORT` (opcional)
-- `SMTP_SECURE` (opcional)
-- `SMTP_USER` (opcional)
-- `SMTP_PASS` (opcional)
-- `SMTP_FROM` (opcional)
+- `SMTP_HOST` (recomendado: `smtp.gmail.com`)
+- `SMTP_PORT` (`465` o `587`)
+- `SMTP_SECURE` (`true` para 465, `false` para 587)
+- `SMTP_USER`
+- `SMTP_PASS` (App Password, no la contraseña normal)
+- `SMTP_FROM`
 
 > Nota: en Vercel no uses puerto 25 para SMTP. Usa 465/587.
 
@@ -146,9 +144,9 @@ add column if not exists customer_email text;
 
 ## 6) Flujo de prueba
 1. Añade productos al carrito.
-2. Ve a `/checkout`, completa teléfono y (opcionalmente) fecha.
+2. Ve a `/checkout`, completa email, teléfono y (opcionalmente) fecha.
 3. Pulsa **Confirmar pedido** (crea `orders` + `order_items` vía API server con service role).
-4. Verás la confirmación en pantalla con la fecha final programada.
+4. Recibirás email de confirmación con fecha final programada.
 5. Inicia sesión en `/admin/login` con `ADMIN_EMAIL`.
 6. Abre `/admin/produccion` y revisa producción + listado de pedidos.
 
