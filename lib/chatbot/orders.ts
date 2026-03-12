@@ -2,7 +2,8 @@ import "server-only"
 
 import { z } from "zod"
 
-import { earliestPickupDateISO } from "@/lib/chatbot/dates"
+import { earliestPickupDateISO, formatDateEs, getNextAvailablePickupDate, isBusinessOpenOnDate } from "@/lib/chatbot/dates"
+import { CLOSED_PICKUP_DAYS_COPY } from "@/src/data/business"
 import { isKnownFlavor } from "@/lib/chatbot/products"
 import { computeReminderAt } from "@/lib/chatbot/reminders"
 import { getAdminClient, getAdminUid } from "@/lib/supabase/admin"
@@ -48,7 +49,17 @@ export async function createChatOrder(input: unknown) {
   if (payload.delivery_date && payload.delivery_date < earliest) {
     return {
       ok: false as const,
-      error: `Para esa fecha no llegamos. La primera fecha disponible es ${earliest}.`,
+      error: `Para esa fecha no llegamos. La primera fecha disponible es ${formatDateEs(earliest, SHOP_TZ)}.`,
+      shouldHandoff: false,
+    }
+  }
+
+  if (payload.delivery_date && !isBusinessOpenOnDate(payload.delivery_date)) {
+    const nextAvailableDate = getNextAvailablePickupDate(payload.delivery_date)
+
+    return {
+      ok: false as const,
+      error: `No hacemos recogidas el ${formatDateEs(payload.delivery_date, SHOP_TZ)} porque ${CLOSED_PICKUP_DAYS_COPY}. La siguiente fecha disponible es ${formatDateEs(nextAvailableDate, SHOP_TZ)}.`,
       shouldHandoff: false,
     }
   }
