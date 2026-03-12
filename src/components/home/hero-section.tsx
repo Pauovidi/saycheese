@@ -17,13 +17,13 @@ export function HeroSection() {
           Nuestra mejor obra de arte
         </h2>
         <p className="text-sm font-light uppercase tracking-[0.2em] text-[#FFDD98] md:text-base">
-          {"Premiada como mejor tarta de queso 2025 del mundo mundial por nuestros exquisitos clientes"}
+          {"Premiada como mejor cheesecake 2025 del mundo mundial por nuestros exquisitos clientes"}
         </p>
         <a
           href="#nuestros-sabores"
           className="mt-4 border-2 border-[#FFDD98] bg-transparent px-8 py-3.5 text-xs font-bold uppercase tracking-[0.25em] text-[#FFDD98] transition-colors hover:bg-[#FFDD98] hover:text-[#3b2314]"
         >
-          Ver tartas
+          Ver sabores
         </a>
       </div>
     </section>

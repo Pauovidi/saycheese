@@ -1,5 +1,6 @@
 import type { Metadata } from "next"
 import { notFound } from "next/navigation"
+import { getCustomerFacingFormatLabel } from "@/src/data/business"
 import { products, getProductBySlug } from "@/src/data/products"
 import { ProductDetail } from "@/src/components/product/product-detail"
 import { RecommendedProducts } from "@/src/components/product/recommended-products"
@@ -17,7 +18,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const product = getProductBySlug(slug)
   if (!product) return { title: "Producto no encontrado" }
   return {
-    title: `${product.name} (${product.format === "tarta" ? "Tarta" : "Cajita"}) | SayCheese`,
+    title: `${product.name} (${getCustomerFacingFormatLabel(product.format)}) | SayCheese`,
     description: product.shortDescription,
   }
 }

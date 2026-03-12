@@ -9,7 +9,7 @@ import {
 
 export const metadata: Metadata = {
   title: "FAQs | SayCheese",
-  description: "Preguntas frecuentes sobre env\u00edos, al\u00e9rgenos, pedidos y m\u00e1s.",
+  description: "Preguntas frecuentes sobre recogidas, horarios, al\u00e9rgenos y pedidos.",
 }
 
 export default function FaqsPage() {
@@ -25,7 +25,7 @@ export default function FaqsPage() {
               <AccordionTrigger className="text-left text-sm font-bold uppercase tracking-[0.05em] text-foreground">
                 {faq.question}
               </AccordionTrigger>
-              <AccordionContent className="text-sm leading-relaxed text-muted-foreground">
+              <AccordionContent className="whitespace-pre-line text-sm leading-relaxed text-muted-foreground">
                 {faq.answer}
               </AccordionContent>
             </AccordionItem>

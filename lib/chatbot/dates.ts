@@ -53,6 +53,15 @@ function isoFromParts(year: number, month: number, day: number) {
   return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`
 }
 
+function isValidDateParts(year: number, month: number, day: number) {
+  const candidate = new Date(Date.UTC(year, month - 1, day))
+  return (
+    candidate.getUTCFullYear() === year &&
+    candidate.getUTCMonth() === month - 1 &&
+    candidate.getUTCDate() === day
+  )
+}
+
 function weekdayFromISO(iso: string) {
   const [year, month, day] = iso.split("-").map(Number)
   return new Date(Date.UTC(year ?? 1970, (month ?? 1) - 1, day ?? 1)).getUTCDay()
@@ -67,6 +76,42 @@ function parseWeekday(normalizedText: string) {
   const match = normalizedText.match(/\b(?:el|este|para el|para este)?\s*(lunes|martes|miercoles|jueves|viernes|sabado|domingo)\b/)
   if (!match) return undefined
   return WEEKDAY_INDEX[match[1] ?? ""]
+}
+
+function parseNumericDate(normalizedText: string, todayISO: string) {
+  const isoMatch = normalizedText.match(/\b(20\d{2})-(\d{2})-(\d{2})\b/)
+  if (isoMatch) {
+    const year = Number(isoMatch[1])
+    const month = Number(isoMatch[2])
+    const day = Number(isoMatch[3])
+    if (isValidDateParts(year, month, day)) {
+      return isoFromParts(year, month, day)
+    }
+  }
+
+  const shortMatch = normalizedText.match(/\b(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?\b/)
+  if (!shortMatch) return undefined
+
+  const day = Number(shortMatch[1])
+  const month = Number(shortMatch[2])
+  const parsedYear = shortMatch[3] ? Number(shortMatch[3]) : undefined
+  const [todayYear] = todayISO.split("-").map(Number)
+  const year = parsedYear
+    ? parsedYear < 100
+      ? 2000 + parsedYear
+      : parsedYear
+    : todayYear ?? new Date().getUTCFullYear()
+
+  if (!isValidDateParts(year, month, day)) return undefined
+
+  let candidate = isoFromParts(year, month, day)
+  if (!parsedYear && candidate < todayISO) {
+    const nextYear = year + 1
+    if (!isValidDateParts(nextYear, month, day)) return undefined
+    candidate = isoFromParts(nextYear, month, day)
+  }
+
+  return candidate
 }
 
 function nextWeekdayFromISO(baseISO: string, targetWeekday: number) {
@@ -99,10 +144,15 @@ export function formatDateEs(iso: string, tz: string) {
 export function parseSpanishDesiredDate(text: string, now: Date, tz: string): DateParseResult | null {
   const normalizedText = normalize(text)
   const todayISO = isoTodayInTz(now, tz)
+  const numericDate = parseNumericDate(normalizedText, todayISO)
 
   const hasManana = /\bmanana\b/.test(normalizedText)
   const hasPasadoManana = /\bpasado manana\b/.test(normalizedText)
   const weekday = parseWeekday(normalizedText)
+
+  if (numericDate) {
+    return { kind: "date", iso: numericDate }
+  }
 
   if (hasPasadoManana) {
     return { kind: "date", iso: addDaysISO(todayISO, 2, tz) }

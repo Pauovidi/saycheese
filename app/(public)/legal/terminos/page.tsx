@@ -1,5 +1,7 @@
 import type { Metadata } from "next"
 
+import { PICKUP_ONLY_COPY } from "@/src/data/business"
+
 export const metadata: Metadata = {
   title: "Términos y Condiciones | SayCheese",
 }
@@ -24,10 +26,8 @@ export default function TerminosPage() {
             vigente en el momento de la compra.
           </p>
           <p>
-            Los envíos se realizan a través de transporte refrigerado en un
-            plazo de 24-48 horas laborables desde la confirmación del pedido.
-            SayCheese no se responsabiliza de retrasos causados por el
-            transportista o por causas de fuerza mayor.
+            {PICKUP_ONLY_COPY} La fecha de recogida queda confirmada al cerrar
+            el pedido y puede ajustarse según disponibilidad del obrador.
           </p>
           <p>
             Al tratarse de productos alimentarios perecederos, no se aceptan

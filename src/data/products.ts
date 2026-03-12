@@ -10,6 +10,7 @@ export interface Product {
   fullDescription?: string
   description?: string
   allergens?: string
+  ingredients?: string[]
   portionInfo?: string
   weightInfo?: string
   images: string[]
@@ -34,7 +35,7 @@ export const products: Product[] = [
     category: "clasica",
     priceText: "12 €",
     priceValue: 12,
-    shortDescription: "Cajita de tarta de queso artesanal sabor clásica (400 g).",
+    shortDescription: "Cajita de cheesecake artesanal sabor clásica (400 g).",
     fullDescription: "Formato cajita individual/compartir de 400 g. Sabor clásica.",
     portionInfo: "Formato cajita",
     weightInfo: "400 g",
@@ -49,7 +50,7 @@ export const products: Product[] = [
     category: "lotus",
     priceText: "12 €",
     priceValue: 12,
-    shortDescription: "Cajita de tarta de queso artesanal sabor Lotus (400 g).",
+    shortDescription: "Cajita de cheesecake artesanal sabor Lotus (400 g).",
     fullDescription: "Formato cajita individual/compartir de 400 g. Sabor Lotus.",
     portionInfo: "Formato cajita",
     weightInfo: "400 g",
@@ -64,7 +65,7 @@ export const products: Product[] = [
     category: "pistacho",
     priceText: "12 €",
     priceValue: 12,
-    shortDescription: "Cajita de tarta de queso artesanal sabor pistacho (400 g).",
+    shortDescription: "Cajita de cheesecake artesanal sabor pistacho (400 g).",
     fullDescription: "Formato cajita individual/compartir de 400 g. Sabor pistacho.",
     portionInfo: "Formato cajita",
     weightInfo: "400 g",
@@ -79,7 +80,7 @@ export const products: Product[] = [
     category: "gofio",
     priceText: "12 €",
     priceValue: 12,
-    shortDescription: "Cajita de tarta de queso artesanal sabor gofio (400 g).",
+    shortDescription: "Cajita de cheesecake artesanal sabor gofio (400 g).",
     fullDescription: "Formato cajita individual/compartir de 400 g. Sabor gofio.",
     portionInfo: "Formato cajita",
     weightInfo: "400 g",
@@ -94,7 +95,7 @@ export const products: Product[] = [
     category: "mango-maracuya",
     priceText: "12 €",
     priceValue: 12,
-    shortDescription: "Cajita de tarta de queso artesanal sabor mango-maracuyá (400 g).",
+    shortDescription: "Cajita de cheesecake artesanal sabor mango-maracuyá (400 g).",
     fullDescription: "Formato cajita individual/compartir de 400 g. Sabor mango-maracuyá.",
     portionInfo: "Formato cajita",
     weightInfo: "400 g",
@@ -109,7 +110,7 @@ export const products: Product[] = [
     category: "hippo",
     priceText: "12 €",
     priceValue: 12,
-    shortDescription: "Cajita de tarta de queso artesanal sabor Hippo (400 g).",
+    shortDescription: "Cajita de cheesecake artesanal sabor Hippo (400 g).",
     fullDescription: "Formato cajita individual/compartir de 400 g. Sabor Hippo.",
     portionInfo: "Formato cajita",
     weightInfo: "400 g",
@@ -124,7 +125,7 @@ export const products: Product[] = [
     category: "polvito-uruguayo",
     priceText: "12 €",
     priceValue: 12,
-    shortDescription: "Cajita de tarta de queso artesanal sabor polvito uruguayo (400 g).",
+    shortDescription: "Cajita de cheesecake artesanal sabor polvito uruguayo (400 g).",
     fullDescription: "Formato cajita individual/compartir de 400 g. Sabor polvito uruguayo.",
     portionInfo: "Formato cajita",
     weightInfo: "400 g",
@@ -139,7 +140,7 @@ export const products: Product[] = [
     category: "nutella",
     priceText: "12 €",
     priceValue: 12,
-    shortDescription: "Cajita de tarta de queso artesanal sabor Nutella (400 g).",
+    shortDescription: "Cajita de cheesecake artesanal sabor Nutella (400 g).",
     fullDescription: "Formato cajita individual/compartir de 400 g. Sabor Nutella.",
     portionInfo: "Formato cajita",
     weightInfo: "400 g",
@@ -155,7 +156,7 @@ export const products: Product[] = [
     category: "tiramisu",
     priceText: "12 €",
     priceValue: 12,
-    shortDescription: "Cajita de tarta de queso artesanal sabor tiramisú (400 g).",
+    shortDescription: "Cajita de cheesecake artesanal sabor tiramisú (400 g).",
     fullDescription: "Formato cajita individual/compartir de 400 g. Sabor tiramisú.",
     portionInfo: "Formato cajita",
     weightInfo: "400 g",
@@ -172,10 +173,10 @@ export const products: Product[] = [
     category: "clasica",
     priceText: "35 €",
     priceValue: 35,
-    shortDescription: "Tarta de queso artesanal sabor clásica.",
+    shortDescription: "Formato grande de cheesecake artesanal sabor clásica.",
     description: "Elaborada con ingredientes de alta calidad, destaca por su textura suave y cremosa",
     allergens: "Leche, huevo, gluten",
-    fullDescription: "Tarta de queso artesanal formato grande. 10-12 raciones (1,7 kg). Sabor clásica.",
+    fullDescription: "Formato grande de cheesecake artesanal. 10-12 raciones (1,7 kg). Sabor clásica.",
     portionInfo: "10-12 raciones",
     weightInfo: "1,7 kg",
     images: ["/images/products/tarta-clasica.webp"],
@@ -189,10 +190,10 @@ export const products: Product[] = [
     category: "lotus",
     priceText: "35 €",
     priceValue: 35,
-    shortDescription: "Tarta de queso artesanal sabor Lotus.",
+    shortDescription: "Formato grande de cheesecake artesanal sabor Lotus.",
     description: "Delicioso toque caramelizado de Lotus que la hace única",
     allergens: "Leche, huevo, gluten",
-    fullDescription: "Tarta de queso artesanal formato grande. 10-12 raciones (1,7 kg). Sabor Lotus.",
+    fullDescription: "Formato grande de cheesecake artesanal. 10-12 raciones (1,7 kg). Sabor Lotus.",
     portionInfo: "10-12 raciones",
     weightInfo: "1,7 kg",
     images: ["/images/products/tarta-lotus.webp"],
@@ -206,10 +207,10 @@ export const products: Product[] = [
     category: "pistacho",
     priceText: "35 €",
     priceValue: 35,
-    shortDescription: "Tarta de queso artesanal sabor pistacho.",
+    shortDescription: "Formato grande de cheesecake artesanal sabor pistacho.",
     description: "Mezcla equilibrada de queso con pasta de pistacho 100%, logrando un sabor intenso y natural.",
     allergens: "Leche, huevo, gluten, frutos de cáscara (pistacho)",
-    fullDescription: "Tarta de queso artesanal formato grande. 10-12 raciones (1,7 kg). Sabor pistacho.",
+    fullDescription: "Formato grande de cheesecake artesanal. 10-12 raciones (1,7 kg). Sabor pistacho.",
     portionInfo: "10-12 raciones",
     weightInfo: "1,7 kg",
     images: ["/images/products/tarta-pistacho.webp"],
@@ -223,10 +224,10 @@ export const products: Product[] = [
     category: "gofio",
     priceText: "35 €",
     priceValue: 35,
-    shortDescription: "Tarta de queso artesanal sabor gofio.",
+    shortDescription: "Formato grande de cheesecake artesanal sabor gofio.",
     description: "Elaborada con gofio de un molino local, con un sabor auténtico y tradicional",
     allergens: "Leche, huevo, gluten (trigo)",
-    fullDescription: "Tarta de queso artesanal formato grande. 10-12 raciones (1,7 kg). Sabor gofio.",
+    fullDescription: "Formato grande de cheesecake artesanal. 10-12 raciones (1,7 kg). Sabor gofio.",
     portionInfo: "10-12 raciones",
     weightInfo: "1,7 kg",
     images: ["/images/products/tarta-gofio.webp"],
@@ -240,10 +241,10 @@ export const products: Product[] = [
     category: "mango-maracuya",
     priceText: "35 €",
     priceValue: 35,
-    shortDescription: "Tarta de queso artesanal sabor mango-maracuyá.",
+    shortDescription: "Formato grande de cheesecake artesanal sabor mango-maracuyá.",
     description: "Tropical y ligera, con el contraste ideal entre el dulzor del mango y el toque ácido del maracuyá",
     allergens: "Leche, huevo, gluten",
-    fullDescription: "Tarta de queso artesanal formato grande. 10-12 raciones (1,7 kg). Sabor mango-maracuyá.",
+    fullDescription: "Formato grande de cheesecake artesanal. 10-12 raciones (1,7 kg). Sabor mango-maracuyá.",
     portionInfo: "10-12 raciones",
     weightInfo: "1,7 kg",
     images: ["/images/products/tarta-mango.webp"],
@@ -257,10 +258,10 @@ export const products: Product[] = [
     category: "hippo",
     priceText: "35 €",
     priceValue: 35,
-    shortDescription: "Tarta de queso artesanal sabor Hippo.",
+    shortDescription: "Formato grande de cheesecake artesanal sabor Hippo.",
     description: "Con el inconfundible sabor a avellana y chocolate blanco que la hace irresistible",
     allergens: "Leche, huevo, gluten, frutos de cáscara (avellana)",
-    fullDescription: "Tarta de queso artesanal formato grande. 10-12 raciones (1,7 kg). Sabor Hippo.",
+    fullDescription: "Formato grande de cheesecake artesanal. 10-12 raciones (1,7 kg). Sabor Hippo.",
     portionInfo: "10-12 raciones",
     weightInfo: "1,7 kg",
     images: ["/images/products/tarta-hippo.webp"],
@@ -275,10 +276,10 @@ export const products: Product[] = [
     category: "polvito-uruguayo",
     priceText: "35 €",
     priceValue: 35,
-    shortDescription: "Tarta de queso artesanal sabor polvito uruguayo.",
+    shortDescription: "Formato grande de cheesecake artesanal sabor polvito uruguayo.",
     description: "Inspirada en el postre canario, con el dulce de leche y el suspiro de Moya como protagonistas",
     allergens: "Leche, huevo, gluten",
-    fullDescription: "Tarta de queso artesanal formato grande. 10-12 raciones (1,7 kg). Sabor polvito uruguayo.",
+    fullDescription: "Formato grande de cheesecake artesanal. 10-12 raciones (1,7 kg). Sabor polvito uruguayo.",
     portionInfo: "10-12 raciones",
     weightInfo: "1,7 kg",
     images: ["/images/products/tarta-polvito.webp"],
@@ -292,10 +293,10 @@ export const products: Product[] = [
     category: "nutella",
     priceText: "35 €",
     priceValue: 35,
-    shortDescription: "Tarta de queso artesanal sabor Nutella.",
+    shortDescription: "Formato grande de cheesecake artesanal sabor Nutella.",
     description: "Para los amantes del chocolate, su sabor inconfundible a Nutella lo hace adictivo",
     allergens: "Leche, huevo, gluten, frutos de cáscara (avellana), soja",
-    fullDescription: "Tarta de queso artesanal formato grande. 10-12 raciones (1,7 kg). Sabor Nutella.",
+    fullDescription: "Formato grande de cheesecake artesanal. 10-12 raciones (1,7 kg). Sabor Nutella.",
     portionInfo: "10-12 raciones",
     weightInfo: "1,7 kg",
     images: ["/images/products/tarta-nutella.webp"],
@@ -309,8 +310,8 @@ export const products: Product[] = [
     category: "tiramisu",
     priceText: "35 €",
     priceValue: 35,
-    shortDescription: "Tarta de queso artesanal sabor tiramisú.",
-    fullDescription: "Tarta de queso artesanal formato grande. 10-12 raciones (1,7 kg). Sabor tiramisú.",
+    shortDescription: "Formato grande de cheesecake artesanal sabor tiramisú.",
+    fullDescription: "Formato grande de cheesecake artesanal. 10-12 raciones (1,7 kg). Sabor tiramisú.",
     portionInfo: "10-12 raciones",
     weightInfo: "1,7 kg",
     images: [],
@@ -322,6 +323,10 @@ export const products: Product[] = [
 
 export function getProductBySlug(slug: string): Product | undefined {
   return products.find((p) => p.slug === slug)
+}
+
+export function getProductsByCategory(category: string): Product[] {
+  return products.filter((product) => product.category === category)
 }
 
 export function getFeaturedProducts(): Product[] {
@@ -358,4 +363,24 @@ export function getSibling(product: Product): Product | undefined {
 /** Get categories (unique labels) */
 export function getCategories(): string[] {
   return Array.from(new Set(products.map((p) => p.category)))
+}
+
+export function parseProductList(value?: string) {
+  return value
+    ?.split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean) ?? []
+}
+
+export function getFlavorFacts(category: string) {
+  const flavorProducts = getProductsByCategory(category)
+  if (!flavorProducts.length) return null
+
+  return {
+    category,
+    label: flavorProducts[0].name,
+    allergens: Array.from(new Set(flavorProducts.flatMap((product) => parseProductList(product.allergens)))),
+    ingredients: Array.from(new Set(flavorProducts.flatMap((product) => product.ingredients ?? []))),
+    sourceProduct: flavorProducts.find((product) => parseProductList(product.allergens).length || (product.ingredients?.length ?? 0) > 0) ?? flavorProducts[0],
+  }
 }

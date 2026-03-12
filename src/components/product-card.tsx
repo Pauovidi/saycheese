@@ -4,6 +4,7 @@ import Image from "next/image"
 import Link from "next/link"
 import { useState } from "react"
 import { useCart } from "@/src/context/cart-context"
+import { getCustomerFacingFormatLabel } from "@/src/data/business"
 import type { Product } from "@/src/data/products"
 import { getSibling } from "@/src/data/products"
 
@@ -50,7 +51,7 @@ export function ProductCard({ product, priority = false }: ProductCardProps) {
         )}
         {/* Format badge */}
         <span className="absolute left-2 top-2 bg-accent px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-accent-foreground">
-          {displayProduct.format === "tarta" ? "Tarta" : "Cajita"}
+          {getCustomerFacingFormatLabel(displayProduct.format)}
         </span>
       </Link>
       <div className="flex flex-1 flex-col pt-4">
@@ -71,7 +72,7 @@ export function ProductCard({ product, priority = false }: ProductCardProps) {
                   : "bg-transparent text-muted-foreground hover:text-foreground"
               }`}
             >
-              Tarta
+              Grande
             </button>
             <button
               onClick={() => setSelectedFormat("cajita")}
