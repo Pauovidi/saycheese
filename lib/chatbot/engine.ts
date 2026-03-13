@@ -14,6 +14,7 @@ import {
   updateSummary,
 } from "@/lib/chatbot/memory"
 import { cancelChatOrder, createChatOrder } from "@/lib/chatbot/orders"
+import { buildMissingFieldsPrompt } from "@/lib/chatbot/order-prompts"
 import {
   findFlavorFactsByQuery,
   findProductBySlugOrFlavor,
@@ -231,16 +232,6 @@ function buildProductFactsReply(message: string) {
   return `Para ${facts.label}: ${sections.join(" ")} No tengo confirmado ${missingSections.join(" ni ")} ahora mismo. ${buildHumanSupportMessage("Te atiende un humano aquí:")}`
 }
 
-function missingFieldsText(state: OrderState) {
-  const missing: string[] = []
-  if (!state.flavor) missing.push("sabor")
-  if (!state.format) missing.push("formato (grande o cajita)")
-  if (!state.phone) missing.push("teléfono")
-
-  if (!missing.length) return ""
-  return `Me falta ${missing.join(", ")} para confirmar el pedido.`
-}
-
 async function activateHandoff(userId: string, reason?: string) {
   const until = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString()
   await setPauseState(userId, until)
@@ -400,11 +391,10 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
       return saveAndReply(userId, "¿Para qué día la necesitas? Puedes decirme una fecha como 16/03, el 18 o un día de la semana.", state)
     }
 
-    const missing = missingFieldsText(state)
+    const missing = buildMissingFieldsPrompt(state)
     if (missing) {
       const dateText = `Sí, puedo apuntarlo para ${formatDateEs(state.finalDate, SHOP_TZ)}.`
-      const phoneHint = state.phone ? "" : " Necesito tu teléfono para confirmar el pedido."
-      return saveAndReply(userId, `${dateText} ${missing}${phoneHint}`, state)
+      return saveAndReply(userId, `${dateText} ${missing}`, state)
     }
 
     const created = await createChatOrder({
