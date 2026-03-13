@@ -25,10 +25,25 @@ function createWebExternalId() {
 export function ChatWidget() {
   const pendingRequestRef = useRef<AbortController | null>(null)
   const externalIdRef = useRef<string>(createWebExternalId())
+  const messagesContainerRef = useRef<HTMLDivElement | null>(null)
+  const bottomRef = useRef<HTMLDivElement | null>(null)
+  const shouldAutoScrollRef = useRef(true)
   const [isOpen, setIsOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [input, setInput] = useState("")
   const [messages, setMessages] = useState<ChatMessage[]>(() => getInitialMessages())
+
+  function isNearBottom() {
+    const container = messagesContainerRef.current
+    if (!container) return true
+
+    const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight
+    return distanceFromBottom <= 72
+  }
+
+  function scrollToBottom(behavior: ScrollBehavior = "smooth") {
+    bottomRef.current?.scrollIntoView({ behavior, block: "end" })
+  }
 
   useEffect(() => {
     return () => {
@@ -37,10 +52,22 @@ export function ChatWidget() {
     }
   }, [])
 
+  useEffect(() => {
+    if (!isOpen) return
+    if (!shouldAutoScrollRef.current && !loading) return
+
+    const frame = window.requestAnimationFrame(() => {
+      scrollToBottom(messages.length <= 1 && !loading ? "auto" : "smooth")
+    })
+
+    return () => window.cancelAnimationFrame(frame)
+  }, [isOpen, loading, messages])
+
   function resetChat() {
     pendingRequestRef.current?.abort()
     pendingRequestRef.current = null
     externalIdRef.current = createWebExternalId()
+    shouldAutoScrollRef.current = true
     setLoading(false)
     setInput("")
     setMessages(getInitialMessages())
@@ -49,6 +76,7 @@ export function ChatWidget() {
   async function sendMessage(text: string) {
     if (loading || !text.trim()) return
 
+    shouldAutoScrollRef.current = true
     setMessages((prev) => [...prev, { role: "user", text }])
     setInput("")
     setLoading(true)
@@ -110,7 +138,13 @@ export function ChatWidget() {
             </div>
           </div>
 
-          <div className="flex-1 space-y-3 overflow-y-auto bg-neutral-50 p-3">
+          <div
+            ref={messagesContainerRef}
+            className="flex-1 space-y-3 overflow-y-auto bg-neutral-50 p-3"
+            onScroll={() => {
+              shouldAutoScrollRef.current = isNearBottom()
+            }}
+          >
             {messages.map((message, index) => (
               <div
                 key={`${message.role}-${index}`}
@@ -122,6 +156,7 @@ export function ChatWidget() {
               </div>
             ))}
             {loading && <p className="text-xs text-neutral-500">Escribiendo...</p>}
+            <div ref={bottomRef} aria-hidden="true" />
           </div>
 
           <div className="border-t p-3">
@@ -161,7 +196,10 @@ export function ChatWidget() {
       )}
 
       <button
-        onClick={() => setIsOpen((prev) => !prev)}
+        onClick={() => {
+          shouldAutoScrollRef.current = true
+          setIsOpen((prev) => !prev)
+        }}
         className="flex h-14 w-14 items-center justify-center rounded-full bg-black text-white shadow-lg"
         aria-label="Abrir chat"
       >
