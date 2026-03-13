@@ -1,7 +1,7 @@
 "use client"
 
-import { MessageCircle, Send, X } from "lucide-react"
-import { useState } from "react"
+import { MessageCircle, RotateCcw, Send, X } from "lucide-react"
+import { useEffect, useRef, useState } from "react"
 
 type ChatMessage = { role: "user" | "assistant"; text: string }
 
@@ -13,27 +13,38 @@ const QUICK_ACTIONS = [
   "Quiero hablar con una persona",
 ]
 
-const EXTERNAL_ID_KEY = "saycheese_chat_external_id"
+function getInitialMessages(): ChatMessage[] {
+  return [{ role: "assistant", text: "¡Hola! Te ayudo con pedidos, sabores, alérgenos y horarios." }]
+}
 
-function getOrCreateExternalId() {
+function createWebExternalId() {
   if (typeof window === "undefined") return "server"
-
-  const existing = localStorage.getItem(EXTERNAL_ID_KEY)
-  if (existing) return existing
-
-  const created = crypto.randomUUID()
-  localStorage.setItem(EXTERNAL_ID_KEY, created)
-  return created
+  return crypto.randomUUID()
 }
 
 export function ChatWidget() {
+  const pendingRequestRef = useRef<AbortController | null>(null)
+  const externalIdRef = useRef<string>(createWebExternalId())
   const [isOpen, setIsOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [input, setInput] = useState("")
-  const [externalId, setExternalId] = useState(getOrCreateExternalId)
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    { role: "assistant", text: "¡Hola! Te ayudo con pedidos, sabores, alérgenos y horarios." },
-  ])
+  const [messages, setMessages] = useState<ChatMessage[]>(() => getInitialMessages())
+
+  useEffect(() => {
+    return () => {
+      pendingRequestRef.current?.abort()
+      pendingRequestRef.current = null
+    }
+  }, [])
+
+  function resetChat() {
+    pendingRequestRef.current?.abort()
+    pendingRequestRef.current = null
+    externalIdRef.current = createWebExternalId()
+    setLoading(false)
+    setInput("")
+    setMessages(getInitialMessages())
+  }
 
   async function sendMessage(text: string) {
     if (loading || !text.trim()) return
@@ -41,26 +52,40 @@ export function ChatWidget() {
     setMessages((prev) => [...prev, { role: "user", text }])
     setInput("")
     setLoading(true)
+    const controller = new AbortController()
+    pendingRequestRef.current = controller
 
     try {
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ external_id: externalId, message: text }),
+        signal: controller.signal,
+        body: JSON.stringify({ external_id: externalIdRef.current, message: text }),
       })
 
-      const data = await response.json()
+      const data = (await response.json()) as { ok?: boolean; reply?: string; error?: string; external_id?: string }
 
-      if (typeof data.external_id === "string" && data.external_id && data.external_id !== externalId) {
-        localStorage.setItem(EXTERNAL_ID_KEY, data.external_id)
-        setExternalId(data.external_id)
+      if (!response.ok || data.ok === false) {
+        throw new Error(data.error ?? "No pude responder ahora.")
+      }
+
+      if (typeof data.external_id === "string" && data.external_id) {
+        externalIdRef.current = data.external_id
       }
 
       setMessages((prev) => [...prev, { role: "assistant", text: data.reply ?? "No pude responder ahora." }])
-    } catch {
-      setMessages((prev) => [...prev, { role: "assistant", text: "Error de red. Inténtalo de nuevo." }])
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        return
+      }
+
+      const errorText = error instanceof Error ? error.message : "Error de red. Inténtalo de nuevo."
+      setMessages((prev) => [...prev, { role: "assistant", text: errorText }])
     } finally {
-      setLoading(false)
+      if (pendingRequestRef.current === controller) {
+        pendingRequestRef.current = null
+        setLoading(false)
+      }
     }
   }
 
@@ -70,9 +95,19 @@ export function ChatWidget() {
         <div className="mb-3 flex h-[520px] w-[340px] flex-col overflow-hidden rounded-2xl border bg-white shadow-2xl">
           <div className="flex items-center justify-between border-b px-4 py-3">
             <p className="text-sm font-semibold">Asistente SayCheese</p>
-            <button onClick={() => setIsOpen(false)} aria-label="Cerrar chat">
-              <X size={16} />
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={resetChat}
+                className="inline-flex items-center gap-1 rounded-full border px-2 py-1 text-xs hover:bg-neutral-100"
+              >
+                <RotateCcw size={12} />
+                Reiniciar chat
+              </button>
+              <button type="button" onClick={() => setIsOpen(false)} aria-label="Cerrar chat">
+                <X size={16} />
+              </button>
+            </div>
           </div>
 
           <div className="flex-1 space-y-3 overflow-y-auto bg-neutral-50 p-3">
