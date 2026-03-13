@@ -1,7 +1,7 @@
 "use client"
 
 import { MessageCircle, RotateCcw, Send, X } from "lucide-react"
-import { useRef, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 
 type ChatMessage = { role: "user" | "assistant"; text: string }
 
@@ -13,30 +13,37 @@ const QUICK_ACTIONS = [
   "Quiero hablar con una persona",
 ]
 
-const INITIAL_MESSAGES: ChatMessage[] = [
-  { role: "assistant", text: "¡Hola! Te ayudo con pedidos, sabores, alérgenos y horarios." },
-]
+function getInitialMessages(): ChatMessage[] {
+  return [{ role: "assistant", text: "¡Hola! Te ayudo con pedidos, sabores, alérgenos y horarios." }]
+}
 
-function createEphemeralExternalId() {
-  if (typeof window === "undefined") return "web-server"
-  return `web-${crypto.randomUUID()}`
+function createWebExternalId() {
+  if (typeof window === "undefined") return "server"
+  return crypto.randomUUID()
 }
 
 export function ChatWidget() {
   const pendingRequestRef = useRef<AbortController | null>(null)
+  const externalIdRef = useRef<string>(createWebExternalId())
   const [isOpen, setIsOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [input, setInput] = useState("")
-  const [externalId, setExternalId] = useState(createEphemeralExternalId)
-  const [messages, setMessages] = useState<ChatMessage[]>(INITIAL_MESSAGES)
+  const [messages, setMessages] = useState<ChatMessage[]>(() => getInitialMessages())
+
+  useEffect(() => {
+    return () => {
+      pendingRequestRef.current?.abort()
+      pendingRequestRef.current = null
+    }
+  }, [])
 
   function resetChat() {
     pendingRequestRef.current?.abort()
     pendingRequestRef.current = null
+    externalIdRef.current = createWebExternalId()
     setLoading(false)
     setInput("")
-    setExternalId(createEphemeralExternalId())
-    setMessages(INITIAL_MESSAGES)
+    setMessages(getInitialMessages())
   }
 
   async function sendMessage(text: string) {
@@ -53,13 +60,17 @@ export function ChatWidget() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         signal: controller.signal,
-        body: JSON.stringify({ external_id: externalId, message: text }),
+        body: JSON.stringify({ external_id: externalIdRef.current, message: text }),
       })
 
-      const data = await response.json()
+      const data = (await response.json()) as { ok?: boolean; reply?: string; error?: string; external_id?: string }
 
-      if (typeof data.external_id === "string" && data.external_id && data.external_id !== externalId) {
-        setExternalId(data.external_id)
+      if (!response.ok || data.ok === false) {
+        throw new Error(data.error ?? "No pude responder ahora.")
+      }
+
+      if (typeof data.external_id === "string" && data.external_id) {
+        externalIdRef.current = data.external_id
       }
 
       setMessages((prev) => [...prev, { role: "assistant", text: data.reply ?? "No pude responder ahora." }])
@@ -68,7 +79,8 @@ export function ChatWidget() {
         return
       }
 
-      setMessages((prev) => [...prev, { role: "assistant", text: "Error de red. Inténtalo de nuevo." }])
+      const errorText = error instanceof Error ? error.message : "Error de red. Inténtalo de nuevo."
+      setMessages((prev) => [...prev, { role: "assistant", text: errorText }])
     } finally {
       if (pendingRequestRef.current === controller) {
         pendingRequestRef.current = null
