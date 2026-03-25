@@ -3,7 +3,7 @@
 import { MessageCircle, Send, X } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 
-import { buildWhatsAppLink, DEFAULT_BOT_WHATSAPP_LINK, DEFAULT_BOT_WHATSAPP_MESSAGE } from "@/lib/whatsapp"
+import { buildWhatsAppLink, DEFAULT_BOT_WHATSAPP_LINK, DEFAULT_BOT_WHATSAPP_MESSAGE, normalizeWhatsAppLink } from "@/lib/whatsapp"
 
 type Handoff = {
   type: "whatsapp"
@@ -49,7 +49,7 @@ export function ChatWidget() {
   const [messages, setMessages] = useState<ChatMessage[]>([{ role: "assistant", text: INITIAL_CHAT_MESSAGE }])
 
   const botWhatsappLink = useMemo(() => {
-    const base = process.env.NEXT_PUBLIC_BOT_WHATSAPP_LINK ?? process.env.BOT_WHATSAPP_LINK ?? DEFAULT_BOT_WHATSAPP_LINK
+    const base = normalizeWhatsAppLink(process.env.NEXT_PUBLIC_BOT_WHATSAPP_LINK ?? process.env.BOT_WHATSAPP_LINK ?? DEFAULT_BOT_WHATSAPP_LINK)
     return buildWhatsAppLink(base, DEFAULT_BOT_WHATSAPP_MESSAGE)
   }, [])
 
