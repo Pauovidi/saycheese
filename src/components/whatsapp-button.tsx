@@ -2,10 +2,12 @@
 
 import Link from "next/link"
 
+import { DEFAULT_BOT_WHATSAPP_LINK } from "@/lib/whatsapp"
+
 export function WhatsAppButton() {
   return (
     <Link
-      href="https://wa.me/34626542244"
+      href={DEFAULT_BOT_WHATSAPP_LINK}
       target="_blank"
       rel="noopener noreferrer"
       aria-label="Contactar por WhatsApp"

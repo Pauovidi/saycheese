@@ -3,6 +3,8 @@
 import { MessageCircle, Send, X } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 
+import { buildWhatsAppLink, DEFAULT_BOT_WHATSAPP_LINK, DEFAULT_BOT_WHATSAPP_MESSAGE } from "@/lib/whatsapp"
+
 type Handoff = {
   type: "whatsapp"
   label: "WhatsApp"
@@ -24,7 +26,6 @@ const QUICK_ACTIONS = [
 ]
 
 const EXTERNAL_ID_KEY = "saycheese_chat_external_id"
-const DEFAULT_WHATSAPP_MESSAGE = "Hola, quiero hacer un pedido."
 const INITIAL_CHAT_MESSAGE =
   "¡Hola! Puedes reservar tu tarta para una fecha concreta y, además, normalmente también hay tartas en tienda para compra directa hasta agotar existencias. Si quieres, te ayudo con sabores, tamaños, precios o con una reserva."
 
@@ -39,11 +40,6 @@ function getOrCreateExternalId() {
   return created
 }
 
-function buildWhatsAppLink(baseUrl: string) {
-  const separator = baseUrl.includes("?") ? "&" : "?"
-  return `${baseUrl}${separator}text=${encodeURIComponent(DEFAULT_WHATSAPP_MESSAGE)}`
-}
-
 export function ChatWidget() {
   const [isOpen, setIsOpen] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
@@ -53,8 +49,8 @@ export function ChatWidget() {
   const [messages, setMessages] = useState<ChatMessage[]>([{ role: "assistant", text: INITIAL_CHAT_MESSAGE }])
 
   const botWhatsappLink = useMemo(() => {
-    const base = process.env.NEXT_PUBLIC_BOT_WHATSAPP_LINK ?? process.env.BOT_WHATSAPP_LINK ?? "https://wa.me/34681147149"
-    return buildWhatsAppLink(base)
+    const base = process.env.NEXT_PUBLIC_BOT_WHATSAPP_LINK ?? process.env.BOT_WHATSAPP_LINK ?? DEFAULT_BOT_WHATSAPP_LINK
+    return buildWhatsAppLink(base, DEFAULT_BOT_WHATSAPP_MESSAGE)
   }, [])
 
   useEffect(() => {
