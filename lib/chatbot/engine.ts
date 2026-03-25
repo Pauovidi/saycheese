@@ -4,6 +4,7 @@ import OpenAI from "openai"
 
 import { earliestPickupDateISO, formatDateEs, parseSpanishDesiredDate } from "@/lib/chatbot/dates"
 import {
+  clearPauseState,
   getOrCreateUser,
   getPauseState,
   loadContext,
@@ -37,6 +38,8 @@ type HandleMessageResult = {
   text: string
   handoff?: HandoffPayload
 }
+
+type HandoffMode = "soft" | "hard"
 
 type OrderState = {
   inOrderFlow?: boolean
@@ -75,7 +78,7 @@ ${STORE_HOURS_TEXT}
 Nunca uses "recogerte" ni "recibir" para pedidos; usa "recoger"/"recogida".
 Plazo mínimo obligatorio: ${LEAD_DAYS} días naturales.
 Si puedes responder sin tools, responde directo y no llames tools.
-Si el usuario pide humano o hay incertidumbre crítica, usa tool handoff_to_human.`
+Si el usuario pide humano o hay incertidumbre crítica, usa tool handoff_to_human como recomendación blanda sin bloquear futuros mensajes.`
 
 const HANDOFF_WEB_TEXT = "Te paso con una persona del equipo."
 
@@ -194,7 +197,7 @@ function hasAllergensIntent(text: string) {
 }
 
 function hasOrderIntent(text: string) {
-  return /quiero|pedido|encargar|tarta|cajita|para\s/i.test(normalize(text))
+  return /\b(quiero|pedido|encargar|reservar|comprar)\b|\bpara\s/i.test(normalize(text))
 }
 
 function buildFlavorsReply() {
@@ -230,14 +233,33 @@ function missingFieldsText(state: OrderState) {
   return `Me falta ${missing.join(", ")} para confirmar el pedido.`
 }
 
-async function activateHandoff(userId: string, channel: "web" | "whatsapp", reason?: string) {
-  const until = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString()
-  await setPauseState(userId, until)
+async function activateHandoffWithMode(
+  userId: string,
+  channel: "web" | "whatsapp",
+  input?: { reason?: string; mode?: HandoffMode }
+) {
+  const mode = input?.mode ?? "soft"
+  const reason = input?.reason ?? "Usuario pide asistencia humana"
+
+  if (mode === "hard") {
+    const until = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString()
+    await setPauseState(userId, until)
+  } else {
+    await clearPauseState(userId)
+  }
 
   const payload = buildHandoffPayload(channel)
+  console.info("[chatbot] handoff activated", {
+    userId,
+    channel,
+    mode,
+    reason,
+  })
+
   return {
     handedOff: true,
-    reason: reason ?? "Usuario pide asistencia humana",
+    reason,
+    mode,
     contact: {
       phone: HUMAN_SUPPORT_PHONE_E164,
       whatsappLink: HUMAN_SUPPORT_WHATSAPP_LINK,
@@ -287,19 +309,36 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
   const model = process.env.OPENAI_MODEL ?? "gpt-4.1-mini"
 
   const { userId } = await getOrCreateUser({ channel, externalId: sessionId, phone })
+  const requestedHandoff = shouldRequestHandoff(message)
 
   const pauseState = await getPauseState(userId)
   if (pauseState.botPausedUntil && pauseState.botPausedUntil > new Date()) {
-    await saveMessage(userId, "user", message)
-    const handoffPayload = buildHandoffPayload(channel)
-    await saveMessage(userId, "assistant", handoffPayload.text)
-    return handoffPayload
+    if (!requestedHandoff) {
+      await clearPauseState(userId)
+      console.info("[chatbot] released paused handoff", {
+        userId,
+        channel,
+      })
+    } else {
+      console.info("[chatbot] repeated handoff request while paused", {
+        userId,
+        channel,
+      })
+
+      await saveMessage(userId, "user", message)
+      const handoffPayload = buildHandoffPayload(channel)
+      await saveMessage(userId, "assistant", handoffPayload.text)
+      return handoffPayload
+    }
   }
 
   await saveMessage(userId, "user", message)
 
-  if (shouldRequestHandoff(message)) {
-    const handoff = await activateHandoff(userId, channel, "Solicitud explícita")
+  if (requestedHandoff) {
+    const handoff = await activateHandoffWithMode(userId, channel, {
+      reason: "Solicitud explícita",
+      mode: "soft",
+    })
     await saveMessage(userId, "assistant", handoff.message)
     return handoff.handoff ? { text: handoff.message, handoff: handoff.handoff } : { text: handoff.message }
   }
@@ -488,7 +527,7 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
     {
       type: "function",
       name: "handoff_to_human",
-      description: "Deriva conversación a humano y pausa bot",
+      description: "Ofrece derivación a humano sin bloquear automáticamente los siguientes mensajes del bot",
       parameters: {
         type: "object",
         properties: { reason: { type: "string" } },
@@ -502,7 +541,12 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
 
     if (name === "get_store_hours") return { hours: STORE_HOURS_TEXT, policy: POLICY_TEXT }
     if (name === "get_flavors_and_sizes") return { flavors: listFlavorsAndSizes() }
-    if (name === "handoff_to_human") return activateHandoff(userId, channel, String(args.reason ?? "handoff"))
+    if (name === "handoff_to_human") {
+      return activateHandoffWithMode(userId, channel, {
+        reason: String(args.reason ?? "handoff"),
+        mode: "soft",
+      })
+    }
 
     if (name === "get_product_info") {
       const product = findProductBySlugOrFlavor(String(args.query ?? ""))
@@ -590,7 +634,10 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
   let handoff: HandoffPayload | undefined
 
   if (safetyEscalate) {
-    const escalated = await activateHandoff(userId, channel, "Incertidumbre crítica")
+    const escalated = await activateHandoffWithMode(userId, channel, {
+      reason: "Incertidumbre crítica",
+      mode: "soft",
+    })
     text = `${text}\n\n${escalated.message}`
     handoff = escalated.handoff
   }

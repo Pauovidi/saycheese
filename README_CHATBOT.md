@@ -53,7 +53,8 @@ Además se activa automáticamente si:
 - el usuario lo pide explícitamente (humano/persona/agente)
 - no hay respuesta segura (ej. alérgenos no presentes o pedido ambiguo)
 
-Cuando hay handoff, el bot se pausa 2h (`bot_paused_until`).
+El handoff actual es blando: ofrece contacto humano en ese turno, pero no bloquea las consultas normales siguientes.
+`bot_paused_until` queda reservado para futuros takeovers duros explícitos si hicieran falta.
 
 ## Recordatorios
 
