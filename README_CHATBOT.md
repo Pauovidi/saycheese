@@ -51,10 +51,17 @@ Cuando la conversación crece, genera resumen y poda mensajes antiguos.
 Hay tool `handoff_to_human`.
 Además se activa automáticamente si:
 - el usuario lo pide explícitamente (humano/persona/agente)
+- el usuario pregunta por stock real del momento (`hoy`, `ahora`, `en tienda`), porque no hay control de existencias en tiempo real
 - no hay respuesta segura (ej. alérgenos no presentes o pedido ambiguo)
 
 El handoff actual es blando: ofrece contacto humano en ese turno, pero no bloquea las consultas normales siguientes.
 `bot_paused_until` queda reservado para futuros takeovers duros explícitos si hicieran falta.
+
+## Disponibilidad del día
+
+- El bot diferencia entre catálogo general (sabores, tamaños, precios, horario) y consultas de disponibilidad inmediata.
+- Para preguntas de stock actual no confirma existencias exactas: indica que normalmente puede haber stock diario en tienda hasta agotar existencias, recomienda reservar con antelación y ofrece pasar con una persona.
+- Los saludos simples como `hola` devuelven la bienvenida comercial actual también en el motor compartido, por lo que el copy queda alineado entre web y WhatsApp.
 
 ## Recordatorios
 

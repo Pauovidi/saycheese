@@ -68,6 +68,8 @@ const ORDER_STATE_PREFIX = "__ORDER_STATE__:"
 
 const HUMAN_SUPPORT_PHONE_E164 = process.env.HUMAN_SUPPORT_PHONE_E164 ?? "+34681147149"
 const HUMAN_SUPPORT_WHATSAPP_LINK = process.env.HUMAN_SUPPORT_WHATSAPP_LINK ?? "https://wa.me/34681147149"
+const WELCOME_MESSAGE =
+  "¡Hola! Puedes reservar tu tarta para una fecha concreta y, además, normalmente también hay tartas en tienda para compra directa hasta agotar existencias. Si quieres, te ayudo con sabores, tamaños, precios o con una reserva."
 
 const SYSTEM_PROMPT = `Eres el asistente de SayCheese.
 Responde en español, claro y breve.
@@ -77,6 +79,7 @@ Horario oficial de tienda (no inventes ni alteres):
 ${STORE_HOURS_TEXT}
 Nunca uses "recogerte" ni "recibir" para pedidos; usa "recoger"/"recogida".
 Plazo mínimo obligatorio: ${LEAD_DAYS} días naturales.
+Si preguntan por disponibilidad real hoy, ahora mismo o en tienda, nunca confirmes stock exacto en tiempo real: explica que normalmente puede haber tartas para compra directa hasta agotar existencias, recomienda reservar con antelación y ofrece handoff_to_human para confirmarlo.
 Si puedes responder sin tools, responde directo y no llames tools.
 Si el usuario pide humano o hay incertidumbre crítica, usa tool handoff_to_human como recomendación blanda sin bloquear futuros mensajes.`
 
@@ -188,6 +191,10 @@ function hasScheduleIntent(text: string) {
   return /horario|abris|abierto|cerrais/i.test(normalize(text))
 }
 
+function hasGreetingIntent(text: string) {
+  return /^(hola|hola!|holaa|buenas|buenos dias|buenas tardes|buenas noches|hey|hello)\b/i.test(normalize(text).trim())
+}
+
 function hasFlavorsIntent(text: string) {
   return /sabor|tamano|tamaño|formato|tarta|cajita|precio/i.test(normalize(text))
 }
@@ -198,6 +205,29 @@ function hasAllergensIntent(text: string) {
 
 function hasOrderIntent(text: string) {
   return /\b(quiero|pedido|encargar|reservar|comprar)\b|\bpara\s/i.test(normalize(text))
+}
+
+function hasCurrentStockIntent(text: string) {
+  const normalized = normalize(text)
+
+  const immediateMoment = /\b(hoy|ahora|ahora mismo|ya|esta manana|esta mañana|esta tarde)\b/.test(normalized)
+  const storeVisit = /\b(en tienda|por tienda|tienda|pasarme|me paso|paso ahora|pasar ahora)\b/.test(normalized)
+  const explicitStock =
+    /\bstock\b/.test(normalized) ||
+    /\bdisponib/.test(normalized) ||
+    /\bque\s+(?:os\s+)?queda\b/.test(normalized) ||
+    /\b(?:os\s+)?quedan\b/.test(normalized) ||
+    /\b(?:os\s+)?queda\s+alg/.test(normalized) ||
+    /\bteneis\s+alguna\b/.test(normalized) ||
+    /\bhay\b.*\b(tarta|tartas|cajita|cajitas)\b/.test(normalized)
+  const sameDayPurchase =
+    /\b(quiero|necesito|busco|comprar|llevarme)\b.*\b(una|un|tarta|cajita)\b.*\b(hoy|ahora)\b/.test(normalized) ||
+    /\bpara hoy\b/.test(normalized) && /\b(quiero|necesito|busco|comprar|llevarme)\b/.test(normalized)
+  const immediateVisitQuestion =
+    (/\b(puedo\s+)?pasarme\b/.test(normalized) || /\bme\s+paso\b/.test(normalized)) &&
+    (immediateMoment || /\btienda\b/.test(normalized))
+
+  return sameDayPurchase || immediateVisitQuestion || (explicitStock && (immediateMoment || storeVisit))
 }
 
 function buildFlavorsReply() {
@@ -221,6 +251,27 @@ function buildIngredientsReply(message: string) {
   const ingredients = detail.ingredients.length ? detail.ingredients.join(", ") : "no lo veo en la ficha"
 
   return `Para ${product.name}: ingredientes ${ingredients}. Alérgenos ${allergens}.`
+}
+
+async function buildCurrentStockReply(userId: string, channel: "web" | "whatsapp") {
+  const escalation = await activateHandoffWithMode(userId, channel, {
+    reason: "Consulta de stock en tiempo real",
+    mode: "soft",
+  })
+
+  const baseText =
+    "Normalmente puede haber tartas en tienda para compra directa hasta agotar existencias, pero no puedo confirmar las existencias exactas en tiempo real. Si quieres asegurar una tarta, lo mejor es reservarla con antelación."
+
+  if (channel === "web") {
+    return {
+      text: `${baseText} Si quieres confirmar qué queda hoy, te paso con una persona del equipo.`,
+      handoff: escalation.handoff,
+    }
+  }
+
+  return {
+    text: `${baseText} Si quieres confirmar qué queda hoy, te atiende una persona del equipo por WhatsApp aquí: ${HUMAN_SUPPORT_WHATSAPP_LINK} o llama al ${HUMAN_SUPPORT_PHONE_E164}.`,
+  }
 }
 
 function missingFieldsText(state: OrderState) {
@@ -352,12 +403,21 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
     state.phone = messagePhone
   }
 
+  if (hasGreetingIntent(message)) {
+    return saveAndReply(userId, WELCOME_MESSAGE)
+  }
+
   if (hasScheduleIntent(message)) {
     return saveAndReply(userId, `${STORE_HOURS_TEXT}\n${POLICY_TEXT}`)
   }
 
   if (hasAllergensIntent(message)) {
     return saveAndReply(userId, buildIngredientsReply(message))
+  }
+
+  if (hasCurrentStockIntent(message)) {
+    const stockReply = await buildCurrentStockReply(userId, channel)
+    return saveAndReply(userId, stockReply.text, undefined, stockReply.handoff)
   }
 
   if (hasFlavorsIntent(message) && !hasOrderIntent(message)) {
