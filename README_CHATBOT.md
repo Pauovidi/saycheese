@@ -14,6 +14,8 @@
 - `WHATSAPP_VERIFY_TOKEN`
 - `WHATSAPP_TEMPLATE_REMINDER_NAME` (ej: `order_reminder_24h`)
 - `WHATSAPP_TEMPLATE_LANG` (ej: `es_ES`)
+- `TWILIO_AUTH_TOKEN` (opcional, para validar firma del webhook)
+- `TWILIO_VALIDATE_SIGNATURE` (opcional, usar `true` para exigir firma válida)
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - `SUPABASE_SERVICE_ROLE_KEY`
@@ -24,7 +26,15 @@
 - `POST /api/chat`: chat web con motor único y memoria persistente.
 - `GET /api/whatsapp/webhook`: verificación Meta (`hub.verify_token` + `hub.challenge`).
 - `POST /api/whatsapp/webhook`: recibe mensaje, reutiliza `handleMessage`, responde por Graph API.
+- `POST /api/twilio/whatsapp`: webhook inbound de Twilio WhatsApp (`application/x-www-form-urlencoded`) y respuesta TwiML.
 - `GET /api/cron/send-reminders`: envío de recordatorios por plantilla WhatsApp, protegido por `CRON_SECRET`.
+
+## Integraciones WhatsApp
+
+- Meta Cloud API usa `/api/whatsapp/webhook`.
+- Twilio WhatsApp usa `/api/twilio/whatsapp`.
+- El endpoint de Twilio responde TwiML y no intenta parsear JSON.
+- La validación de firma de Twilio queda preparada y solo se exige si `TWILIO_VALIDATE_SIGNATURE=true`.
 
 ## Memoria persistente
 
