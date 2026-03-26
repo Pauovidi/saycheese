@@ -16,9 +16,13 @@ import {
 } from "@/lib/chatbot/memory"
 import { cancelChatOrder, createChatOrder } from "@/lib/chatbot/orders"
 import {
+  detectAllergenFocus,
   extractAllergensAndIngredients,
   findProductBySlugOrFlavor,
+  getProductFoodInfo,
   listFlavorsAndSizes,
+  listFlavorMatchesForAllergen,
+  productMatchesAllergenFocus,
 } from "@/lib/chatbot/products"
 import { DEFAULT_BOT_WHATSAPP_LINK, normalizeWhatsAppLink } from "@/lib/whatsapp"
 
@@ -201,7 +205,7 @@ function hasFlavorsIntent(text: string) {
 }
 
 function hasAllergensIntent(text: string) {
-  return /alergen|ingrediente|contiene|lleva/i.test(normalize(text))
+  return /alergen|ingrediente|contiene|lleva|gluten|lactosa|lacteos|lácteos|frutos secos|frutos de cascara|frutos de cáscara|huevo|soja/i.test(normalize(text))
 }
 
 function hasOrderIntent(text: string) {
@@ -241,17 +245,81 @@ function buildFlavorsReply() {
   return `Siempre trabajamos con 2 tamaños: Tarta y Cajita.\n${lines.join("\n")}\n${POLICY_TEXT}`
 }
 
+function formatSpanishList(items: string[]) {
+  if (!items.length) return ""
+  if (items.length === 1) return items[0]
+  if (items.length === 2) return `${items[0]} y ${items[1]}`
+  return `${items.slice(0, -1).join(", ")} y ${items.at(-1)}`
+}
+
+function formatCatalogLabel(format?: "tarta" | "cajita") {
+  if (format === "cajita") return "cajitas"
+  if (format === "tarta") return "tartas"
+  return "variedades"
+}
+
 function buildIngredientsReply(message: string) {
-  const product = detectProductMention(message)
-  if (!product) {
-    return "Dime qué sabor quieres revisar y te paso ingredientes y alérgenos."
+  const normalizedMessage = normalize(message)
+  const wantsIngredients = /\bingrediente/.test(normalizedMessage)
+  const productInfo = getProductFoodInfo(message)
+  const allergenFocus = detectAllergenFocus(message)
+
+  if (productInfo) {
+    const allergens = productInfo.allergens
+    console.info("[chatbot] allergen lookup", {
+      requestedProduct: productInfo.matchedProduct.slug,
+      sourceProduct: productInfo.sourceProduct.slug,
+      allergens,
+    })
+
+    if (!allergens.length) {
+      return `No veo alérgenos informados para ${productInfo.matchedProduct.name}; si quieres, te paso la información exacta de tienda.`
+    }
+
+    const allergensText = formatSpanishList(allergens)
+
+    if (allergenFocus) {
+      const containsFocus = productMatchesAllergenFocus(allergens, allergenFocus.terms)
+      if (containsFocus) {
+        return `Para ${productInfo.matchedProduct.name}, sí veo ${allergenFocus.label}. En la ficha figura: ${allergensText}.`
+      }
+
+      return `Para ${productInfo.matchedProduct.name}, no veo ${allergenFocus.label} informado. En la ficha figura: ${allergensText}.`
+    }
+
+    if (wantsIngredients) {
+      const ingredientsText = productInfo.ingredients.length ? formatSpanishList(productInfo.ingredients) : "no lo veo en la ficha"
+      return `Para ${productInfo.matchedProduct.name}: ingredientes ${ingredientsText}. Alérgenos ${allergensText}.`
+    }
+
+    return `Para ${productInfo.matchedProduct.name}, los alérgenos informados son: ${allergensText}.`
   }
 
-  const detail = extractAllergensAndIngredients(product.fullDescription ?? product.shortDescription)
-  const allergens = detail.allergens.length ? detail.allergens.join(", ") : "no lo veo en la ficha"
-  const ingredients = detail.ingredients.length ? detail.ingredients.join(", ") : "no lo veo en la ficha"
+  const allergenMatches = listFlavorMatchesForAllergen(message)
+  if (allergenMatches) {
+    console.info("[chatbot] allergen list lookup", {
+      focus: allergenMatches.label,
+      matches: allergenMatches.matches.map((entry) => entry.name),
+      missingInfo: allergenMatches.missingInfo,
+    })
 
-  return `Para ${product.name}: ingredientes ${ingredients}. Alérgenos ${allergens}.`
+    if (!allergenMatches.matches.length) {
+      if (allergenMatches.missingInfo.length) {
+        return `No veo alérgenos informados que me permitan confirmar ${allergenMatches.label} con seguridad. Si quieres, te paso la información exacta de tienda.`
+      }
+
+      return `No veo ${allergenMatches.label} informado en nuestras tartas.`
+    }
+
+    const matchesText = formatSpanishList(allergenMatches.matches.map((entry) => entry.name))
+    const missingInfoText = allergenMatches.missingInfo.length
+      ? ` No veo alérgenos informados para ${formatSpanishList(allergenMatches.missingInfo)}.`
+      : ""
+
+    return `Con la ficha actual, estas ${formatCatalogLabel(allergenMatches.requestedFormat)} llevan ${allergenMatches.label}: ${matchesText}.${missingInfoText}`
+  }
+
+  return "Dime qué sabor quieres revisar y te paso los alérgenos exactos."
 }
 
 async function buildCurrentStockReply(userId: string, channel: "web" | "whatsapp") {
@@ -610,26 +678,25 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
     }
 
     if (name === "get_product_info") {
-      const product = findProductBySlugOrFlavor(String(args.query ?? ""))
-      if (!product) {
+      const foodInfo = getProductFoodInfo(String(args.query ?? ""))
+      if (!foodInfo) {
         safetyEscalate = true
         return { found: false, message: "No encontré ese producto." }
       }
 
-      const detail = extractAllergensAndIngredients(product.fullDescription ?? product.shortDescription)
-      if (!detail.allergens.length) {
+      if (!foodInfo.allergens.length) {
         safetyEscalate = true
       }
 
       return {
         found: true,
         product: {
-          name: product.name,
-          format: product.format,
-          description: product.fullDescription ?? product.shortDescription,
-          allergens: detail.allergens,
-          ingredients: detail.ingredients,
-          fallback: detail.allergens.length || detail.ingredients.length ? undefined : "no lo veo en la ficha",
+          name: foodInfo.matchedProduct.name,
+          format: foodInfo.matchedProduct.format,
+          description: foodInfo.sourceProduct.description ?? foodInfo.sourceProduct.fullDescription ?? foodInfo.sourceProduct.shortDescription,
+          allergens: foodInfo.allergens,
+          ingredients: foodInfo.ingredients,
+          fallback: foodInfo.allergens.length || foodInfo.ingredients.length ? undefined : "no lo veo en la ficha",
         },
       }
     }
