@@ -16,6 +16,12 @@
 - `WHATSAPP_TEMPLATE_LANG` (ej: `es_ES`)
 - `TWILIO_AUTH_TOKEN` (opcional, para validar firma del webhook)
 - `TWILIO_VALIDATE_SIGNATURE` (opcional, usar `true` para exigir firma válida)
+- `YCLOUD_API_KEY` (nuevo, para envío saliente por API de YCloud)
+- `YCLOUD_PHONE_NUMBER` (nuevo, número de negocio YCloud en formato E.164, se envía como `from`)
+- `YCLOUD_WEBHOOK_SECRET` (opcional, para validar `YCloud-Signature`)
+- `YCLOUD_VALIDATE_SIGNATURE` (opcional, usar `true` para exigir firma válida)
+- `YCLOUD_SIGNATURE_TOLERANCE_SECONDS` (opcional, default `300`)
+- `YCLOUD_API_BASE_URL` (opcional, default `https://api.ycloud.com/v2`)
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - `SUPABASE_SERVICE_ROLE_KEY`
@@ -27,14 +33,96 @@
 - `GET /api/whatsapp/webhook`: verificación Meta (`hub.verify_token` + `hub.challenge`).
 - `POST /api/whatsapp/webhook`: recibe mensaje, reutiliza `handleMessage`, responde por Graph API.
 - `POST /api/twilio/whatsapp`: webhook inbound de Twilio WhatsApp (`application/x-www-form-urlencoded`), reutiliza `handleMessage` y responde TwiML.
+- `POST /api/ycloud/whatsapp`: webhook inbound de YCloud WhatsApp (`application/json`), reutiliza `handleMessage`, responde `200`/JSON y envía la contestación por la API saliente de YCloud.
 - `GET /api/cron/send-reminders`: envío de recordatorios por plantilla WhatsApp, protegido por `CRON_SECRET`.
 
 ## Integraciones WhatsApp
 
 - Meta Cloud API usa `/api/whatsapp/webhook`.
 - Twilio WhatsApp usa `/api/twilio/whatsapp`.
+- YCloud WhatsApp usa `/api/ycloud/whatsapp`.
 - El endpoint de Twilio responde TwiML, no intenta parsear JSON y reutiliza el mismo motor conversacional del chat web.
 - La validación de firma de Twilio queda preparada y solo se exige si `TWILIO_VALIDATE_SIGNATURE=true`.
+- YCloud funciona en paralelo a Twilio y reutiliza el mismo `handleMessage()` con `channel: "whatsapp"` para mantener la misma memoria/persistencia entre canales WhatsApp.
+- El webhook de YCloud espera eventos `whatsapp.inbound_message.received` con objeto `whatsappInboundMessage`; por ahora el adaptador procesa de forma explícita mensajes `type: "text"` y marca el resto como `skipped`.
+- YCloud no usa TwiML: el webhook responde `200` y el reply se envía por `POST https://api.ycloud.com/v2/whatsapp/messages/sendDirectly` con `X-API-Key`.
+- La validación de firma de YCloud queda preparada con `YCloud-Signature: t=...,s=...` usando HMAC-SHA256 sobre `${timestamp}.${rawBody}`; solo se exige si `YCLOUD_VALIDATE_SIGNATURE=true`.
+
+## Twilio vs YCloud
+
+- Twilio inbound: `application/x-www-form-urlencoded`, ruta `/api/twilio/whatsapp`, firma `x-twilio-signature`, respuesta TwiML.
+- YCloud inbound: `application/json`, ruta `/api/ycloud/whatsapp`, firma `YCloud-Signature`, respuesta JSON + envío saliente por API.
+- Ambas integraciones comparten exactamente el motor conversacional `lib/chatbot/engine.ts -> handleMessage()`.
+- No se ha tocado el webhook actual de Meta ni la ruta de Twilio.
+
+## Payload asumido de YCloud
+
+Basado en la documentación oficial de YCloud, el adaptador actual espera este patrón mínimo:
+
+```json
+{
+  "id": "evt_123",
+  "type": "whatsapp.inbound_message.received",
+  "apiVersion": "v2",
+  "createTime": "2023-02-22T12:00:00.000Z",
+  "whatsappInboundMessage": {
+    "id": "63f71fb8741c165b434292fb",
+    "wamid": "wamid.HBgNOD...",
+    "from": "+34123456789",
+    "to": "+34987654321",
+    "type": "text",
+    "text": {
+      "body": "Hola"
+    }
+  }
+}
+```
+
+Campos que se usan:
+- texto: `whatsappInboundMessage.text.body`
+- remitente: `whatsappInboundMessage.from`
+- id de mensaje: `whatsappInboundMessage.wamid` o `whatsappInboundMessage.id`
+
+Eventos no soportados por ahora:
+- `request_welcome`
+- `order`
+- `system`
+- otros tipos distintos de `text`
+
+Todos ellos responden `200` con `skipped: true` para no romper la entrega del webhook.
+
+## Ejemplo de prueba local YCloud
+
+```bash
+curl -X POST http://localhost:3000/api/ycloud/whatsapp \
+  -H "Content-Type: application/json" \
+  -d '{
+    "id": "evt_local_text_001",
+    "type": "whatsapp.inbound_message.received",
+    "apiVersion": "v2",
+    "createTime": "2026-03-26T10:00:00.000Z",
+    "whatsappInboundMessage": {
+      "id": "inb_local_001",
+      "wamid": "wamid.local.001",
+      "wabaId": "waba_local",
+      "from": "+34600111222",
+      "customerProfile": {
+        "name": "Prueba"
+      },
+      "to": "+34900111222",
+      "sendTime": "2026-03-26T10:00:00.000Z",
+      "type": "text",
+      "text": {
+        "body": "Hola, quiero una tarta de pistacho para el sábado"
+      }
+    }
+  }'
+```
+
+Si quieres probar firma HMAC:
+- activa `YCLOUD_VALIDATE_SIGNATURE=true`
+- usa `YCLOUD_WEBHOOK_SECRET`
+- firma el `raw body` como `${timestamp}.${rawBody}` y envía `YCloud-Signature: t=<unix>,s=<hex>`
 
 ## Memoria persistente
 
