@@ -6,7 +6,11 @@
     "dev": "next dev",
     "build": "next build --webpack",
     "start": "next start",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "diagnostics:whatsapp:backend": "tsx scripts/whatsapp-diagnostics/test_backend.ts",
+    "diagnostics:whatsapp:twilio-logs": "tsx scripts/whatsapp-diagnostics/test_twilio_logs.ts",
+    "diagnostics:whatsapp:monitor": "tsx scripts/whatsapp-diagnostics/monitor_whatsapp.ts",
+    "diagnostics:whatsapp:report": "tsx scripts/whatsapp-diagnostics/report.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",
@@ -73,9 +77,9 @@
     "eslint-config-next": "16.1.6",
     "postcss": "^8.5",
     "tailwindcss": "^4.2.0",
+    "tsx": "^4.21.0",
     "tw-animate-css": "1.3.3",
     "typescript": "5.7.3"
   },
   "packageManager": "pnpm@9.15.9"
 }
-

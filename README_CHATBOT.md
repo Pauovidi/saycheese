@@ -16,6 +16,13 @@
 - `WHATSAPP_TEMPLATE_LANG` (ej: `es_ES`)
 - `TWILIO_AUTH_TOKEN` (opcional, para validar firma del webhook)
 - `TWILIO_VALIDATE_SIGNATURE` (opcional, usar `true` para exigir firma válida)
+- `WHATSAPP_DIAGNOSTICS_BASE_URL` (opcional, default `http://localhost:3000`, usado por `test_backend.ts`)
+- `WHATSAPP_TEST_FROM` / `WHATSAPP_TEST_TO` / `WHATSAPP_TEST_BODY` (opcionales, payload simulado para `test_backend.ts`)
+- `TWILIO_TEST_SIGNATURE_AUTH_TOKEN` (opcional, firma de prueba para `test_backend.ts`; si no está, reutiliza `TWILIO_AUTH_TOKEN`)
+- `TWILIO_ACCOUNT_SID` (necesaria para `test_twilio_logs.ts` y `monitor_whatsapp.ts`)
+- `TWILIO_MONITOR_FROM` / `TWILIO_MONITOR_TO` (necesarias para `monitor_whatsapp.ts`)
+- `WHATSAPP_MONITOR_MESSAGE` (opcional, default `hola`)
+- `WHATSAPP_MONITOR_INTERVAL_MS` (opcional, default `120000`)
 - `YCLOUD_API_KEY` (nuevo, para envío saliente por API de YCloud)
 - `YCLOUD_PHONE_NUMBER` (nuevo, número de negocio YCloud en formato E.164, se envía como `from`)
 - `YCLOUD_WEBHOOK_SECRET` (opcional, para validar `YCloud-Signature`)
@@ -43,6 +50,7 @@
 - YCloud WhatsApp usa `/api/ycloud/whatsapp`.
 - El endpoint de Twilio responde TwiML, no intenta parsear JSON y reutiliza el mismo motor conversacional del chat web.
 - La validación de firma de Twilio queda preparada y solo se exige si `TWILIO_VALIDATE_SIGNATURE=true`.
+- El webhook de Twilio emite logging estructurado JSON con eventos `inbound_received`, `reply_generated`, `signature_missing`, `signature_invalid` y `unexpected_error`, incluyendo `processingTimeMs`.
 - YCloud funciona en paralelo a Twilio y reutiliza el mismo `handleMessage()` con `channel: "whatsapp"` para mantener la misma memoria/persistencia entre canales WhatsApp.
 - El webhook de YCloud espera eventos `whatsapp.inbound_message.received` con objeto `whatsappInboundMessage`; por ahora el adaptador procesa de forma explícita mensajes `type: "text"` y marca el resto como `skipped`.
 - YCloud no usa TwiML: el webhook responde `200` y el reply se envía por `POST https://api.ycloud.com/v2/whatsapp/messages/sendDirectly` con `X-API-Key`.
@@ -169,4 +177,34 @@ Se añadió `vercel.json` para ejecutar cada 15 minutos:
 - path: `/api/cron/send-reminders?secret=CRON_SECRET`
 
 Recomendación: en producción usar header `x-cron-secret` desde el scheduler si está disponible.
+
+## Diagnóstico y monitorización WhatsApp
+
+Se han añadido scripts de diagnóstico sin tocar `handleMessage()`, sin cambiar rutas y sin alterar la lógica del chatbot:
+
+- `pnpm diagnostics:whatsapp:backend`
+  - Hace `POST` a `/api/twilio/whatsapp`
+  - Simula inbound con `Body`, `From`, `To`
+  - Verifica `status 200`, `Content-Type` XML, TwiML básico válido y tiempo de respuesta
+  - Exporta `diagnostics-output/whatsapp/test-backend.latest.json`
+
+- `pnpm diagnostics:whatsapp:twilio-logs`
+  - Consulta Twilio REST API
+  - Extrae `direction`, `status`, `error_code`
+  - Agrupa por conversación (`from <-> to`)
+  - Exporta `diagnostics-output/whatsapp/twilio-logs.latest.json`
+
+- `pnpm diagnostics:whatsapp:monitor`
+  - Envía `"hola"` por Twilio API cada 2 minutos
+  - Registra `timestamp`, `success/fail`, `error_code`, `status`, `sid`, `response_time_ms`
+  - Exporta/acumula en `diagnostics-output/whatsapp/monitor-results.json`
+  - Para una sola ejecución: `pnpm diagnostics:whatsapp:monitor -- --once`
+
+- `pnpm diagnostics:whatsapp:report`
+  - Analiza `monitor-results.json`
+  - Calcula tasa de éxito, errores por tipo y ventanas de fallo
+  - Exporta `diagnostics-output/whatsapp/monitor-report.latest.json`
+  - También acepta `--file=<ruta>` para analizar otro JSON
+
+Todos los ficheros generados quedan ignorados por Git en `diagnostics-output/`.
 

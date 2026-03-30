@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 
 import { handleMessage } from "@/lib/chatbot/engine"
+import { serializeErrorForLog, writeStructuredLog } from "@/lib/diagnostics/structured-log"
 import { validateTwilioSignature } from "@/lib/twilio/signature"
 import { createTwilioMessagingResponse, createTwilioXmlResponse } from "@/lib/twilio/twiml"
 
@@ -35,7 +36,13 @@ function shouldEnforceTwilioSignature() {
   return process.env.TWILIO_VALIDATE_SIGNATURE === "true"
 }
 
+function getProcessingTimeMs(startedAt: number) {
+  return Number((performance.now() - startedAt).toFixed(2))
+}
+
 export async function POST(request: Request) {
+  const startedAt = performance.now()
+
   try {
     const contentType = request.headers.get("content-type") ?? ""
     const formData = await request.formData()
@@ -51,10 +58,11 @@ export async function POST(request: Request) {
       const authToken = process.env.TWILIO_AUTH_TOKEN
 
       if (!authToken || !twilioSignature) {
-        console.warn("[twilio-whatsapp] missing signature data", {
+        writeStructuredLog("warn", "twilio-whatsapp-webhook", "signature_missing", {
           hasAuthToken: Boolean(authToken),
           hasSignature: Boolean(twilioSignature),
           messageSid: messageSid || null,
+          processingTimeMs: getProcessingTimeMs(startedAt),
         })
 
         return new NextResponse("forbidden", { status: 403 })
@@ -68,16 +76,17 @@ export async function POST(request: Request) {
       })
 
       if (!isValid) {
-        console.warn("[twilio-whatsapp] invalid signature", {
+        writeStructuredLog("warn", "twilio-whatsapp-webhook", "signature_invalid", {
           messageSid: messageSid || null,
           from: maskPhone(from),
+          processingTimeMs: getProcessingTimeMs(startedAt),
         })
 
         return new NextResponse("forbidden", { status: 403 })
       }
     }
 
-    console.info("[twilio-whatsapp] inbound message", {
+    writeStructuredLog("info", "twilio-whatsapp-webhook", "inbound_received", {
       messageSid: messageSid || null,
       userId: normalizedUserId || null,
       from: maskPhone(from),
@@ -87,21 +96,34 @@ export async function POST(request: Request) {
       contentType,
       signaturePresent: Boolean(twilioSignature),
       signatureEnforced: shouldEnforceTwilioSignature(),
+      processingTimeMs: getProcessingTimeMs(startedAt),
     })
 
     if (!normalizedUserId) {
-      console.warn("[twilio-whatsapp] missing normalized user id", {
+      writeStructuredLog("warn", "twilio-whatsapp-webhook", "missing_normalized_user_id", {
         messageSid: messageSid || null,
         from: maskPhone(from),
+        processingTimeMs: getProcessingTimeMs(startedAt),
+      })
+      writeStructuredLog("info", "twilio-whatsapp-webhook", "reply_generated", {
+        messageSid: messageSid || null,
+        replyLength: ERROR_FALLBACK_REPLY.length,
+        replyPreview: buildReplyPreview(ERROR_FALLBACK_REPLY),
+        replyType: "missing_user_id_fallback",
+        processingTimeMs: getProcessingTimeMs(startedAt),
       })
 
       return createTwilioXmlResponse(createTwilioMessagingResponse(ERROR_FALLBACK_REPLY))
     }
 
     if (!body.trim()) {
-      console.info("[twilio-whatsapp] empty body", {
+      writeStructuredLog("info", "twilio-whatsapp-webhook", "reply_generated", {
         messageSid: messageSid || null,
         userId: normalizedUserId,
+        replyLength: EMPTY_MESSAGE_REPLY.length,
+        replyPreview: buildReplyPreview(EMPTY_MESSAGE_REPLY),
+        replyType: "empty_body_fallback",
+        processingTimeMs: getProcessingTimeMs(startedAt),
       })
 
       return createTwilioXmlResponse(createTwilioMessagingResponse(EMPTY_MESSAGE_REPLY))
@@ -114,17 +136,27 @@ export async function POST(request: Request) {
       channel: "whatsapp",
     })
 
-    console.info("[twilio-whatsapp] generated reply", {
+    writeStructuredLog("info", "twilio-whatsapp-webhook", "reply_generated", {
       messageSid: messageSid || null,
       userId: normalizedUserId,
       replyLength: result.text.length,
       replyPreview: buildReplyPreview(result.text),
       handoff: Boolean(result.handoff),
+      processingTimeMs: getProcessingTimeMs(startedAt),
     })
 
     return createTwilioXmlResponse(createTwilioMessagingResponse(result.text))
   } catch (error) {
-    console.error("[twilio-whatsapp] unexpected error", error)
+    writeStructuredLog("error", "twilio-whatsapp-webhook", "unexpected_error", {
+      processingTimeMs: getProcessingTimeMs(startedAt),
+      error: serializeErrorForLog(error),
+    })
+    writeStructuredLog("info", "twilio-whatsapp-webhook", "reply_generated", {
+      replyLength: ERROR_FALLBACK_REPLY.length,
+      replyPreview: buildReplyPreview(ERROR_FALLBACK_REPLY),
+      replyType: "error_fallback",
+      processingTimeMs: getProcessingTimeMs(startedAt),
+    })
 
     return createTwilioXmlResponse(createTwilioMessagingResponse(ERROR_FALLBACK_REPLY))
   }
