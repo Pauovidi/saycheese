@@ -1,4 +1,8 @@
 const YCLOUD_API_BASE_URL = "https://api.ycloud.com/v2"
+const YCLOUD_INBOUND_EVENT_TYPES = new Set([
+  "whatsapp.inbound.message",
+  "whatsapp.inbound_message.received",
+])
 
 type RecordValue = Record<string, unknown>
 
@@ -76,7 +80,7 @@ export function parseYCloudWhatsappWebhook(rawBody: string): ParsedYCloudWebhook
     return { kind: "invalid", reason: "missing_event_type" }
   }
 
-  if (eventType !== "whatsapp.inbound_message.received") {
+  if (!YCLOUD_INBOUND_EVENT_TYPES.has(eventType)) {
     return {
       kind: "unsupported",
       reason: "event_type_not_supported",
@@ -110,10 +114,6 @@ export function parseYCloudWhatsappWebhook(rawBody: string): ParsedYCloudWebhook
 
   if (!from) {
     return { kind: "invalid", reason: "missing_from" }
-  }
-
-  if (!text) {
-    return { kind: "invalid", reason: "missing_text_body" }
   }
 
   return {

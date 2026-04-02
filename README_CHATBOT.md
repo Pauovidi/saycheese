@@ -52,7 +52,7 @@
 - La validación de firma de Twilio queda preparada y solo se exige si `TWILIO_VALIDATE_SIGNATURE=true`.
 - El webhook de Twilio emite logging estructurado JSON con eventos `inbound_received`, `reply_generated`, `signature_missing`, `signature_invalid` y `unexpected_error`, incluyendo `processingTimeMs`.
 - YCloud funciona en paralelo a Twilio y reutiliza el mismo `handleMessage()` con `channel: "whatsapp"` para mantener la misma memoria/persistencia entre canales WhatsApp.
-- El webhook de YCloud espera eventos `whatsapp.inbound_message.received` con objeto `whatsappInboundMessage`; por ahora el adaptador procesa de forma explícita mensajes `type: "text"` y marca el resto como `skipped`.
+- El webhook de YCloud acepta eventos `whatsapp.inbound.message` (documentación actual) y mantiene compatibilidad con `whatsapp.inbound_message.received` (payload asumido inicialmente en el repo), ambos con objeto `whatsappInboundMessage`; por ahora el adaptador procesa de forma explícita mensajes `type: "text"` y marca el resto como `skipped`.
 - YCloud no usa TwiML: el webhook responde `200` y el reply se envía por `POST https://api.ycloud.com/v2/whatsapp/messages/sendDirectly` con `X-API-Key`.
 - La validación de firma de YCloud queda preparada con `YCloud-Signature: t=...,s=...` usando HMAC-SHA256 sobre `${timestamp}.${rawBody}`; solo se exige si `YCLOUD_VALIDATE_SIGNATURE=true`.
 
@@ -70,7 +70,7 @@ Basado en la documentación oficial de YCloud, el adaptador actual espera este p
 ```json
 {
   "id": "evt_123",
-  "type": "whatsapp.inbound_message.received",
+  "type": "whatsapp.inbound.message",
   "apiVersion": "v2",
   "createTime": "2023-02-22T12:00:00.000Z",
   "whatsappInboundMessage": {
@@ -106,7 +106,7 @@ curl -X POST http://localhost:3000/api/ycloud/whatsapp \
   -H "Content-Type: application/json" \
   -d '{
     "id": "evt_local_text_001",
-    "type": "whatsapp.inbound_message.received",
+    "type": "whatsapp.inbound.message",
     "apiVersion": "v2",
     "createTime": "2026-03-26T10:00:00.000Z",
     "whatsappInboundMessage": {
