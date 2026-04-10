@@ -2,7 +2,13 @@ import "server-only"
 
 import OpenAI from "openai"
 
-import { earliestPickupDateISO, formatDateEs, parseSpanishDesiredDate } from "@/lib/chatbot/dates"
+import {
+  earliestPickupDateISO,
+  formatDateEs,
+  isClosedPickupDate,
+  nextOpenPickupDateISO,
+  parseSpanishDesiredDate,
+} from "@/lib/chatbot/dates"
 import {
   clearPauseState,
   getOrCreateUser,
@@ -274,6 +280,23 @@ function hasOrderIntent(text: string) {
   return /\b(quiero|pedido|encargar|reservar|comprar)\b|\bpara\s/i.test(normalize(text))
 }
 
+function hasExistingOrderQueryIntent(text: string) {
+  const normalized = normalize(text)
+  const patterns = [
+    /\bque\s+pasa\s+con\s+mi\s+(pedido|tarta)\b/,
+    /\bmi\s+(pedido|tarta)\b/,
+    /\bdime\s+mi\s+(pedido|tarta)\b/,
+    /\bquiero\s+saber\s+mi\s+(pedido|tarta)\b/,
+    /\bpara\s+cuando\s+lo\s+tengo\b/,
+    /\besta\s+confirmad[oa]\b/,
+    /\best[aá]\s+confirmad[oa]\b/,
+    /\ben\s+que\s+estado\s+esta\b/,
+    /\bcomo\s+va\s+mi\s+(pedido|tarta)\b/,
+  ]
+
+  return patterns.some((pattern) => pattern.test(normalized))
+}
+
 function hasCurrentStockIntent(text: string) {
   const normalized = normalize(text)
 
@@ -402,6 +425,18 @@ async function buildCurrentStockReply(userId: string, channel: "web" | "whatsapp
 
   return {
     text: `${baseText} Si quieres confirmar qué queda hoy, te atiende una persona del equipo por WhatsApp aquí: ${HUMAN_SUPPORT_WHATSAPP_LINK} o llama al ${HUMAN_SUPPORT_PHONE_E164}.`,
+  }
+}
+
+async function buildExistingOrderHandoffReply(userId: string, channel: "web" | "whatsapp") {
+  const escalation = await activateHandoffWithMode(userId, channel, {
+    reason: "Consulta de pedido existente",
+    mode: "soft",
+  })
+
+  return {
+    text: "Para revisar tu pedido con seguridad, te atiende una persona del equipo. Si quieres, indícame tu nombre y el día de recogida.",
+    handoff: escalation.handoff,
   }
 }
 
@@ -534,6 +569,11 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
     state.phone = messagePhone
   }
 
+  if (hasExistingOrderQueryIntent(message)) {
+    const handoffReply = await buildExistingOrderHandoffReply(userId, channel)
+    return saveAndReply(userId, handoffReply.text, { inOrderFlow: false }, handoffReply.handoff)
+  }
+
   if (hasGreetingIntent(message)) {
     return saveAndReply(userId, WELCOME_MESSAGE)
   }
@@ -590,7 +630,7 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
     if (parsedDate?.kind === "date") {
       state.desiredDate = parsedDate.iso
 
-      const earliest = earliestPickupDateISO(now, LEAD_DAYS, SHOP_TZ)
+      const earliest = nextOpenPickupDateISO(earliestPickupDateISO(now, LEAD_DAYS, SHOP_TZ))
       if (parsedDate.iso < earliest) {
         state.suggestedDate = earliest
         state.finalDate = undefined
@@ -599,6 +639,19 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
         return saveAndReply(
           userId,
           `Para ${formatDateEs(parsedDate.iso, SHOP_TZ)} no llegamos; primera disponible ${formatDateEs(earliest, SHOP_TZ)}. ¿Te va bien? ${STORE_HOURS_TEXT} Necesito tu teléfono para confirmar el pedido.`,
+          state
+        )
+      }
+
+      if (isClosedPickupDate(parsedDate.iso)) {
+        const nextOpen = nextOpenPickupDateISO(parsedDate.iso)
+        state.suggestedDate = nextOpen
+        state.finalDate = undefined
+        state.awaitingConfirm = true
+
+        return saveAndReply(
+          userId,
+          `Para ${formatDateEs(parsedDate.iso, SHOP_TZ)} la tienda está cerrada. La primera fecha disponible sería ${formatDateEs(nextOpen, SHOP_TZ)}. ¿Te va bien o prefieres otra fecha?`,
           state
         )
       }
