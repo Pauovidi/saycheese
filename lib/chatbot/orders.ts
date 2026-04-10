@@ -12,7 +12,7 @@ const LEAD_DAYS = Number.isFinite(LEAD_DAYS_RAW) && LEAD_DAYS_RAW > 0 ? LEAD_DAY
 const SHOP_TZ = process.env.SHOP_TZ ?? "Europe/Madrid"
 
 const createOrderInputSchema = z.object({
-  customer_name: z.string().min(1).optional(),
+  customer_name: z.string().trim().min(1),
   customer_email: z.string().email().optional(),
   phone: z.string().min(6),
   delivery_date: z.string().date().optional(),
@@ -33,7 +33,20 @@ function normalizePhone(value: string) {
 }
 
 export async function createChatOrder(input: unknown) {
-  const payload = createOrderInputSchema.parse(input)
+  const parsed = createOrderInputSchema.safeParse(input)
+
+  if (!parsed.success) {
+    const missingName = parsed.error.issues.some((issue) => issue.path[0] === "customer_name")
+    return {
+      ok: false as const,
+      error: missingName
+        ? "Antes de confirmar el pedido necesito el nombre del cliente."
+        : "No pude validar los datos del pedido.",
+      shouldHandoff: false,
+    }
+  }
+
+  const payload = parsed.data
   const createdAt = new Date()
   const earliest = earliestPickupDateISO(createdAt, LEAD_DAYS, SHOP_TZ)
 

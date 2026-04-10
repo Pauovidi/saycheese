@@ -12,8 +12,8 @@ import { Textarea } from "@/components/ui/textarea"
 import { useCart } from "@/src/context/cart-context"
 
 const checkoutSchema = z.object({
-  customer_name: z.string().optional(),
-  customer_email: z.string().email("Email inválido"),
+  customer_name: z.string().trim().min(1, "El nombre es obligatorio"),
+  customer_email: z.string().trim().email("Email inválido").optional(),
   phone: z.string().min(6, "Teléfono inválido"),
   delivery_date: z.string().date("Fecha de entrega inválida").optional(),
   notes: z.string().optional(),
@@ -55,8 +55,8 @@ export function CheckoutSummary() {
 
   async function handleConfirmOrder() {
     const parsed = checkoutSchema.safeParse({
-      customer_name: customerName || undefined,
-      customer_email: customerEmail,
+      customer_name: customerName,
+      customer_email: customerEmail || undefined,
       phone,
       delivery_date: deliveryDate || undefined,
       notes: notes || undefined,
@@ -92,7 +92,9 @@ export function CheckoutSummary() {
       toast.success(
         warningEmail
           ? `Pedido creado para ${finalDate}. No se pudo enviar el email de confirmación.`
-          : `Pedido creado para ${finalDate}. Te enviamos un email de confirmación.`
+          : customerEmail
+            ? `Pedido creado para ${finalDate}. Te enviamos un email de confirmación.`
+            : `Pedido creado para ${finalDate}.`
       )
       router.push("/")
       router.refresh()
@@ -108,20 +110,20 @@ export function CheckoutSummary() {
     <div className="flex flex-col gap-6">
       <div className="grid gap-4 rounded-md border border-border p-4 md:grid-cols-2">
         <div className="space-y-2">
-          <Label htmlFor="customer-name">Nombre (opcional)</Label>
+          <Label htmlFor="customer-name">Nombre *</Label>
           <Input
             id="customer-name"
+            required
             value={customerName}
             onChange={(e) => setCustomerName(e.target.value)}
             placeholder="Tu nombre"
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="customer-email">Email *</Label>
+          <Label htmlFor="customer-email">Email (opcional)</Label>
           <Input
             id="customer-email"
             type="email"
-            required
             value={customerEmail}
             onChange={(e) => setCustomerEmail(e.target.value)}
             placeholder="tu@email.com"

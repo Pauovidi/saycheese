@@ -6,8 +6,8 @@ import { addDaysToToday, computeReminderAt } from "@/lib/chatbot/reminders"
 import { getAdminClient, getAdminUid } from "@/lib/supabase/admin"
 
 const orderPayloadSchema = z.object({
-  customer_name: z.string().min(1).optional(),
-  customer_email: z.string().email(),
+  customer_name: z.string().trim().min(1),
+  customer_email: z.string().trim().email().optional(),
   phone: z.string().min(6),
   delivery_date: z.string().date().optional().nullable(),
   notes: z.string().optional(),
@@ -40,7 +40,7 @@ export async function POST(request: Request) {
         delivery_date: deliveryDateFinal,
         status: "pending",
         customer_name: payload.customer_name,
-        customer_email: payload.customer_email,
+        customer_email: payload.customer_email ?? null,
         phone: payload.phone,
         notes: payload.notes,
         reminder_at: reminderAt,
@@ -68,18 +68,20 @@ export async function POST(request: Request) {
     }
 
     let warningEmail = false
-    try {
-      await sendOrderConfirmation({
-        to: payload.customer_email,
-        orderId: order.id,
-        deliveryDate: deliveryDateFinal,
-        items: payload.items,
-        name: payload.customer_name,
-        phone: payload.phone,
-      })
-    } catch (mailError) {
-      warningEmail = true
-      console.error("No se pudo enviar email de confirmación", mailError)
+    if (payload.customer_email) {
+      try {
+        await sendOrderConfirmation({
+          to: payload.customer_email,
+          orderId: order.id,
+          deliveryDate: deliveryDateFinal,
+          items: payload.items,
+          name: payload.customer_name,
+          phone: payload.phone,
+        })
+      } catch (mailError) {
+        warningEmail = true
+        console.error("No se pudo enviar email de confirmación", mailError)
+      }
     }
 
     return NextResponse.json({

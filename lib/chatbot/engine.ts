@@ -51,10 +51,12 @@ type OrderState = {
   flavor?: string
   format?: "tarta" | "cajita"
   phone?: string
+  customerName?: string
   desiredDate?: string
   suggestedDate?: string
   finalDate?: string
   awaitingConfirm?: boolean
+  awaitingName?: boolean
 }
 
 const LEAD_DAYS_RAW = Number.parseInt(process.env.CHATBOT_LEAD_DAYS ?? "3", 10)
@@ -84,6 +86,7 @@ Horario oficial de tienda (no inventes ni alteres):
 ${STORE_HOURS_TEXT}
 Nunca uses "recogerte" ni "recibir" para pedidos; usa "recoger"/"recogida".
 Plazo mínimo obligatorio: ${LEAD_DAYS} días naturales.
+Nunca confirmes ni crees un pedido si falta el nombre del cliente.
 Si preguntan por disponibilidad real hoy, ahora mismo o en tienda, nunca confirmes stock exacto en tiempo real: explica que normalmente puede haber tartas para compra directa hasta agotar existencias, recomienda reservar con antelación y ofrece handoff_to_human para confirmarlo.
 Si puedes responder sin tools, responde directo y no llames tools.
 Si el usuario pide humano o hay incertidumbre crítica, usa tool handoff_to_human como recomendación blanda sin bloquear futuros mensajes.`
@@ -175,6 +178,65 @@ function isAffirmative(text: string) {
 function isNegative(text: string) {
   const normalized = normalize(text)
   return /\b(no|prefiero otro dia|otro dia|otra fecha|no me va bien)\b/.test(normalized)
+}
+
+function cleanCustomerNameCandidate(value: string) {
+  return value.replace(/^[\s,:-]+|[\s,.!?;:]+$/g, "").replace(/\s+/g, " ").trim()
+}
+
+function isLikelyCustomerName(value: string) {
+  const trimmed = cleanCustomerNameCandidate(value)
+  if (!trimmed) return false
+  if (trimmed.length < 2 || trimmed.length > 60) return false
+  if (/@/.test(trimmed) || /\d/.test(trimmed)) return false
+
+  const words = trimmed.split(/\s+/)
+  if (words.length > 4) return false
+  if (!words.every((word) => /^[\p{L}'-]+$/u.test(word))) return false
+
+  const blocked = new Set([
+    "si",
+    "sí",
+    "no",
+    "vale",
+    "ok",
+    "perfecto",
+    "pedido",
+    "tarta",
+    "cajita",
+    "hola",
+    "buenas",
+    "gracias",
+    "email",
+    "correo",
+    "telefono",
+    "teléfono",
+  ])
+
+  return !words.some((word) => blocked.has(normalize(word)))
+}
+
+function extractCustomerName(text: string) {
+  const patterns = [
+    /(?:me\s+llamo|soy)\s+(.+)/i,
+    /a\s+nombre\s+de\s+(.+)/i,
+    /^nombre\s*[:\-]?\s*(.+)$/i,
+  ]
+
+  for (const pattern of patterns) {
+    const match = text.match(pattern)
+    const candidate = cleanCustomerNameCandidate(match?.[1] ?? "")
+    if (isLikelyCustomerName(candidate)) {
+      return candidate
+    }
+  }
+
+  const directCandidate = cleanCustomerNameCandidate(text)
+  if (isLikelyCustomerName(directCandidate)) {
+    return directCandidate
+  }
+
+  return undefined
 }
 
 function detectProductMention(text: string) {
@@ -493,7 +555,7 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
     return saveAndReply(userId, buildFlavorsReply())
   }
 
-  const orderFlow = hasOrderIntent(message) || state.inOrderFlow || state.awaitingConfirm
+  const orderFlow = hasOrderIntent(message) || state.inOrderFlow || state.awaitingConfirm || state.awaitingName
   if (orderFlow) {
     state.inOrderFlow = true
 
@@ -546,8 +608,23 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
       state.awaitingConfirm = false
     }
 
+    const customerName = extractCustomerName(message)
+    if (customerName) {
+      state.customerName = customerName
+      state.awaitingName = false
+    }
+
     if (!state.finalDate) {
       return saveAndReply(userId, "¿Para qué día la necesitas?", state)
+    }
+
+    if (!state.customerName && state.flavor && state.format) {
+      state.awaitingName = true
+      return saveAndReply(
+        userId,
+        `Perfecto, la fecha sería el ${formatDateEs(state.finalDate, SHOP_TZ)}. Antes de confirmarlo necesito tu nombre.`,
+        state
+      )
     }
 
     const missing = missingFieldsText(state)
@@ -558,6 +635,7 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
     }
 
     const created = await createChatOrder({
+      customer_name: state.customerName,
       phone: state.phone,
       delivery_date: state.finalDate,
       items: [
@@ -635,7 +713,7 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
             },
           },
         },
-        required: ["phone", "items"],
+        required: ["customer_name", "phone", "items"],
         additionalProperties: false,
       },
     },
