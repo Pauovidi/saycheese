@@ -27,18 +27,31 @@ const INDEX_WEEKDAY: Record<number, string> = {
 }
 
 const MONTH_INDEX: Record<string, number> = {
+  ene: 1,
   enero: 1,
+  feb: 2,
   febrero: 2,
+  mar: 3,
   marzo: 3,
+  abr: 4,
   abril: 4,
+  may: 5,
   mayo: 5,
+  jun: 6,
   junio: 6,
+  jul: 7,
   julio: 7,
+  ago: 8,
   agosto: 8,
+  sep: 9,
+  sept: 9,
   septiembre: 9,
   setiembre: 9,
+  oct: 10,
   octubre: 10,
+  nov: 11,
   noviembre: 11,
+  dic: 12,
   diciembre: 12,
 }
 
@@ -136,7 +149,9 @@ function resolveMonthDayCandidate(day: number, month: number, todayISO: string, 
 }
 
 function parseMonthNameDate(normalizedText: string, todayISO: string) {
-  const match = normalizedText.match(/\b(?:el\s+)?(\d{1,2})\s+de\s+(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre)(?:\s+de\s+(\d{2,4}))?\b/)
+  const match = normalizedText.match(
+    /\b(?:para\s+el\s+)?(?:el\s+)?(\d{1,2})\s*(?:de\s+)?(ene|enero|feb|febrero|mar|marzo|abr|abril|may|mayo|jun|junio|jul|julio|ago|agosto|sep|sept|septiembre|setiembre|oct|octubre|nov|noviembre|dic|diciembre)(?:\s+de\s+(\d{2,4}))?\b/
+  )
   if (!match) return undefined
 
   const day = Number(match[1])

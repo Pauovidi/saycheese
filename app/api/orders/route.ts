@@ -5,7 +5,8 @@ import { addDaysToToday, computeReminderAt } from "@/lib/chatbot/reminders"
 import { getAdminClient, getAdminUid } from "@/lib/supabase/admin"
 
 const orderPayloadSchema = z.object({
-  customer_name: z.string().min(1).optional(),
+  customer_name: z.string().min(1),
+  customer_email: z.string().email().optional().nullable(),
   phone: z.string().min(6),
   delivery_date: z.string().date().optional().nullable(),
   items: z
@@ -37,6 +38,7 @@ export async function POST(request: Request) {
         delivery_date: deliveryDateFinal,
         status: "pending",
         customer_name: payload.customer_name,
+        customer_email: payload.customer_email ?? null,
         phone: payload.phone,
         reminder_at: reminderAt,
         reminder_status: "pending",

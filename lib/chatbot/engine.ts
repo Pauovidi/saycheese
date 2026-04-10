@@ -44,10 +44,12 @@ type OrderState = {
   flavor?: string
   format?: "tarta" | "cajita"
   phone?: string
+  customerName?: string
   desiredDate?: string
   suggestedDate?: string
   finalDate?: string
   awaitingConfirm?: boolean
+  awaitingName?: boolean
 }
 
 const LEAD_DAYS_RAW = Number.parseInt(process.env.CHATBOT_LEAD_DAYS ?? "3", 10)
@@ -62,6 +64,7 @@ No inventes datos de producto. Si faltan ingredientes o alérgenos confirmados, 
 Política obligatoria: ${PICKUP_ONLY_COPY}
 Nunca uses "recogerte" ni "recibir" para pedidos; usa "recoger"/"recogida".
 Plazo mínimo obligatorio: ${LEAD_DAYS} días naturales.
+Nunca confirmes ni crees un pedido si falta el nombre del cliente.
 Si puedes responder sin tools, responde directo y no llames tools.
 Si el usuario pide humano o hay incertidumbre crítica, usa tool handoff_to_human.`
 
@@ -137,6 +140,47 @@ function isNegative(text: string) {
   return /\b(no|prefiero otro dia|otro dia|otra fecha|no me va bien)\b/.test(normalized)
 }
 
+function cleanCustomerNameCandidate(value: string) {
+  return value.replace(/^[\s,:-]+|[\s,.!?;:]+$/g, "").replace(/\s+/g, " ").trim()
+}
+
+function isLikelyCustomerName(value: string) {
+  const trimmed = cleanCustomerNameCandidate(value)
+  if (!trimmed) return false
+  if (trimmed.length < 2 || trimmed.length > 60) return false
+  if (/@/.test(trimmed) || /\d/.test(trimmed)) return false
+
+  const words = trimmed.split(/\s+/)
+  if (words.length > 4) return false
+  if (!words.every((word) => /^[\p{L}'-]+$/u.test(word))) return false
+
+  const blocked = new Set(["si", "sí", "no", "vale", "ok", "perfecto", "pedido", "tarta", "cajita", "hola", "gracias"])
+  return !words.some((word) => blocked.has(normalize(word)))
+}
+
+function extractCustomerName(text: string) {
+  const patterns = [
+    /(?:me\s+llamo|soy)\s+(.+)/i,
+    /a\s+nombre\s+de\s+(.+)/i,
+    /^nombre\s*[:\-]?\s*(.+)$/i,
+  ]
+
+  for (const pattern of patterns) {
+    const match = text.match(pattern)
+    const candidate = cleanCustomerNameCandidate(match?.[1] ?? "")
+    if (isLikelyCustomerName(candidate)) {
+      return candidate
+    }
+  }
+
+  const directCandidate = cleanCustomerNameCandidate(text)
+  if (isLikelyCustomerName(directCandidate)) {
+    return directCandidate
+  }
+
+  return undefined
+}
+
 function detectProductMention(text: string) {
   const normalized = normalize(text)
 
@@ -144,7 +188,13 @@ function detectProductMention(text: string) {
   if (direct) return direct
 
   for (const flavor of listFlavorsAndSizes()) {
-    if (normalized.includes(normalize(flavor.flavor))) {
+    const normalizedFlavor = normalize(flavor.flavor)
+    if (normalized.includes(normalizedFlavor)) {
+      return findProductBySlugOrFlavor(flavor.flavor)
+    }
+
+    const tokens = normalizedFlavor.split(/\s+/).filter((token) => token.length >= 4)
+    if (tokens.some((token) => normalized.includes(token))) {
       return findProductBySlugOrFlavor(flavor.flavor)
     }
   }
@@ -166,6 +216,23 @@ function hasAllergensIntent(text: string) {
 
 function hasOrderIntent(text: string) {
   return /quiero|pedido|encargar|tarta|grande|cajita|para\s/i.test(normalize(text))
+}
+
+function hasExistingOrderQueryIntent(text: string) {
+  const normalized = normalize(text)
+  const patterns = [
+    /\bque\s+pasa\s+con\s+mi\s+(pedido|tarta)\b/,
+    /\bmi\s+(pedido|tarta)\b/,
+    /\bdime\s+mi\s+(pedido|tarta)\b/,
+    /\bquiero\s+saber\s+mi\s+(pedido|tarta)\b/,
+    /\bpara\s+cuando\s+lo\s+tengo\b/,
+    /\besta\s+confirmad[oa]\b/,
+    /\best[aá]\s+confirmad[oa]\b/,
+    /\ben\s+que\s+estado\s+esta\b/,
+    /\bcomo\s+va\s+mi\s+(pedido|tarta)\b/,
+  ]
+
+  return patterns.some((pattern) => pattern.test(normalized))
 }
 
 function buildFlavorsReply() {
@@ -311,6 +378,15 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
     state.phone = messagePhone
   }
 
+  if (hasExistingOrderQueryIntent(message)) {
+    await activateHandoff(userId, "Consulta de pedido existente")
+    return saveAndReply(
+      userId,
+      "Para revisar tu pedido con seguridad, te atiende una persona del equipo. Si quieres, indícame tu nombre y el día de recogida.",
+      { inOrderFlow: false }
+    )
+  }
+
   if (hasScheduleIntent(message)) {
     return saveAndReply(userId, STORE_HOURS_TEXT)
   }
@@ -323,7 +399,7 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
     return saveAndReply(userId, buildFlavorsReply())
   }
 
-  const orderFlow = hasOrderIntent(message) || state.inOrderFlow || state.awaitingConfirm
+  const orderFlow = hasOrderIntent(message) || state.inOrderFlow || state.awaitingConfirm || state.awaitingName
   if (orderFlow) {
     state.inOrderFlow = true
 
@@ -337,19 +413,20 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
       state.format = format
     }
 
-    if (state.awaitingConfirm && isAffirmative(message) && state.suggestedDate) {
+    const parsedDate = parseSpanishDesiredDate(message, now, SHOP_TZ)
+
+    if (state.awaitingConfirm && isAffirmative(message) && state.suggestedDate && !parsedDate) {
       state.finalDate = state.suggestedDate
       state.awaitingConfirm = false
     }
 
-    if (state.awaitingConfirm && isNegative(message)) {
+    if (state.awaitingConfirm && isNegative(message) && !parsedDate) {
       state.awaitingConfirm = false
       state.suggestedDate = undefined
       state.finalDate = undefined
       return saveAndReply(userId, "Perfecto, dime para qué día la necesitas.", state)
     }
 
-    const parsedDate = parseSpanishDesiredDate(message, now, SHOP_TZ)
     if (parsedDate?.kind === "ambiguous") {
       return saveAndReply(userId, parsedDate.question, state)
     }
@@ -365,7 +442,7 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
 
         return saveAndReply(
           userId,
-          `Aún no llegamos a ${formatDateEs(resolution.requestedDate, SHOP_TZ)} porque trabajamos con un mínimo de ${LEAD_DAYS} días. La primera fecha disponible sería ${formatDateEs(resolution.earliestDate, SHOP_TZ)}. ¿Te va bien?\n${STORE_HOURS_TEXT}\nNecesito tu teléfono para confirmar el pedido.`,
+          `Aún no llegamos a ${formatDateEs(resolution.requestedDate, SHOP_TZ)} porque trabajamos con un mínimo de ${LEAD_DAYS} días. La primera fecha disponible sería ${formatDateEs(resolution.earliestDate, SHOP_TZ)}. ¿Te va bien?\n${STORE_HOURS_TEXT}`,
           state
         )
       }
@@ -387,17 +464,33 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
       state.awaitingConfirm = false
     }
 
+    const customerName = extractCustomerName(message)
+    if (customerName) {
+      state.customerName = customerName
+      state.awaitingName = false
+    }
+
     if (!state.finalDate) {
       return saveAndReply(userId, "¿Para qué día la necesitas? Puedes decirme una fecha como 16/03, el 18 o un día de la semana.", state)
     }
 
-    const missing = buildMissingFieldsPrompt(state)
+    if (!state.customerName && state.flavor && state.format) {
+      state.awaitingName = true
+      return saveAndReply(
+        userId,
+        `Perfecto, la fecha sería el ${formatDateEs(state.finalDate, SHOP_TZ)}. Para dejarlo confirmado necesito tu nombre.`,
+        state
+      )
+    }
+
+    const missing = buildMissingFieldsPrompt(state, channel)
     if (missing) {
       const dateText = `Sí, puedo apuntarlo para ${formatDateEs(state.finalDate, SHOP_TZ)}.`
       return saveAndReply(userId, `${dateText} ${missing}`, state)
     }
 
     const created = await createChatOrder({
+      customer_name: state.customerName,
       phone: state.phone,
       delivery_date: state.finalDate,
       items: [
@@ -475,7 +568,7 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
             },
           },
         },
-        required: ["phone", "items"],
+        required: ["customer_name", "phone", "items"],
         additionalProperties: false,
       },
     },

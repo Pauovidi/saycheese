@@ -13,8 +13,8 @@ const orderItemSchema = z.object({
 const createOrderSchema = z.object({
   delivery_date: z.string(),
   status: z.string().default("pending"),
-  customer_name: z.string().optional(),
-  customer_email: z.string().email(),
+  customer_name: z.string().min(1),
+  customer_email: z.string().email().optional(),
   phone: z.string().optional(),
   notes: z.string().optional(),
   items: z.array(orderItemSchema).min(1),
@@ -24,7 +24,7 @@ const updateOrderSchema = z.object({
   id: z.string().uuid(),
   delivery_date: z.string().optional(),
   status: z.string().optional(),
-  customer_name: z.string().nullable().optional(),
+  customer_name: z.string().min(1).nullable().optional(),
   customer_email: z.string().email().nullable().optional(),
   phone: z.string().nullable().optional(),
   notes: z.string().nullable().optional(),
@@ -69,7 +69,7 @@ export async function createOrder(payload: z.infer<typeof createOrderSchema>) {
       delivery_date: parsed.delivery_date,
       status: parsed.status,
       customer_name: parsed.customer_name,
-      customer_email: parsed.customer_email,
+      customer_email: parsed.customer_email ?? null,
       phone: parsed.phone,
       notes: parsed.notes,
     })

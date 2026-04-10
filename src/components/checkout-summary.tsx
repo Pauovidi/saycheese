@@ -12,7 +12,7 @@ import { getCustomerFacingFormatLabel, PICKUP_ONLY_COPY } from "@/src/data/busin
 import { useCart } from "@/src/context/cart-context"
 
 const checkoutSchema = z.object({
-  customer_name: z.string().optional(),
+  customer_name: z.string().min(1, "El nombre es obligatorio"),
   phone: z.string().min(6, "Teléfono inválido"),
   delivery_date: z.string().date("Fecha de entrega inválida").optional(),
 })
@@ -51,7 +51,7 @@ export function CheckoutSummary() {
 
   async function handleConfirmOrder() {
     const parsed = checkoutSchema.safeParse({
-      customer_name: customerName || undefined,
+      customer_name: customerName.trim(),
       phone,
       delivery_date: deliveryDate || undefined,
     })
@@ -96,7 +96,7 @@ export function CheckoutSummary() {
     <div className="flex flex-col gap-6">
       <div className="grid gap-4 rounded-md border border-border p-4 md:grid-cols-2">
         <div className="space-y-2">
-          <Label htmlFor="customer-name">Nombre (opcional)</Label>
+          <Label htmlFor="customer-name">Nombre *</Label>
           <Input
             id="customer-name"
             value={customerName}
