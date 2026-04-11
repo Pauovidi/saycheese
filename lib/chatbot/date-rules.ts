@@ -273,19 +273,24 @@ export function resolveRequestedPickupDate(requestedISO: string, now: Date, lead
   const todayISO = isoTodayInTz(now, tz)
   const earliestDate = earliestPickupDateISO(now, leadDays, tz)
 
+  if (!isBusinessOpenOnDate(requestedISO)) {
+    let nextAvailableDate = getNextAvailablePickupDate(requestedISO)
+    if (nextAvailableDate < earliestDate) {
+      nextAvailableDate = earliestDate
+    }
+
+    return {
+      kind: "closed",
+      requestedDate: requestedISO,
+      nextAvailableDate,
+    }
+  }
+
   if (requestedISO < todayISO || requestedISO < earliestDate) {
     return {
       kind: "too_soon",
       requestedDate: requestedISO,
       earliestDate,
-    }
-  }
-
-  if (!isBusinessOpenOnDate(requestedISO)) {
-    return {
-      kind: "closed",
-      requestedDate: requestedISO,
-      nextAvailableDate: getNextAvailablePickupDate(requestedISO),
     }
   }
 

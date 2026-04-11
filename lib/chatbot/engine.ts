@@ -144,8 +144,15 @@ function cleanCustomerNameCandidate(value: string) {
   return value.replace(/^[\s,:-]+|[\s,.!?;:]+$/g, "").replace(/\s+/g, " ").trim()
 }
 
+function splitNameCandidate(value: string) {
+  return value
+    .split(/[,.!?;:]+/)[0]
+    ?.split(/\b(?:y\s+)?(?:quiero|queria|quería|necesito|busco|para|seria|sería|quisiera)\b/i)[0]
+    ?.trim() ?? ""
+}
+
 function isLikelyCustomerName(value: string) {
-  const trimmed = cleanCustomerNameCandidate(value)
+  const trimmed = cleanCustomerNameCandidate(splitNameCandidate(value))
   if (!trimmed) return false
   if (trimmed.length < 2 || trimmed.length > 60) return false
   if (/@/.test(trimmed) || /\d/.test(trimmed)) return false
@@ -161,19 +168,20 @@ function isLikelyCustomerName(value: string) {
 function extractCustomerName(text: string) {
   const patterns = [
     /(?:me\s+llamo|soy)\s+(.+)/i,
+    /mi\s+nombre\s+es\s+(.+)/i,
     /a\s+nombre\s+de\s+(.+)/i,
     /^nombre\s*[:\-]?\s*(.+)$/i,
   ]
 
   for (const pattern of patterns) {
     const match = text.match(pattern)
-    const candidate = cleanCustomerNameCandidate(match?.[1] ?? "")
+    const candidate = cleanCustomerNameCandidate(splitNameCandidate(match?.[1] ?? ""))
     if (isLikelyCustomerName(candidate)) {
       return candidate
     }
   }
 
-  const directCandidate = cleanCustomerNameCandidate(text)
+  const directCandidate = cleanCustomerNameCandidate(splitNameCandidate(text))
   if (isLikelyCustomerName(directCandidate)) {
     return directCandidate
   }
@@ -297,6 +305,31 @@ function buildProductFactsReply(message: string) {
   }
 
   return `Para ${facts.label}: ${sections.join(" ")} No tengo confirmado ${missingSections.join(" ni ")} ahora mismo. ${buildHumanSupportMessage("Te atiende un humano aquí:")}`
+}
+
+function buildOrderItemLabel(state: OrderState) {
+  if (!state.flavor) return state.format === "cajita" ? "una cajita" : state.format === "tarta" ? "una tarta" : "el pedido"
+
+  const flavorLabel = findFlavorFactsByQuery(state.flavor)?.label ?? findProductBySlugOrFlavor(state.flavor)?.name ?? state.flavor.replace(/-/g, " ")
+  if (state.format === "cajita") return `una cajita de ${flavorLabel}`
+  if (state.format === "tarta") return `una tarta de ${flavorLabel}`
+  return `el pedido de ${flavorLabel}`
+}
+
+function buildContextualOrderReply(state: OrderState, channel: "web" | "whatsapp", tz: string) {
+  const name = state.customerName ? `, ${state.customerName}` : ""
+  const itemLabel = buildOrderItemLabel(state)
+  const dateLabel = state.finalDate ? formatDateEs(state.finalDate, tz) : null
+  const prefix = dateLabel
+    ? `De acuerdo${name}. Te apunto ${itemLabel} para el ${dateLabel}.`
+    : `De acuerdo${name}.`
+  const missing = buildMissingFieldsPrompt(state, channel)
+
+  if (!missing) {
+    return prefix
+  }
+
+  return `${prefix} ${missing}`
 }
 
 async function activateHandoff(userId: string, reason?: string) {
@@ -476,17 +509,12 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
 
     if (!state.customerName && state.flavor && state.format) {
       state.awaitingName = true
-      return saveAndReply(
-        userId,
-        `Perfecto, la fecha sería el ${formatDateEs(state.finalDate, SHOP_TZ)}. Para dejarlo confirmado necesito tu nombre.`,
-        state
-      )
+      return saveAndReply(userId, buildContextualOrderReply(state, channel, SHOP_TZ), state)
     }
 
     const missing = buildMissingFieldsPrompt(state, channel)
     if (missing) {
-      const dateText = `Sí, puedo apuntarlo para ${formatDateEs(state.finalDate, SHOP_TZ)}.`
-      return saveAndReply(userId, `${dateText} ${missing}`, state)
+      return saveAndReply(userId, buildContextualOrderReply(state, channel, SHOP_TZ), state)
     }
 
     const created = await createChatOrder({
