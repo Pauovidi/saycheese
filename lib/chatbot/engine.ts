@@ -152,8 +152,15 @@ function hasNonEmptyValue(value?: string) {
 function splitNameCandidate(value: string) {
   return value
     .split(/[,.!?;:]+/)[0]
-    ?.split(/\b(?:y\s+)?(?:quiero|queria|quería|necesito|busco|para|seria|sería|quisiera|con|mi\s+correo|correo|email)\b/i)[0]
+    ?.split(/\b(?:y\s+)?(?:quiero|queria|quería|necesito|busco|para|seria|sería|quisiera|con|mi\s+correo|correo|email|pero|aunque|porque|que|pues)\b/i)[0]
     ?.trim() ?? ""
+}
+
+function isStandaloneNameMessage(text: string, candidate: string) {
+  const cleanedText = cleanCustomerNameCandidate(text)
+  if (!cleanedText || !candidate) return false
+
+  return normalize(cleanedText) === normalize(candidate)
 }
 
 function isLikelyCustomerName(value: string) {
@@ -188,11 +195,20 @@ function isLikelyCustomerName(value: string) {
   if (blockedPhrases.has(normalizedTrimmed)) return false
 
   const blocked = new Set([
+    "pues",
     "si",
     "sí",
     "no",
     "nop",
     "nope",
+    "bueno",
+    "genial",
+    "claro",
+    "perfecto",
+    "entonces",
+    "luego",
+    "oye",
+    "mira",
     "nah",
     "nada",
     "ninguno",
@@ -215,6 +231,32 @@ function isLikelyCustomerName(value: string) {
     "sabado",
     "sábado",
     "domingo",
+    "enero",
+    "febrero",
+    "marzo",
+    "abril",
+    "mayo",
+    "junio",
+    "julio",
+    "agosto",
+    "septiembre",
+    "setiembre",
+    "octubre",
+    "noviembre",
+    "diciembre",
+    "ene",
+    "feb",
+    "mar",
+    "abr",
+    "may",
+    "jun",
+    "jul",
+    "ago",
+    "sep",
+    "sept",
+    "oct",
+    "nov",
+    "dic",
     "hola",
     "buenas",
     "gracias",
@@ -239,7 +281,7 @@ function extractCustomerName(text: string) {
   }
 
   const directCandidate = cleanCustomerNameCandidate(splitNameCandidate(text))
-  if (isLikelyCustomerName(directCandidate)) {
+  if (isStandaloneNameMessage(text, directCandidate) && isLikelyCustomerName(directCandidate)) {
     return directCandidate
   }
 
