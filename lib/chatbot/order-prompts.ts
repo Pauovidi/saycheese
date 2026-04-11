@@ -5,13 +5,17 @@ type OrderPromptState = {
   phone?: string
 }
 
+function hasValue(value?: string) {
+  return typeof value === "string" && value.trim().length > 0
+}
+
 function uniqueMissingFields(state: OrderPromptState, channel: "web" | "whatsapp") {
   const missing = new Set<string>()
 
   if (!state.flavor) missing.add("el sabor")
   if (!state.format) missing.add("el formato")
-  if (!state.customerName) missing.add("tu nombre")
-  if (channel !== "whatsapp" && !state.phone) missing.add("tu teléfono")
+  if (!hasValue(state.customerName)) missing.add("tu nombre")
+  if (channel !== "whatsapp" && !hasValue(state.phone)) missing.add("tu teléfono")
 
   return [...missing]
 }

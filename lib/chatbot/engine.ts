@@ -145,6 +145,10 @@ function cleanCustomerNameCandidate(value: string) {
   return value.replace(/^[\s,:-]+|[\s,.!?;:]+$/g, "").replace(/\s+/g, " ").trim()
 }
 
+function hasNonEmptyValue(value?: string) {
+  return typeof value === "string" && value.trim().length > 0
+}
+
 function splitNameCandidate(value: string) {
   return value
     .split(/[,.!?;:]+/)[0]
@@ -171,6 +175,15 @@ function isLikelyCustomerName(value: string) {
     "buenas noches",
     "hola buenos dias",
     "hola buenas",
+    "el lunes",
+    "el martes",
+    "el miercoles",
+    "el miércoles",
+    "el jueves",
+    "el viernes",
+    "el sabado",
+    "el sábado",
+    "el domingo",
   ])
   if (blockedPhrases.has(normalizedTrimmed)) return false
 
@@ -190,6 +203,18 @@ function isLikelyCustomerName(value: string) {
     "pedido",
     "tarta",
     "cajita",
+    "hoy",
+    "manana",
+    "mañana",
+    "lunes",
+    "martes",
+    "miercoles",
+    "miércoles",
+    "jueves",
+    "viernes",
+    "sabado",
+    "sábado",
+    "domingo",
     "hola",
     "buenas",
     "gracias",
@@ -381,7 +406,7 @@ function buildOrderItemLabel(state: OrderState) {
 }
 
 function buildContextualOrderReply(state: OrderState, channel: "web" | "whatsapp", tz: string) {
-  const name = state.customerName ? `, ${state.customerName}` : ""
+  const name = hasNonEmptyValue(state.customerName) ? `, ${state.customerName?.trim()}` : ""
   const itemLabel = buildOrderItemLabel(state)
   const dateLabel = state.finalDate ? formatDateEs(state.finalDate, tz) : null
   const prefix = dateLabel
@@ -611,11 +636,15 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
       state.awaitingName = false
     }
 
+    if (!hasNonEmptyValue(state.customerName)) {
+      state.customerName = undefined
+    }
+
     if (!state.finalDate) {
       return saveAndReply(userId, "¿Para qué día la necesitas? Puedes decirme una fecha como 16/03, el 18 o un día de la semana.", state)
     }
 
-    if (!state.customerName && state.flavor && state.format) {
+    if (!hasNonEmptyValue(state.customerName) && state.flavor && state.format) {
       state.awaitingName = true
       return saveAndReply(userId, buildContextualOrderReply(state, channel, SHOP_TZ), state)
     }
@@ -625,8 +654,13 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
       return saveAndReply(userId, buildContextualOrderReply(state, channel, SHOP_TZ), state)
     }
 
+    if (!hasNonEmptyValue(state.customerName)) {
+      state.awaitingName = true
+      return saveAndReply(userId, buildContextualOrderReply(state, channel, SHOP_TZ), state)
+    }
+
     const created = await createChatOrder({
-      customer_name: state.customerName,
+      customer_name: state.customerName.trim(),
       customer_email: state.customerEmail,
       phone: state.phone,
       delivery_date: state.finalDate,

@@ -13,9 +13,9 @@ const LEAD_DAYS = Number.isFinite(LEAD_DAYS_RAW) && LEAD_DAYS_RAW > 0 ? LEAD_DAY
 const SHOP_TZ = process.env.SHOP_TZ ?? "Europe/Madrid"
 
 const createOrderInputSchema = z.object({
-  customer_name: z.string().min(1),
-  customer_email: z.string().email().optional(),
-  phone: z.string().min(6),
+  customer_name: z.string().trim().min(1),
+  customer_email: z.string().trim().email().optional(),
+  phone: z.string().trim().min(6),
   delivery_date: z.string().date().optional(),
   notes: z.string().optional(),
   items: z
