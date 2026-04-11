@@ -126,8 +126,8 @@ function extractPhoneFromText(text: string) {
 
 function parseFormat(text: string): "tarta" | "cajita" | undefined {
   const normalized = normalize(text)
-  if (/\bcajita\b/.test(normalized)) return "cajita"
-  if (/\b(tarta|grande)\b/.test(normalized)) return "tarta"
+  if (/\b(cajita|caja|pequena|pequeña|pequeno|pequeño|mini|individual)\b/.test(normalized)) return "cajita"
+  if (/\b(tarta|grande|mediana|mediano)\b/.test(normalized)) return "tarta"
   return undefined
 }
 
@@ -150,14 +150,21 @@ function hasNonEmptyValue(value?: string) {
 }
 
 function splitNameCandidate(value: string) {
-  return value
+  const withoutPhone = value.replace(/(?:^|\s)\+?\d[\d\s-]{5,}\d.*$/u, "")
+
+  return withoutPhone
     .split(/[,.!?;:]+/)[0]
-    ?.split(/\b(?:y\s+)?(?:quiero|queria|quería|necesito|busco|para|seria|sería|quisiera|con|mi\s+correo|correo|email|pero|aunque|porque|que|pues)\b/i)[0]
+    ?.split(/\b(?:y\s+)?(?:quiero|queria|quería|necesito|busco|para|seria|sería|quisiera|con|mi\s+correo|correo|email|telefono|teléfono|movil|móvil|numero|número|pero|aunque|porque|que|pues)\b/i)[0]
     ?.trim() ?? ""
 }
 
 function isStandaloneNameMessage(text: string, candidate: string) {
-  const cleanedText = cleanCustomerNameCandidate(text)
+  const cleanedText = cleanCustomerNameCandidate(
+    text
+      .replace(/\+?\d[\d\s-]{5,}\d/g, " ")
+      .replace(/\b(?:mi\s+)?(?:telefono|teléfono|movil|móvil|numero|número|es)\b/gi, " ")
+      .replace(/[,.!?;:]+/g, " ")
+  )
   if (!cleanedText || !candidate) return false
 
   return normalize(cleanedText) === normalize(candidate)
@@ -439,11 +446,11 @@ function buildProductFactsReply(message: string) {
 }
 
 function buildOrderItemLabel(state: OrderState) {
-  if (!state.flavor) return state.format === "cajita" ? "una cajita" : state.format === "tarta" ? "una tarta" : "el pedido"
+  if (!state.flavor) return state.format === "cajita" ? "una pequeña" : state.format === "tarta" ? "una grande" : "el pedido"
 
   const flavorLabel = findFlavorFactsByQuery(state.flavor)?.label ?? findProductBySlugOrFlavor(state.flavor)?.name ?? state.flavor.replace(/-/g, " ")
-  if (state.format === "cajita") return `una cajita de ${flavorLabel}`
-  if (state.format === "tarta") return `una tarta de ${flavorLabel}`
+  if (state.format === "cajita") return `una ${flavorLabel} pequeña`
+  if (state.format === "tarta") return `una ${flavorLabel} grande`
   return `el pedido de ${flavorLabel}`
 }
 

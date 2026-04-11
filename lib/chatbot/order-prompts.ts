@@ -31,12 +31,20 @@ export function buildMissingFieldsPrompt(state: OrderPromptState, channel: "web"
   const missing = uniqueMissingFields(state, channel)
   if (!missing.length) return ""
 
+  if (hasValue(state.customerName) && missing.length === 1) {
+    return `Solo me falta ${missing[0]} para confirmarlo.`
+  }
+
   if (missing.length === 1 && missing[0] === "tu nombre") {
     return "Para dejarlo confirmado necesito tu nombre."
   }
 
   if (missing.length === 1 && missing[0] === "tu teléfono") {
     return "Necesito tu teléfono para confirmar el pedido."
+  }
+
+  if (hasValue(state.customerName)) {
+    return `Para dejarlo confirmado solo me faltan ${joinMissingFields(missing)}.`
   }
 
   return `Para dejarlo confirmado necesito ${joinMissingFields(missing)}.`
