@@ -1,5 +1,6 @@
 export const HUMAN_SUPPORT_PHONE_RAW = "681147149"
 export const HUMAN_SUPPORT_PHONE_E164 = "+34681147149"
+export const HUMAN_SUPPORT_PHONE_DISPLAY = "+34 681 14 71 49"
 export const HUMAN_SUPPORT_WHATSAPP_LINK = "https://wa.me/34681147149"
 
 export const PICKUP_ONLY_COPY = "Solo recogida en tienda. No hacemos envíos."
@@ -46,10 +47,17 @@ export function isPickupWeekdayOpen(weekday: number) {
   return OPEN_PICKUP_WEEKDAY_INDEXES.includes(weekday as typeof OPEN_PICKUP_WEEKDAY_INDEXES[number])
 }
 
-export function buildHumanSupportMessage(prefix = "Te atiende una persona del equipo aquí:") {
+export function buildHumanSupportMessage(
+  prefix = "Te atiende una persona del equipo aquí:",
+  channel: "web" | "whatsapp" = "web"
+) {
+  if (channel === "whatsapp") {
+    return `${prefix} ${HUMAN_SUPPORT_PHONE_DISPLAY}`
+  }
+
   return `${prefix} ${HUMAN_SUPPORT_WHATSAPP_LINK} o llama al ${HUMAN_SUPPORT_PHONE_E164}`
 }
 
-export function buildUnconfirmedProductInfoMessage() {
-  return `No tengo ese dato confirmado ahora mismo. Te atiende un humano aquí: ${HUMAN_SUPPORT_WHATSAPP_LINK} o llama al ${HUMAN_SUPPORT_PHONE_E164}`
+export function buildUnconfirmedProductInfoMessage(channel: "web" | "whatsapp" = "web") {
+  return `No tengo ese dato confirmado ahora mismo. ${buildHumanSupportMessage("Te atiende un humano aquí:", channel)}`
 }

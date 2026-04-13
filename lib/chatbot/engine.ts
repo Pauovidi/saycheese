@@ -2,8 +2,10 @@ import "server-only"
 
 import OpenAI from "openai"
 
+import { isWhatsappConversationResetCommand } from "@/lib/chatbot/commands"
 import { formatDateEs, parseSpanishDesiredDate, resolveRequestedPickupDate } from "@/lib/chatbot/dates"
 import {
+  clearConversationState,
   getOrCreateUser,
   getPauseState,
   loadContext,
@@ -27,6 +29,7 @@ import {
   FORMAT_SIZE_COPY,
   getCustomerFacingFormatLabel,
   HUMAN_SUPPORT_PHONE_E164,
+  HUMAN_SUPPORT_PHONE_DISPLAY,
   HUMAN_SUPPORT_WHATSAPP_LINK,
   PICKUP_ONLY_COPY,
   STORE_HOURS_TEXT,
@@ -69,9 +72,8 @@ Nunca confirmes ni crees un pedido si falta el nombre del cliente.
 Si puedes responder sin tools, responde directo y no llames tools.
 Si el usuario pide humano o hay incertidumbre crítica, usa tool handoff_to_human.`
 
-const HANDOFF_TEXT = buildHumanSupportMessage("Te atiende una persona del equipo aquí:")
-
 const HANDOFF_KEYWORDS = ["humano", "persona", "agente", "asesor", "operador"]
+const WHATSAPP_RESET_REPLY = "He reiniciado la conversación. Te ayudo con un nuevo pedido."
 
 function getOpenAIClient() {
   const apiKey = process.env.OPENAI_API_KEY
@@ -91,6 +93,10 @@ function normalize(text: string) {
 function shouldRequestHandoff(message: string) {
   const normalized = normalize(message)
   return HANDOFF_KEYWORDS.some((word) => normalized.includes(word))
+}
+
+function getHandoffText(channel: "web" | "whatsapp") {
+  return buildHumanSupportMessage("Te atiende una persona del equipo aquí:", channel)
 }
 
 function sanitizeAssistantText(text: string) {
@@ -403,7 +409,7 @@ function requestedProductFacts(message: string) {
   }
 }
 
-function buildProductFactsReply(message: string) {
+function buildProductFactsReply(message: string, channel: "web" | "whatsapp") {
   const product = detectProductMention(message)
   if (!product) {
     return "Dime qué sabor quieres revisar y te paso la información confirmada."
@@ -411,7 +417,7 @@ function buildProductFactsReply(message: string) {
 
   const facts = findFlavorFactsByQuery(product.category)
   if (!facts) {
-    return buildUnconfirmedProductInfoMessage()
+    return buildUnconfirmedProductInfoMessage(channel)
   }
 
   const { wantsAllergens, wantsIngredients } = requestedProductFacts(message)
@@ -435,14 +441,14 @@ function buildProductFactsReply(message: string) {
   }
 
   if (!sections.length) {
-    return buildUnconfirmedProductInfoMessage()
+    return buildUnconfirmedProductInfoMessage(channel)
   }
 
   if (!missingSections.length) {
     return `Para ${facts.label}: ${sections.join(" ")}`
   }
 
-  return `Para ${facts.label}: ${sections.join(" ")} No tengo confirmado ${missingSections.join(" ni ")} ahora mismo. ${buildHumanSupportMessage("Te atiende un humano aquí:")}`
+  return `Para ${facts.label}: ${sections.join(" ")} No tengo confirmado ${missingSections.join(" ni ")} ahora mismo. ${buildHumanSupportMessage("Te atiende un humano aquí:", channel)}`
 }
 
 function buildOrderItemLabel(state: OrderState) {
@@ -489,7 +495,7 @@ function buildPendingOrderReply(state: OrderState, channel: "web" | "whatsapp", 
   return 'Cuando quieras, dime sabor y fecha y seguimos con el pedido. Si prefieres empezar de nuevo, escribe "reiniciar".'
 }
 
-async function activateHandoff(userId: string, reason?: string) {
+async function activateHandoff(userId: string, channel: "web" | "whatsapp", reason?: string) {
   const until = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString()
   await setPauseState(userId, until)
   return {
@@ -497,9 +503,10 @@ async function activateHandoff(userId: string, reason?: string) {
     reason: reason ?? "Usuario pide asistencia humana",
     contact: {
       phone: HUMAN_SUPPORT_PHONE_E164,
-      whatsappLink: HUMAN_SUPPORT_WHATSAPP_LINK,
+      displayPhone: HUMAN_SUPPORT_PHONE_DISPLAY,
+      whatsappLink: channel === "web" ? HUMAN_SUPPORT_WHATSAPP_LINK : undefined,
     },
-    message: HANDOFF_TEXT,
+    message: getHandoffText(channel),
   }
 }
 
@@ -543,18 +550,26 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
   const model = process.env.OPENAI_MODEL ?? "gpt-4.1-mini"
 
   const { userId } = await getOrCreateUser({ channel, externalId: sessionId, phone })
+  const handoffText = getHandoffText(channel)
+
+  if (isWhatsappConversationResetCommand(channel, message)) {
+    await clearConversationState(userId)
+    await saveMessage(userId, "user", message)
+    await saveMessage(userId, "assistant", WHATSAPP_RESET_REPLY)
+    return { text: WHATSAPP_RESET_REPLY }
+  }
 
   const pauseState = await getPauseState(userId)
   if (pauseState.botPausedUntil && pauseState.botPausedUntil > new Date()) {
     await saveMessage(userId, "user", message)
-    await saveMessage(userId, "assistant", HANDOFF_TEXT)
-    return { text: HANDOFF_TEXT }
+    await saveMessage(userId, "assistant", handoffText)
+    return { text: handoffText }
   }
 
   await saveMessage(userId, "user", message)
 
   if (shouldRequestHandoff(message)) {
-    const handoff = await activateHandoff(userId, "Solicitud explícita")
+    const handoff = await activateHandoff(userId, channel, "Solicitud explícita")
     await saveMessage(userId, "assistant", handoff.message)
     return { text: handoff.message }
   }
@@ -582,7 +597,7 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
   }
 
   if (hasExistingOrderQueryIntent(message)) {
-    await activateHandoff(userId, "Consulta de pedido existente")
+    await activateHandoff(userId, channel, "Consulta de pedido existente")
     return saveAndReply(
       userId,
       "Para revisar tu pedido con seguridad, te atiende una persona del equipo. Si quieres, indícame tu nombre y el día de recogida.",
@@ -595,7 +610,7 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
   }
 
   if (hasAllergensIntent(message)) {
-    return saveAndReply(userId, buildProductFactsReply(message))
+    return saveAndReply(userId, buildProductFactsReply(message, channel))
   }
 
   if (hasFlavorsIntent(message) && !hasOrderIntent(message)) {
@@ -823,7 +838,7 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
 
     if (name === "get_store_hours") return { hours: STORE_HOURS_TEXT }
     if (name === "get_flavors_and_sizes") return { flavors: listFlavorsAndSizes() }
-    if (name === "handoff_to_human") return activateHandoff(userId, String(args.reason ?? "handoff"))
+    if (name === "handoff_to_human") return activateHandoff(userId, channel, String(args.reason ?? "handoff"))
 
     if (name === "get_product_info") {
       const product = findProductBySlugOrFlavor(String(args.query ?? ""))
@@ -845,7 +860,7 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
           description: facts?.sourceProduct.fullDescription ?? facts?.sourceProduct.shortDescription ?? product.fullDescription ?? product.shortDescription,
           allergens: facts?.allergens ?? [],
           ingredients: facts?.ingredients ?? [],
-          fallback: facts?.allergens.length || facts?.ingredients.length ? undefined : buildUnconfirmedProductInfoMessage(),
+          fallback: facts?.allergens.length || facts?.ingredients.length ? undefined : buildUnconfirmedProductInfoMessage(channel),
         },
       }
     }
@@ -910,7 +925,7 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
   let text = sanitizeAssistantText(response.output_text?.trim() || "No pude responder ahora mismo.")
 
   if (safetyEscalate) {
-    const handoff = await activateHandoff(userId, "Incertidumbre crítica")
+    const handoff = await activateHandoff(userId, channel, "Incertidumbre crítica")
     text = `${text}\n\n${handoff.message}`
   }
 
