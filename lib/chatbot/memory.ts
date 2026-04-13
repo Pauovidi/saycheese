@@ -77,17 +77,25 @@ export async function updateSummary(userId: string, summary: string) {
   if (error) throw new Error(error.message)
 }
 
-export async function getPauseState(userId: string) {
+export async function getConversationState(userId: string) {
   const supabase = getAdminClient()
   const { data, error } = await supabase
     .from("chat_user_state")
-    .select("bot_paused_until")
+    .select("bot_paused_until, order_closed")
     .eq("user_id", userId)
     .maybeSingle()
 
   if (error) throw new Error(error.message)
 
-  return { botPausedUntil: data?.bot_paused_until ? new Date(data.bot_paused_until) : null }
+  return {
+    botPausedUntil: data?.bot_paused_until ? new Date(data.bot_paused_until) : null,
+    orderClosed: data?.order_closed ?? false,
+  }
+}
+
+export async function getPauseState(userId: string) {
+  const { botPausedUntil } = await getConversationState(userId)
+  return { botPausedUntil }
 }
 
 export async function setPauseState(userId: string, untilIso: string) {
@@ -95,6 +103,15 @@ export async function setPauseState(userId: string, untilIso: string) {
   const { error } = await supabase
     .from("chat_user_state")
     .upsert({ user_id: userId, bot_paused_until: untilIso }, { onConflict: "user_id" })
+
+  if (error) throw new Error(error.message)
+}
+
+export async function setOrderClosedState(userId: string, orderClosed: boolean) {
+  const supabase = getAdminClient()
+  const { error } = await supabase
+    .from("chat_user_state")
+    .upsert({ user_id: userId, order_closed: orderClosed }, { onConflict: "user_id" })
 
   if (error) throw new Error(error.message)
 }

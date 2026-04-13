@@ -4,12 +4,13 @@ import OpenAI from "openai"
 
 import { formatDateEs, parseSpanishDesiredDate, resolveRequestedPickupDate } from "@/lib/chatbot/dates"
 import {
+  getConversationState,
   getOrCreateUser,
-  getPauseState,
   loadContext,
   pruneMessages,
   saveMessage,
   setLastOpenAIResponseId,
+  setOrderClosedState,
   setPauseState,
   updateSummary,
 } from "@/lib/chatbot/memory"
@@ -31,6 +32,7 @@ import {
   PICKUP_ONLY_COPY,
   STORE_HOURS_TEXT,
 } from "@/src/data/business"
+import { ORDER_CLOSED_MESSAGE, resolveConversationGate } from "@/lib/chatbot/conversation-state"
 
 type HandleMessageInput = {
   sessionId: string
@@ -544,14 +546,21 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
 
   const { userId } = await getOrCreateUser({ channel, externalId: sessionId, phone })
 
-  const pauseState = await getPauseState(userId)
-  if (pauseState.botPausedUntil && pauseState.botPausedUntil > new Date()) {
+  const conversationState = await getConversationState(userId)
+  const conversationGate = resolveConversationGate(conversationState)
+
+  if (conversationGate === "paused_handoff") {
     await saveMessage(userId, "user", message)
     await saveMessage(userId, "assistant", HANDOFF_TEXT)
     return { text: HANDOFF_TEXT }
   }
 
   await saveMessage(userId, "user", message)
+
+  if (conversationGate === "order_closed") {
+    await saveMessage(userId, "assistant", ORDER_CLOSED_MESSAGE)
+    return { text: ORDER_CLOSED_MESSAGE }
+  }
 
   if (shouldRequestHandoff(message)) {
     const handoff = await activateHandoff(userId, "Solicitud explícita")
@@ -727,6 +736,7 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
       return saveAndReply(userId, created.error ?? "No pude crear el pedido ahora mismo.", state)
     }
 
+    await setOrderClosedState(userId, true)
     const nextState = resetOrderState(state, channel)
     return saveAndReply(
       userId,
@@ -854,6 +864,9 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
       const created = await createChatOrder({ ...args, phone: String(args.phone ?? fallbackPhone ?? "") })
       if (!created.ok && created.shouldHandoff) {
         safetyEscalate = true
+      }
+      if (created.ok) {
+        await setOrderClosedState(userId, true)
       }
       return created
     }
