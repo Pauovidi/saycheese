@@ -4,6 +4,7 @@ import OpenAI from "openai"
 
 import { formatDateEs, parseSpanishDesiredDate, resolveRequestedPickupDate } from "@/lib/chatbot/dates"
 import {
+  clearPauseState,
   getConversationState,
   getOrCreateUser,
   loadContext,
@@ -32,7 +33,11 @@ import {
   PICKUP_ONLY_COPY,
   STORE_HOURS_TEXT,
 } from "@/src/data/business"
-import { ORDER_CLOSED_MESSAGE, resolveConversationGate } from "@/lib/chatbot/conversation-state"
+import {
+  ORDER_CLOSED_MESSAGE,
+  resolveConversationGate,
+  shouldRecoverLegacyClosedOrderPause,
+} from "@/lib/chatbot/conversation-state"
 
 type HandleMessageInput = {
   sessionId: string
@@ -547,7 +552,16 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
   const { userId } = await getOrCreateUser({ channel, externalId: sessionId, phone })
 
   const conversationState = await getConversationState(userId)
-  const conversationGate = resolveConversationGate(conversationState)
+  let conversationGate = resolveConversationGate(conversationState)
+
+  if (conversationGate === "paused_handoff" && !conversationState.orderClosed) {
+    const context = await loadContext(userId)
+    if (shouldRecoverLegacyClosedOrderPause(context.messagesLastN)) {
+      await clearPauseState(userId)
+      await setOrderClosedState(userId, true)
+      conversationGate = "order_closed"
+    }
+  }
 
   if (conversationGate === "paused_handoff") {
     await saveMessage(userId, "user", message)

@@ -107,6 +107,15 @@ export async function setPauseState(userId: string, untilIso: string) {
   if (error) throw new Error(error.message)
 }
 
+export async function clearPauseState(userId: string) {
+  const supabase = getAdminClient()
+  const { error } = await supabase
+    .from("chat_user_state")
+    .upsert({ user_id: userId, bot_paused_until: null }, { onConflict: "user_id" })
+
+  if (error) throw new Error(error.message)
+}
+
 export async function setOrderClosedState(userId: string, orderClosed: boolean) {
   const supabase = getAdminClient()
   const { error } = await supabase

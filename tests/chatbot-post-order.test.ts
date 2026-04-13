@@ -1,7 +1,11 @@
 import test from "node:test"
 import assert from "node:assert/strict"
 
-import { ORDER_CLOSED_MESSAGE, resolveConversationGate } from "@/lib/chatbot/conversation-state"
+import {
+  ORDER_CLOSED_MESSAGE,
+  resolveConversationGate,
+  shouldRecoverLegacyClosedOrderPause,
+} from "@/lib/chatbot/conversation-state"
 
 test("el mensaje fijo post-pedido usa el telefono humano centralizado", () => {
   assert.equal(
@@ -28,4 +32,36 @@ test("si el pedido ya esta cerrado y no hay pausa humana activa, entra en la ram
   })
 
   assert.equal(gate, "order_closed")
+})
+
+test("recupera una pausa legacy cuando el pedido ya estaba creado y el usuario solo saludo despues", () => {
+  const shouldRecover = shouldRecoverLegacyClosedOrderPause([
+    {
+      role: "assistant",
+      content: "Pedido creado. Recogida el miércoles 15/04. Solo recogida en tienda. No hacemos envíos.",
+    },
+    { role: "user", content: "hola" },
+    {
+      role: "assistant",
+      content: "Te paso con un humano para que te atienda mejor. Si quieres, también te pueden responder por WhatsApp en +1 641 429 4476.",
+    },
+  ])
+
+  assert.equal(shouldRecover, true)
+})
+
+test("no recupera una pausa humana real cuando el usuario pidio hablar con una persona", () => {
+  const shouldRecover = shouldRecoverLegacyClosedOrderPause([
+    {
+      role: "assistant",
+      content: "Pedido creado. Recogida el miércoles 15/04. Solo recogida en tienda. No hacemos envíos.",
+    },
+    { role: "user", content: "quiero hablar con una persona" },
+    {
+      role: "assistant",
+      content: "Si lo prefieres, te atiende una persona en el +34 681 14 71 49.",
+    },
+  ])
+
+  assert.equal(shouldRecover, false)
 })
