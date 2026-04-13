@@ -125,3 +125,25 @@ export async function pruneMessages(userId: string, keepLast = 20) {
   const { error: deleteError } = await supabase.from("chat_messages").delete().in("id", stale)
   if (deleteError) throw new Error(deleteError.message)
 }
+
+export async function clearConversationState(userId: string) {
+  const supabase = getAdminClient()
+
+  const [{ error: messagesError }, { error: stateError }] = await Promise.all([
+    supabase.from("chat_messages").delete().eq("user_id", userId),
+    supabase
+      .from("chat_user_state")
+      .upsert(
+        {
+          user_id: userId,
+          summary: null,
+          bot_paused_until: null,
+          last_openai_response_id: null,
+        },
+        { onConflict: "user_id" }
+      ),
+  ])
+
+  if (messagesError) throw new Error(messagesError.message)
+  if (stateError) throw new Error(stateError.message)
+}
