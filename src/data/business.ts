@@ -1,13 +1,13 @@
-const HUMAN_SUPPORT_COUNTRY_CODE = "1"
-const HUMAN_SUPPORT_LOCAL_PHONE = "6414294476"
+const HUMAN_SUPPORT_COUNTRY_CODE = "34"
+const HUMAN_SUPPORT_LOCAL_PHONE = "681147149"
 
-function formatPhoneDisplay(countryCode: string, rawPhone: string) {
-  return `+${countryCode} ${rawPhone.slice(0, 3)} ${rawPhone.slice(3, 6)} ${rawPhone.slice(6)}`
+function formatPhoneDisplay(rawPhone: string) {
+  return rawPhone.replace(/(\d{3})(\d{2})(\d{2})(\d{2})/, "$1 $2 $3 $4")
 }
 
 export const HUMAN_SUPPORT_CONTACT = {
   raw: HUMAN_SUPPORT_LOCAL_PHONE,
-  display: formatPhoneDisplay(HUMAN_SUPPORT_COUNTRY_CODE, HUMAN_SUPPORT_LOCAL_PHONE),
+  display: formatPhoneDisplay(HUMAN_SUPPORT_LOCAL_PHONE),
   e164: `+${HUMAN_SUPPORT_COUNTRY_CODE}${HUMAN_SUPPORT_LOCAL_PHONE}`,
   whatsappHref: `https://wa.me/${HUMAN_SUPPORT_COUNTRY_CODE}${HUMAN_SUPPORT_LOCAL_PHONE}`,
 } as const
