@@ -1,7 +1,7 @@
 import { CartDrawer } from "@/src/components/cart-drawer"
+import { ContactLauncher } from "@/src/components/contact-launcher"
 import { SiteFooter } from "@/src/components/site-footer"
 import { SiteHeader } from "@/src/components/site-header"
-import { ChatWidget } from "@/src/components/chat-widget"
 import { CartProvider } from "@/src/context/cart-context"
 
 export default function PublicLayout({ children }: { children: React.ReactNode }) {
@@ -11,7 +11,7 @@ export default function PublicLayout({ children }: { children: React.ReactNode }
       <main>{children}</main>
       <SiteFooter />
       <CartDrawer />
-      <ChatWidget />
+      <ContactLauncher />
     </CartProvider>
   )
 }

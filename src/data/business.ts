@@ -1,6 +1,8 @@
 export const HUMAN_SUPPORT_PHONE_RAW = "681147149"
 export const HUMAN_SUPPORT_PHONE_E164 = "+34681147149"
 export const HUMAN_SUPPORT_WHATSAPP_LINK = "https://wa.me/34681147149"
+export const MOBILE_LAUNCHER_WHATSAPP_PHONE_E164 = "+16414294476"
+export const MOBILE_LAUNCHER_WHATSAPP_LINK = "https://wa.me/16414294476"
 
 export const PICKUP_ONLY_COPY = "Solo recogida en tienda. No hacemos envíos."
 export const FORMAT_SIZE_COPY = "Siempre trabajamos con 2 tamaños: grande y cajita."
