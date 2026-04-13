@@ -8,6 +8,10 @@ La fuente de verdad operativa vive en `src/data/business.ts`.
   - `raw`
   - `display`
   - `e164`
+- `WHATSAPP_SUPPORT_CONTACT` deriva en un único sitio:
+  - `raw`
+  - `display`
+  - `e164`
   - `whatsappHref`
 - `PICKUP_ONLY_COPY = "Solo recogida en tienda. No hacemos envíos."`
 - labels customer-facing de tamaños:

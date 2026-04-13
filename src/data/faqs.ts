@@ -1,6 +1,6 @@
 import {
   FORMAT_SIZE_COPY,
-  HUMAN_SUPPORT_PHONE_DISPLAY,
+  WHATSAPP_SUPPORT_PHONE_DISPLAY,
   PICKUP_ONLY_COPY,
   STORE_HOURS_TEXT,
 } from "@/src/data/business"
@@ -14,7 +14,7 @@ export const faqs: FAQ[] = [
   {
     question: "\u00bfC\u00f3mo puedo hacer un pedido?",
     answer:
-      `Puedes hacer tu pedido desde la web o escribirnos directamente. También te atendemos por WhatsApp en el ${HUMAN_SUPPORT_PHONE_DISPLAY}.`,
+      `Puedes hacer tu pedido desde la web o escribirnos directamente. También te atendemos por WhatsApp en el ${WHATSAPP_SUPPORT_PHONE_DISPLAY}.`,
   },
   {
     question: "\u00bfCu\u00e1les son los tama\u00f1os disponibles?",

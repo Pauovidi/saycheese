@@ -585,7 +585,7 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
     await activateHandoff(userId, "Consulta de pedido existente")
     return saveAndReply(
       userId,
-      `Para revisar tu pedido con seguridad, ${buildHumanSupportMessage("te atiende una persona por WhatsApp en el")} Si quieres, indícame tu nombre y el día de recogida.`,
+      `Para revisar tu pedido con seguridad, ${buildHumanSupportMessage("te atiende una persona en el")} Si quieres, indícame tu nombre y el día de recogida.`,
       resetOrderState(state, channel)
     )
   }

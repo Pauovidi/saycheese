@@ -3,7 +3,7 @@
 import Link from "next/link"
 
 import { cn } from "@/lib/utils"
-import { HUMAN_SUPPORT_PHONE_DISPLAY, HUMAN_SUPPORT_WHATSAPP_LINK } from "@/src/data/business"
+import { HUMAN_SUPPORT_WHATSAPP_LINK, WHATSAPP_SUPPORT_PHONE_DISPLAY } from "@/src/data/business"
 
 type WhatsAppButtonProps = {
   className?: string
@@ -30,7 +30,7 @@ export function WhatsAppButton({ className }: WhatsAppButtonProps) {
       href={HUMAN_SUPPORT_WHATSAPP_LINK}
       target="_blank"
       rel="noopener noreferrer"
-      aria-label={`Contactar por WhatsApp en el ${HUMAN_SUPPORT_PHONE_DISPLAY}`}
+      aria-label={`Contactar por WhatsApp en el ${WHATSAPP_SUPPORT_PHONE_DISPLAY}`}
       className={cn(
         "fixed bottom-6 right-6 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-[#25D366] text-white shadow-lg transition-transform hover:scale-110",
         className
