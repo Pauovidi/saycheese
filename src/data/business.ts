@@ -1,6 +1,21 @@
-export const HUMAN_SUPPORT_PHONE_RAW = "681147149"
-export const HUMAN_SUPPORT_PHONE_E164 = "+34681147149"
-export const HUMAN_SUPPORT_WHATSAPP_LINK = "https://wa.me/34681147149"
+const HUMAN_SUPPORT_COUNTRY_CODE = "34"
+const HUMAN_SUPPORT_LOCAL_PHONE = "681147149"
+
+function formatPhoneDisplay(rawPhone: string) {
+  return rawPhone.replace(/(\d{3})(\d{2})(\d{2})(\d{2})/, "$1 $2 $3 $4")
+}
+
+export const HUMAN_SUPPORT_CONTACT = {
+  raw: HUMAN_SUPPORT_LOCAL_PHONE,
+  display: formatPhoneDisplay(HUMAN_SUPPORT_LOCAL_PHONE),
+  e164: `+${HUMAN_SUPPORT_COUNTRY_CODE}${HUMAN_SUPPORT_LOCAL_PHONE}`,
+  whatsappHref: `https://wa.me/${HUMAN_SUPPORT_COUNTRY_CODE}${HUMAN_SUPPORT_LOCAL_PHONE}`,
+} as const
+
+export const HUMAN_SUPPORT_PHONE_RAW = HUMAN_SUPPORT_CONTACT.raw
+export const HUMAN_SUPPORT_PHONE_DISPLAY = HUMAN_SUPPORT_CONTACT.display
+export const HUMAN_SUPPORT_PHONE_E164 = HUMAN_SUPPORT_CONTACT.e164
+export const HUMAN_SUPPORT_WHATSAPP_LINK = HUMAN_SUPPORT_CONTACT.whatsappHref
 
 export const PICKUP_ONLY_COPY = "Solo recogida en tienda. No hacemos envíos."
 export const FORMAT_SIZE_COPY = "Siempre trabajamos con 2 tamaños: grande y cajita."
@@ -46,10 +61,10 @@ export function isPickupWeekdayOpen(weekday: number) {
   return OPEN_PICKUP_WEEKDAY_INDEXES.includes(weekday as typeof OPEN_PICKUP_WEEKDAY_INDEXES[number])
 }
 
-export function buildHumanSupportMessage(prefix = "Te atiende una persona del equipo aquí:") {
-  return `${prefix} ${HUMAN_SUPPORT_WHATSAPP_LINK} o llama al ${HUMAN_SUPPORT_PHONE_E164}`
+export function buildHumanSupportMessage(prefix = "Si lo prefieres, te atiende una persona por WhatsApp en el") {
+  return `${prefix} ${HUMAN_SUPPORT_PHONE_DISPLAY}.`
 }
 
 export function buildUnconfirmedProductInfoMessage() {
-  return `No tengo ese dato confirmado ahora mismo. Te atiende un humano aquí: ${HUMAN_SUPPORT_WHATSAPP_LINK} o llama al ${HUMAN_SUPPORT_PHONE_E164}`
+  return `No tengo ese dato confirmado ahora mismo. ${buildHumanSupportMessage()}`
 }

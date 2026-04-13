@@ -69,7 +69,7 @@ Nunca confirmes ni crees un pedido si falta el nombre del cliente.
 Si puedes responder sin tools, responde directo y no llames tools.
 Si el usuario pide humano o hay incertidumbre crítica, usa tool handoff_to_human.`
 
-const HANDOFF_TEXT = buildHumanSupportMessage("Te atiende una persona del equipo aquí:")
+const HANDOFF_TEXT = buildHumanSupportMessage()
 
 const HANDOFF_KEYWORDS = ["humano", "persona", "agente", "asesor", "operador"]
 
@@ -442,7 +442,7 @@ function buildProductFactsReply(message: string) {
     return `Para ${facts.label}: ${sections.join(" ")}`
   }
 
-  return `Para ${facts.label}: ${sections.join(" ")} No tengo confirmado ${missingSections.join(" ni ")} ahora mismo. ${buildHumanSupportMessage("Te atiende un humano aquí:")}`
+  return `Para ${facts.label}: ${sections.join(" ")} No tengo confirmado ${missingSections.join(" ni ")} ahora mismo. ${buildHumanSupportMessage()}`
 }
 
 function buildOrderItemLabel(state: OrderState) {
@@ -585,7 +585,7 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
     await activateHandoff(userId, "Consulta de pedido existente")
     return saveAndReply(
       userId,
-      "Para revisar tu pedido con seguridad, te atiende una persona del equipo. Si quieres, indícame tu nombre y el día de recogida.",
+      `Para revisar tu pedido con seguridad, ${buildHumanSupportMessage("te atiende una persona por WhatsApp en el")} Si quieres, indícame tu nombre y el día de recogida.`,
       resetOrderState(state, channel)
     )
   }

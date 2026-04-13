@@ -3,6 +3,10 @@
 import { MessageCircle, RotateCcw, Send, X } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 
+import { useIsMobile } from "@/hooks/use-mobile"
+import { WhatsAppButton } from "@/src/components/whatsapp-button"
+import { resolveSupportLauncherVariant } from "@/src/lib/support-launcher"
+
 type ChatMessage = { role: "user" | "assistant"; text: string }
 
 const QUICK_ACTIONS = [
@@ -22,7 +26,7 @@ function createWebExternalId() {
   return crypto.randomUUID()
 }
 
-export function ChatWidget() {
+function DesktopChatWidget() {
   const pendingRequestRef = useRef<AbortController | null>(null)
   const externalIdRef = useRef<string>(createWebExternalId())
   const messagesContainerRef = useRef<HTMLDivElement | null>(null)
@@ -207,4 +211,23 @@ export function ChatWidget() {
       </button>
     </div>
   )
+}
+
+export function ChatWidget() {
+  const isMobile = useIsMobile()
+  const [hasMounted, setHasMounted] = useState(false)
+
+  useEffect(() => {
+    setHasMounted(true)
+  }, [])
+
+  const launcherVariant = resolveSupportLauncherVariant(hasMounted, isMobile)
+
+  if (launcherVariant === "hidden") return null
+
+  if (launcherVariant === "mobile-whatsapp") {
+    return <WhatsAppButton />
+  }
+
+  return <DesktopChatWidget />
 }
