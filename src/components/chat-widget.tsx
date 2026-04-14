@@ -4,6 +4,7 @@ import { MessageCircle, RotateCcw, Send, X } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 
 import { splitMessageLinks } from "@/src/components/chat-message-links"
+import { WELCOME_MESSAGE } from "@/lib/chatbot/welcome"
 
 type ChatMessage = { role: "user" | "assistant"; text: string }
 
@@ -16,7 +17,7 @@ const QUICK_ACTIONS = [
 ]
 
 function getInitialMessages(): ChatMessage[] {
-  return [{ role: "assistant", text: "¡Hola! Te ayudo con pedidos, sabores, alérgenos y horarios." }]
+  return [{ role: "assistant", text: WELCOME_MESSAGE }]
 }
 
 function createWebExternalId() {

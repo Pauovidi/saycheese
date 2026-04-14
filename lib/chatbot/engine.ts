@@ -22,6 +22,7 @@ import {
   findProductBySlugOrFlavor,
   listFlavorsAndSizes,
 } from "@/lib/chatbot/products"
+import { hasGreetingIntent, WELCOME_MESSAGE } from "@/lib/chatbot/welcome"
 import {
   buildHumanSupportMessage,
   buildUnconfirmedProductInfoMessage,
@@ -586,6 +587,10 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
   const email = extractEmailFromText(message)
   if (email) {
     state.customerEmail = email
+  }
+
+  if (hasGreetingIntent(message)) {
+    return saveAndReply(userId, WELCOME_MESSAGE)
   }
 
   if (hasResetOrderIntent(message)) {
