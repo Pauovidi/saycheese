@@ -3,6 +3,8 @@
 import { MessageCircle, RotateCcw, Send, X } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 
+import { splitMessageLinks } from "@/src/components/chat-message-links"
+
 type ChatMessage = { role: "user" | "assistant"; text: string }
 
 const QUICK_ACTIONS = [
@@ -20,6 +22,26 @@ function getInitialMessages(): ChatMessage[] {
 function createWebExternalId() {
   if (typeof window === "undefined") return "server"
   return crypto.randomUUID()
+}
+
+function renderMessageText(text: string) {
+  return splitMessageLinks(text).map((part, index) => {
+    if (part.type === "link") {
+      return (
+        <a
+          key={`${part.type}-${index}`}
+          href={part.value}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="underline underline-offset-2"
+        >
+          {part.value}
+        </a>
+      )
+    }
+
+    return <span key={`${part.type}-${index}`}>{part.value}</span>
+  })
 }
 
 export function ChatWidget() {
@@ -152,7 +174,7 @@ export function ChatWidget() {
                   message.role === "user" ? "ml-auto bg-black text-white" : "bg-white"
                 } whitespace-pre-line`}
               >
-                {message.text}
+                {renderMessageText(message.text)}
               </div>
             ))}
             {loading && <p className="text-xs text-neutral-500">Escribiendo...</p>}
