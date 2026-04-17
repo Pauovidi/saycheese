@@ -1,8 +1,13 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 
-import { addDaysToToday, computeReminderAt } from "@/lib/chatbot/reminders"
+import { computeReminderAt } from "@/lib/chatbot/reminders"
+import { getOrderPickupDateErrorMessage, validateOrderPickupDate } from "@/lib/pickup-date-validation"
 import { getAdminClient, getAdminUid } from "@/lib/supabase/admin"
+
+const LEAD_DAYS_RAW = Number.parseInt(process.env.CHATBOT_LEAD_DAYS ?? "3", 10)
+const LEAD_DAYS = Number.isFinite(LEAD_DAYS_RAW) && LEAD_DAYS_RAW > 0 ? LEAD_DAYS_RAW : 3
+const SHOP_TZ = process.env.SHOP_TZ ?? "Europe/Madrid"
 
 const orderPayloadSchema = z.object({
   customer_name: z.string().min(1),
@@ -27,9 +32,20 @@ export async function POST(request: Request) {
     const adminUid = await getAdminUid()
     const supabase = getAdminClient()
     const createdAt = new Date()
-    const usedDefaultDeliveryDate = !payload.delivery_date
-    const deliveryDateFinal = payload.delivery_date || addDaysToToday(3)
-    const reminderAt = computeReminderAt({ createdAt, deliveryDate: deliveryDateFinal, usedDefaultDeliveryDate })
+    const deliveryDateValidation = validateOrderPickupDate(payload.delivery_date, createdAt, LEAD_DAYS, SHOP_TZ)
+
+    if (deliveryDateValidation.kind !== "valid") {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: getOrderPickupDateErrorMessage(deliveryDateValidation, LEAD_DAYS, SHOP_TZ),
+        },
+        { status: 400 }
+      )
+    }
+
+    const deliveryDateFinal = deliveryDateValidation.pickupDate
+    const reminderAt = computeReminderAt({ createdAt, deliveryDate: deliveryDateFinal, usedDefaultDeliveryDate: false })
 
     const { data: order, error: orderError } = await supabase
       .from("orders")

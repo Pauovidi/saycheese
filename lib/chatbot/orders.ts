@@ -2,10 +2,9 @@ import "server-only"
 
 import { z } from "zod"
 
-import { earliestPickupDateISO, formatDateEs, getNextAvailablePickupDate, isBusinessOpenOnDate } from "@/lib/chatbot/dates"
-import { CLOSED_PICKUP_DAYS_COPY } from "@/src/data/business"
 import { isKnownFlavor } from "@/lib/chatbot/products"
 import { computeReminderAt } from "@/lib/chatbot/reminders"
+import { getOrderPickupDateErrorMessage, validateOrderPickupDate } from "@/lib/pickup-date-validation"
 import { getAdminClient, getAdminUid } from "@/lib/supabase/admin"
 
 const LEAD_DAYS_RAW = Number.parseInt(process.env.CHATBOT_LEAD_DAYS ?? "3", 10)
@@ -46,7 +45,6 @@ export async function createChatOrder(input: unknown) {
 
   const payload = parsed.data
   const createdAt = new Date()
-  const earliest = earliestPickupDateISO(createdAt, LEAD_DAYS, SHOP_TZ)
 
   if (payload.items.some((item) => !isKnownFlavor(item.flavor))) {
     return {
@@ -56,32 +54,23 @@ export async function createChatOrder(input: unknown) {
     }
   }
 
-  if (payload.delivery_date && payload.delivery_date < earliest) {
+  const deliveryDateValidation = validateOrderPickupDate(payload.delivery_date, createdAt, LEAD_DAYS, SHOP_TZ)
+
+  if (deliveryDateValidation.kind !== "valid") {
     return {
       ok: false as const,
-      error: `Para esa fecha no llegamos. La primera fecha disponible es ${formatDateEs(earliest, SHOP_TZ)}.`,
-      shouldHandoff: false,
-    }
-  }
-
-  if (payload.delivery_date && !isBusinessOpenOnDate(payload.delivery_date)) {
-    const nextAvailableDate = getNextAvailablePickupDate(payload.delivery_date)
-
-    return {
-      ok: false as const,
-      error: `No hacemos recogidas el ${formatDateEs(payload.delivery_date, SHOP_TZ)} porque ${CLOSED_PICKUP_DAYS_COPY}. La siguiente fecha disponible es ${formatDateEs(nextAvailableDate, SHOP_TZ)}.`,
+      error: getOrderPickupDateErrorMessage(deliveryDateValidation, LEAD_DAYS, SHOP_TZ),
       shouldHandoff: false,
     }
   }
 
   const adminUid = await getAdminUid()
   const supabase = getAdminClient()
-  const usedDefaultDeliveryDate = !payload.delivery_date
-  const deliveryDateFinal = payload.delivery_date || earliest
+  const deliveryDateFinal = deliveryDateValidation.pickupDate
   const reminderAt = computeReminderAt({
     createdAt,
     deliveryDate: deliveryDateFinal,
-    usedDefaultDeliveryDate,
+    usedDefaultDeliveryDate: false,
   })
 
   const { data: order, error: orderError } = await supabase

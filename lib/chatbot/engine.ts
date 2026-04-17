@@ -728,8 +728,9 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
       return saveAndReply(userId, buildContextualOrderReply(state, channel, SHOP_TZ), state)
     }
 
+    const confirmedCustomerName = state.customerName
     const created = await createChatOrder({
-      customer_name: state.customerName.trim(),
+      customer_name: confirmedCustomerName.trim(),
       customer_email: state.customerEmail,
       phone: state.phone,
       delivery_date: state.finalDate,
@@ -808,7 +809,7 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
             },
           },
         },
-        required: ["customer_name", "phone", "items"],
+        required: ["customer_name", "phone", "delivery_date", "items"],
         additionalProperties: false,
       },
     },

@@ -8,22 +8,33 @@ import { toast } from "sonner"
 
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { getCustomerFacingFormatLabel, PICKUP_ONLY_COPY } from "@/src/data/business"
+import { earliestPickupDateISO, formatDateEs } from "@/lib/chatbot/date-rules"
+import { getOrderPickupDateErrorMessage, validateOrderPickupDate } from "@/lib/pickup-date-validation"
+import { CLOSED_PICKUP_DAYS_COPY, getCustomerFacingFormatLabel, PICKUP_ONLY_COPY } from "@/src/data/business"
 import { useCart } from "@/src/context/cart-context"
 
 const checkoutSchema = z.object({
   customer_name: z.string().min(1, "El nombre es obligatorio"),
   phone: z.string().min(6, "Teléfono inválido"),
-  delivery_date: z.string().date("Fecha de entrega inválida").optional(),
+  delivery_date: z
+    .string()
+    .min(1, "La fecha de recogida es obligatoria")
+    .date("Fecha de recogida inválida"),
 })
 
-export function CheckoutSummary() {
+type CheckoutSummaryProps = {
+  leadDays: number
+  shopTimeZone: string
+}
+
+export function CheckoutSummary({ leadDays, shopTimeZone }: CheckoutSummaryProps) {
   const router = useRouter()
   const { items, subtotal, clearCart } = useCart()
   const [loading, setLoading] = useState(false)
   const [customerName, setCustomerName] = useState("")
   const [phone, setPhone] = useState("")
   const [deliveryDate, setDeliveryDate] = useState("")
+  const [deliveryDateError, setDeliveryDateError] = useState<string | null>(null)
 
   const payloadItems = useMemo(
     () =>
@@ -34,6 +45,11 @@ export function CheckoutSummary() {
       })),
     [items]
   )
+  const earliestPickupDate = useMemo(
+    () => earliestPickupDateISO(new Date(), leadDays, shopTimeZone),
+    [leadDays, shopTimeZone]
+  )
+  const pickupDateHelpText = `Elige una fecha de recogida obligatoria. Necesitamos mínimo ${leadDays} días de antelación y ${CLOSED_PICKUP_DAYS_COPY}. Primera fecha disponible: ${formatDateEs(earliestPickupDate, shopTimeZone)}.`
 
   if (items.length === 0) {
     return (
@@ -49,15 +65,51 @@ export function CheckoutSummary() {
     )
   }
 
+  function validateDeliveryDate(value: string) {
+    const validation = validateOrderPickupDate(value || undefined, new Date(), leadDays, shopTimeZone)
+
+    if (validation.kind === "valid") {
+      setDeliveryDateError(null)
+      return validation
+    }
+
+    const message = getOrderPickupDateErrorMessage(validation, leadDays, shopTimeZone)
+    setDeliveryDateError(message)
+    return { ...validation, message }
+  }
+
+  function handleDeliveryDateChange(nextValue: string) {
+    if (!nextValue) {
+      setDeliveryDate("")
+      setDeliveryDateError("La fecha de recogida es obligatoria.")
+      return
+    }
+
+    const validation = validateDeliveryDate(nextValue)
+    if (validation.kind !== "valid") {
+      setDeliveryDate("")
+      toast.error(validation.message)
+      return
+    }
+
+    setDeliveryDate(validation.pickupDate)
+  }
+
   async function handleConfirmOrder() {
     const parsed = checkoutSchema.safeParse({
       customer_name: customerName.trim(),
       phone,
-      delivery_date: deliveryDate || undefined,
+      delivery_date: deliveryDate,
     })
 
     if (!parsed.success) {
       toast.error(parsed.error.issues[0]?.message ?? "Revisa el formulario")
+      return
+    }
+
+    const deliveryDateValidation = validateDeliveryDate(parsed.data.delivery_date)
+    if (deliveryDateValidation.kind !== "valid") {
+      toast.error(deliveryDateValidation.message)
       return
     }
 
@@ -69,6 +121,7 @@ export function CheckoutSummary() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...parsed.data,
+          delivery_date: deliveryDateValidation.pickupDate,
           items: payloadItems,
         }),
       })
@@ -115,15 +168,18 @@ export function CheckoutSummary() {
           />
         </div>
         <div className="space-y-2 md:col-span-2">
-          <Label htmlFor="delivery-date">¿Para qué fecha quieres recoger el pedido?</Label>
+          <Label htmlFor="delivery-date">¿Para qué fecha quieres recoger el pedido? *</Label>
           <Input
             id="delivery-date"
             type="date"
+            required
+            min={earliestPickupDate}
             value={deliveryDate}
-            onChange={(e) => setDeliveryDate(e.target.value)}
+            aria-invalid={deliveryDateError ? "true" : "false"}
+            onChange={(e) => handleDeliveryDateChange(e.target.value)}
           />
-          <p className="text-xs text-muted-foreground">
-            Si no indicas fecha, se programará para dentro de 3 días (aprox.).
+          <p className={`text-xs ${deliveryDateError ? "text-destructive" : "text-muted-foreground"}`}>
+            {deliveryDateError ?? pickupDateHelpText}
           </p>
         </div>
       </div>
