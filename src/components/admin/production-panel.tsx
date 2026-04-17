@@ -47,6 +47,39 @@ function formatISODate(d: Date): string {
   return format(d, "yyyy-MM-dd")
 }
 
+function getProductionTypeLabel(type: "cake" | "box"): string {
+  return type === "cake" ? "Tarta grande" : "Cajita / pequeña"
+}
+
+function getProductionPhone(phone: string | null): string {
+  return phone?.trim() || "Sin teléfono"
+}
+
+function buildProductionCopyText(result: ProductionResponse, rangeLabel: string): string {
+  const lines: string[] = []
+
+  lines.push(`Rango: ${rangeLabel}`)
+  lines.push("")
+  lines.push(`TARTAS GRANDES (${result.totals.cakes})`)
+  lines.push(`CAJITAS / PEQUEÑAS (${result.totals.boxes})`)
+
+  if (result.details.length > 0) {
+    lines.push("")
+    lines.push("DETALLE")
+
+    for (const line of result.details) {
+      const emoji = getFlavorEmoji(line.flavor)
+      const flavorLabel = emoji ? `${line.flavor} ${emoji}` : line.flavor
+
+      lines.push(
+        `${getProductionTypeLabel(line.type)} · ${flavorLabel} — ${line.qty} — ${getProductionPhone(line.phone)}`
+      )
+    }
+  }
+
+  return lines.join("\n")
+}
+
 export function ProductionPanel() {
   const [rangeMode, setRangeMode] = useState<"single" | "range">("range")
   const [singleDate, setSingleDate] = useState<Date | undefined>(new Date())
@@ -103,23 +136,7 @@ export function ProductionPanel() {
 
   const handleCopy = useCallback(() => {
     if (!result) return
-    const lines: string[] = []
-    lines.push(`Rango: ${rangeLabel}`)
-    lines.push("")
-    if (result.cakes.length > 0) {
-      lines.push(`TARTAS (${result.totals.cakes})`)
-      for (const l of result.cakes) {
-        lines.push(`  ${l.flavor} ${getFlavorEmoji(l.flavor)} — ${l.qty}`)
-      }
-      lines.push("")
-    }
-    if (result.boxes.length > 0) {
-      lines.push(`CAJITAS (${result.totals.boxes})`)
-      for (const l of result.boxes) {
-        lines.push(`  ${l.flavor} ${getFlavorEmoji(l.flavor)} — ${l.qty}`)
-      }
-    }
-    navigator.clipboard.writeText(lines.join("\n")).then(() => {
+    navigator.clipboard.writeText(buildProductionCopyText(result, rangeLabel)).then(() => {
       toast.success("Copiado al portapapeles")
     })
   }, [result, rangeLabel])
