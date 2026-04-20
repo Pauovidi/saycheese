@@ -20,6 +20,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { CatalogImageUpload } from "@/src/components/admin/catalog-image-upload"
 import { slugifyFlavorName, type EditableFlavorRecord } from "@/src/data/products"
 
 const NEW_FLAVOR_KEY = "__new__"
@@ -130,6 +131,7 @@ export function CakeCatalogEditor({ initialFlavors }: { initialFlavors: Editable
   const previewName = form.name.trim() || "Nuevo sabor"
   const previewDescription = form.description.trim() || "La descripción aparecerá aquí en la ficha del producto."
   const previewSlug = isCreating ? slugifyFlavorName(form.name) : selectedFlavor?.slug ?? ""
+  const uploadSlug = previewSlug || selectedFlavor?.slug || "draft"
 
   function selectFlavor(slug: string) {
     const flavor = flavors.find((entry) => entry.slug === slug)
@@ -330,22 +332,24 @@ export function CakeCatalogEditor({ initialFlavors }: { initialFlavors: Editable
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="tarta-image">Imagen grande</Label>
-                  <Input
-                    id="tarta-image"
+                  <CatalogImageUpload
+                    label="Imagen grande"
                     value={form.tartaImage}
-                    onChange={(event) => updateField("tartaImage", event.target.value)}
-                    placeholder="/images/products/tarta-nueva.webp"
+                    slug={uploadSlug}
+                    variant="tarta"
+                    onChange={(nextValue) => updateField("tartaImage", nextValue)}
+                    disabled={isPending}
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="cajita-image">Imagen cajita</Label>
-                  <Input
-                    id="cajita-image"
+                  <CatalogImageUpload
+                    label="Imagen cajita"
                     value={form.cajitaImage}
-                    onChange={(event) => updateField("cajitaImage", event.target.value)}
-                    placeholder="/images/products/cajita-nueva.webp"
+                    slug={uploadSlug}
+                    variant="cajita"
+                    onChange={(nextValue) => updateField("cajitaImage", nextValue)}
+                    disabled={isPending}
                   />
                 </div>
 
