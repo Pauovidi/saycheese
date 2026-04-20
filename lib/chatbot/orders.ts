@@ -46,7 +46,9 @@ export async function createChatOrder(input: unknown) {
   const payload = parsed.data
   const createdAt = new Date()
 
-  if (payload.items.some((item) => !isKnownFlavor(item.flavor))) {
+  const flavorChecks = await Promise.all(payload.items.map((item) => isKnownFlavor(item.flavor)))
+
+  if (flavorChecks.some((isKnown) => !isKnown)) {
     return {
       ok: false as const,
       error: "Pedido ambiguo: no identifiqué uno o más sabores.",

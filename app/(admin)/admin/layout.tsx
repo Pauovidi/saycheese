@@ -1,5 +1,7 @@
 import type { Metadata } from "next"
 
+import { Toaster } from "@/components/ui/sonner"
+import { AdminNav } from "@/src/components/admin/admin-nav"
 import { AdminLogoutButton } from "@/src/components/admin/admin-logout-button"
 
 export const metadata: Metadata = {
@@ -21,8 +23,10 @@ export default function AdminLayout({
           </h1>
           <AdminLogoutButton />
         </div>
+        <AdminNav />
       </header>
       <div className="mx-auto max-w-5xl px-4 py-6">{children}</div>
+      <Toaster position="bottom-center" />
     </div>
   )
 }

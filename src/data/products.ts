@@ -384,3 +384,165 @@ export function getFlavorFacts(category: string) {
     sourceProduct: flavorProducts.find((product) => parseProductList(product.allergens).length || (product.ingredients?.length ?? 0) > 0) ?? flavorProducts[0],
   }
 }
+
+export interface EditableFlavorRecord {
+  slug: string
+  name: string
+  description: string
+  allergens: string
+  tartaImage: string
+  cajitaImage: string
+  tartaPrice: number
+  cajitaPrice: number
+  position: number
+  createdAt?: string
+  updatedAt?: string
+}
+
+export interface EditableCatalogDocument {
+  version: 1
+  updatedAt: string
+  flavors: EditableFlavorRecord[]
+}
+
+const TARTA_WEIGHT_INFO = "1,7 kg"
+const TARTA_PORTION_INFO = "10-12 raciones"
+const CAJITA_WEIGHT_INFO = "400 g"
+const CAJITA_PORTION_INFO = "Formato cajita"
+
+function formatPriceText(value: number) {
+  return new Intl.NumberFormat("es-ES", {
+    style: "currency",
+    currency: "EUR",
+    minimumFractionDigits: Number.isInteger(value) ? 0 : 2,
+    maximumFractionDigits: 2,
+  }).format(value).replace(/\u00A0/g, " ")
+}
+
+export function slugifyFlavorName(value: string) {
+  return value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+}
+
+export function buildFlavorRecordsFromProducts(sourceProducts: Product[] = products): EditableFlavorRecord[] {
+  return getFlavorsFromProducts(sourceProducts).map((flavor, index) => {
+    const sourceProduct = flavor.tarta ?? flavor.cajita
+
+    return {
+      slug: flavor.category,
+      name: sourceProduct?.name ?? flavor.label,
+      description: flavor.tarta?.description ?? flavor.cajita?.description ?? "",
+      allergens: flavor.tarta?.allergens ?? flavor.cajita?.allergens ?? "",
+      tartaImage: flavor.tarta?.images[0] ?? "",
+      cajitaImage: flavor.cajita?.images[0] ?? "",
+      tartaPrice: flavor.tarta?.priceValue ?? 35,
+      cajitaPrice: flavor.cajita?.priceValue ?? 12,
+      position: index,
+    }
+  })
+}
+
+export const seedFlavorRecords = buildFlavorRecordsFromProducts(products)
+
+export function buildProductsFromFlavorRecords(records: EditableFlavorRecord[]): Product[] {
+  return sortFlavorRecords(records).flatMap((record, index) => {
+    const category = record.slug
+    const tarta: Product = {
+      id: `tarta-${category}`,
+      name: record.name,
+      slug: `tarta-${category}`,
+      format: "tarta",
+      category,
+      priceText: formatPriceText(record.tartaPrice),
+      priceValue: record.tartaPrice,
+      shortDescription: `Formato grande de cheesecake artesanal sabor ${record.name}.`,
+      fullDescription: `Formato grande de cheesecake artesanal. ${TARTA_PORTION_INFO} (${TARTA_WEIGHT_INFO}). Sabor ${record.name}.`,
+      description: record.description || undefined,
+      allergens: record.allergens || undefined,
+      portionInfo: TARTA_PORTION_INFO,
+      weightInfo: TARTA_WEIGHT_INFO,
+      images: record.tartaImage ? [record.tartaImage] : [],
+      featured: index < 6,
+    }
+
+    const cajita: Product = {
+      id: `cajita-${category}`,
+      name: record.name,
+      slug: `cajita-${category}`,
+      format: "cajita",
+      category,
+      priceText: formatPriceText(record.cajitaPrice),
+      priceValue: record.cajitaPrice,
+      shortDescription: `Cajita de cheesecake artesanal sabor ${record.name} (${CAJITA_WEIGHT_INFO}).`,
+      fullDescription: `Formato cajita individual/compartir de ${CAJITA_WEIGHT_INFO}. Sabor ${record.name}.`,
+      description: record.description || undefined,
+      allergens: record.allergens || undefined,
+      portionInfo: CAJITA_PORTION_INFO,
+      weightInfo: CAJITA_WEIGHT_INFO,
+      images: record.cajitaImage ? [record.cajitaImage] : [],
+      featured: index < 6,
+    }
+
+    return [cajita, tarta]
+  })
+}
+
+export function sortFlavorRecords(records: EditableFlavorRecord[]) {
+  return [...records].sort((a, b) => a.position - b.position || a.name.localeCompare(b.name, "es"))
+}
+
+export function getFlavorsFromProducts(sourceProducts: Product[]): Flavor[] {
+  const map = new Map<string, Flavor>()
+
+  for (const product of sourceProducts) {
+    if (!map.has(product.category)) {
+      map.set(product.category, { category: product.category, label: product.name })
+    }
+
+    const flavor = map.get(product.category)
+    if (!flavor) continue
+
+    if (product.format === "tarta") {
+      flavor.tarta = product
+    } else {
+      flavor.cajita = product
+    }
+  }
+
+  return Array.from(map.values())
+}
+
+export function getProductBySlugFromProducts(sourceProducts: Product[], slug: string) {
+  return sourceProducts.find((product) => product.slug === slug)
+}
+
+export function getProductsByCategoryFromProducts(sourceProducts: Product[], category: string) {
+  return sourceProducts.filter((product) => product.category === category)
+}
+
+export function getSiblingFromProducts(sourceProducts: Product[], product: Product) {
+  const otherFormat = product.format === "tarta" ? "cajita" : "tarta"
+  return sourceProducts.find(
+    (candidate) => candidate.category === product.category && candidate.format === otherFormat
+  )
+}
+
+export function getFlavorFactsFromProducts(sourceProducts: Product[], category: string) {
+  const flavorProducts = getProductsByCategoryFromProducts(sourceProducts, category)
+  if (!flavorProducts.length) return null
+
+  return {
+    category,
+    label: flavorProducts[0].name,
+    allergens: Array.from(new Set(flavorProducts.flatMap((product) => parseProductList(product.allergens)))),
+    ingredients: Array.from(new Set(flavorProducts.flatMap((product) => product.ingredients ?? []))),
+    sourceProduct:
+      flavorProducts.find(
+        (product) => parseProductList(product.allergens).length || (product.ingredients?.length ?? 0) > 0
+      ) ?? flavorProducts[0],
+  }
+}

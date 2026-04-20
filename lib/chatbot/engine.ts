@@ -177,7 +177,7 @@ function isStandaloneNameMessage(text: string, candidate: string) {
   return normalize(cleanedText) === normalize(candidate)
 }
 
-function isLikelyCustomerName(value: string) {
+async function isLikelyCustomerName(value: string) {
   const trimmed = cleanCustomerNameCandidate(splitNameCandidate(value))
   if (!trimmed) return false
   if (trimmed.length < 2 || trimmed.length > 60) return false
@@ -188,7 +188,7 @@ function isLikelyCustomerName(value: string) {
   if (words.length > 4) return false
   if (!words.every((word) => /^[\p{L}'-]+$/u.test(word))) return false
 
-  if (findProductBySlugOrFlavor(trimmed)) return false
+  if (await findProductBySlugOrFlavor(trimmed)) return false
 
   const blockedPhrases = new Set([
     "buenos dias",
@@ -278,7 +278,7 @@ function isLikelyCustomerName(value: string) {
   return !words.some((word) => blocked.has(normalize(word)))
 }
 
-function extractCustomerName(text: string) {
+async function extractCustomerName(text: string) {
   const patterns = [
     /(?:me\s+llamo|soy)\s+(.+)/i,
     /mi\s+nombre\s+es\s+(.+)/i,
@@ -289,13 +289,13 @@ function extractCustomerName(text: string) {
   for (const pattern of patterns) {
     const match = text.match(pattern)
     const candidate = cleanCustomerNameCandidate(splitNameCandidate(match?.[1] ?? ""))
-    if (isLikelyCustomerName(candidate)) {
+    if (await isLikelyCustomerName(candidate)) {
       return candidate
     }
   }
 
   const directCandidate = cleanCustomerNameCandidate(splitNameCandidate(text))
-  if (isStandaloneNameMessage(text, directCandidate) && isLikelyCustomerName(directCandidate)) {
+  if (isStandaloneNameMessage(text, directCandidate) && await isLikelyCustomerName(directCandidate)) {
     return directCandidate
   }
 
@@ -334,13 +334,13 @@ function isGenericNonOperationalMessage(text: string) {
   return exactMessages.has(normalized)
 }
 
-function detectProductMention(text: string) {
+async function detectProductMention(text: string) {
   const normalized = normalize(text)
 
-  const direct = findProductBySlugOrFlavor(text)
+  const direct = await findProductBySlugOrFlavor(text)
   if (direct) return direct
 
-  for (const flavor of listFlavorsAndSizes()) {
+  for (const flavor of await listFlavorsAndSizes()) {
     const normalizedFlavor = normalize(flavor.flavor)
     if (normalized.includes(normalizedFlavor)) {
       return findProductBySlugOrFlavor(flavor.flavor)
@@ -388,8 +388,8 @@ function hasExistingOrderQueryIntent(text: string) {
   return patterns.some((pattern) => pattern.test(normalized))
 }
 
-function buildFlavorsReply() {
-  const flavors = listFlavorsAndSizes()
+async function buildFlavorsReply() {
+  const flavors = await listFlavorsAndSizes()
   const lines = flavors.map((entry) => {
     const sizes = entry.sizes.map((size) => `${size.label}: ${size.priceText}`).join(" | ")
     return `- ${entry.flavor}: ${sizes}`
@@ -410,13 +410,13 @@ function requestedProductFacts(message: string) {
   }
 }
 
-function buildProductFactsReply(message: string, channel: "web" | "whatsapp") {
-  const product = detectProductMention(message)
+async function buildProductFactsReply(message: string, channel: "web" | "whatsapp") {
+  const product = await detectProductMention(message)
   if (!product) {
     return "Dime qué sabor quieres revisar y te paso la información confirmada."
   }
 
-  const facts = findFlavorFactsByQuery(product.category)
+  const facts = await findFlavorFactsByQuery(product.category)
   if (!facts) {
     return buildUnconfirmedProductInfoMessage(channel)
   }
@@ -452,18 +452,20 @@ function buildProductFactsReply(message: string, channel: "web" | "whatsapp") {
   return `Para ${facts.label}: ${sections.join(" ")} No tengo confirmado ${missingSections.join(" ni ")} ahora mismo. ${buildHumanSupportMessage("Te atiende un humano aquí:", channel)}`
 }
 
-function buildOrderItemLabel(state: OrderState) {
+async function buildOrderItemLabel(state: OrderState) {
   if (!state.flavor) return state.format === "cajita" ? "una pequeña" : state.format === "tarta" ? "una grande" : "el pedido"
 
-  const flavorLabel = findFlavorFactsByQuery(state.flavor)?.label ?? findProductBySlugOrFlavor(state.flavor)?.name ?? state.flavor.replace(/-/g, " ")
+  const flavorFacts = await findFlavorFactsByQuery(state.flavor)
+  const product = await findProductBySlugOrFlavor(state.flavor)
+  const flavorLabel = flavorFacts?.label ?? product?.name ?? state.flavor.replace(/-/g, " ")
   if (state.format === "cajita") return `una ${flavorLabel} pequeña`
   if (state.format === "tarta") return `una ${flavorLabel} grande`
   return `el pedido de ${flavorLabel}`
 }
 
-function buildContextualOrderReply(state: OrderState, channel: "web" | "whatsapp", tz: string) {
+async function buildContextualOrderReply(state: OrderState, channel: "web" | "whatsapp", tz: string) {
   const name = hasNonEmptyValue(state.customerName) ? `, ${state.customerName?.trim()}` : ""
-  const itemLabel = buildOrderItemLabel(state)
+  const itemLabel = await buildOrderItemLabel(state)
   const dateLabel = state.finalDate ? formatDateEs(state.finalDate, tz) : null
   const prefix = dateLabel
     ? `De acuerdo${name}. Te apunto ${itemLabel} para el ${dateLabel}.`
@@ -484,7 +486,7 @@ function resetOrderState(state: OrderState, channel: "web" | "whatsapp"): OrderS
   }
 }
 
-function buildPendingOrderReply(state: OrderState, channel: "web" | "whatsapp", tz: string) {
+async function buildPendingOrderReply(state: OrderState, channel: "web" | "whatsapp", tz: string) {
   if (state.awaitingConfirm && state.suggestedDate) {
     return `Sigo pendiente de la fecha. Si te va bien ${formatDateEs(state.suggestedDate, tz)}, dime "sí". Si no, pásame otra fecha y lo rehacemos.`
   }
@@ -615,18 +617,18 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
   }
 
   if (hasAllergensIntent(message)) {
-    return saveAndReply(userId, buildProductFactsReply(message, channel))
+    return saveAndReply(userId, await buildProductFactsReply(message, channel))
   }
 
   if (hasFlavorsIntent(message) && !hasOrderIntent(message)) {
-    return saveAndReply(userId, buildFlavorsReply())
+    return saveAndReply(userId, await buildFlavorsReply())
   }
 
   const orderFlow = hasOrderIntent(message) || state.inOrderFlow || state.awaitingConfirm || state.awaitingName
   if (orderFlow) {
     state.inOrderFlow = true
 
-    const product = detectProductMention(message)
+    const product = await detectProductMention(message)
     if (product) {
       state.flavor = product.category
     }
@@ -656,10 +658,10 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
       !parsedDate &&
       !product &&
       !format &&
-      !extractCustomerName(message) &&
+      !(await extractCustomerName(message)) &&
       !email
     ) {
-      return saveAndReply(userId, buildPendingOrderReply(state, channel, SHOP_TZ), state)
+      return saveAndReply(userId, await buildPendingOrderReply(state, channel, SHOP_TZ), state)
     }
 
     if (parsedDate?.kind === "ambiguous") {
@@ -699,7 +701,7 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
       state.awaitingConfirm = false
     }
 
-    const customerName = extractCustomerName(message)
+    const customerName = await extractCustomerName(message)
     if (customerName) {
       state.customerName = customerName
       state.awaitingName = false
@@ -715,17 +717,17 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
 
     if (!hasNonEmptyValue(state.customerName) && state.flavor && state.format) {
       state.awaitingName = true
-      return saveAndReply(userId, buildContextualOrderReply(state, channel, SHOP_TZ), state)
+      return saveAndReply(userId, await buildContextualOrderReply(state, channel, SHOP_TZ), state)
     }
 
     const missing = buildMissingFieldsPrompt(state, channel)
     if (missing) {
-      return saveAndReply(userId, buildContextualOrderReply(state, channel, SHOP_TZ), state)
+      return saveAndReply(userId, await buildContextualOrderReply(state, channel, SHOP_TZ), state)
     }
 
     if (!hasNonEmptyValue(state.customerName)) {
       state.awaitingName = true
-      return saveAndReply(userId, buildContextualOrderReply(state, channel, SHOP_TZ), state)
+      return saveAndReply(userId, await buildContextualOrderReply(state, channel, SHOP_TZ), state)
     }
 
     const confirmedCustomerName = state.customerName
@@ -843,17 +845,17 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
     const args = (rawArgs ? JSON.parse(rawArgs) : {}) as Record<string, unknown>
 
     if (name === "get_store_hours") return { hours: STORE_HOURS_TEXT }
-    if (name === "get_flavors_and_sizes") return { flavors: listFlavorsAndSizes() }
+    if (name === "get_flavors_and_sizes") return { flavors: await listFlavorsAndSizes() }
     if (name === "handoff_to_human") return activateHandoff(userId, channel, String(args.reason ?? "handoff"))
 
     if (name === "get_product_info") {
-      const product = findProductBySlugOrFlavor(String(args.query ?? ""))
+      const product = await findProductBySlugOrFlavor(String(args.query ?? ""))
       if (!product) {
         safetyEscalate = true
         return { found: false, message: "No encontré ese producto." }
       }
 
-      const facts = findFlavorFactsByQuery(product.category)
+      const facts = await findFlavorFactsByQuery(product.category)
       if (!facts?.allergens.length && !facts?.ingredients.length) {
         safetyEscalate = true
       }

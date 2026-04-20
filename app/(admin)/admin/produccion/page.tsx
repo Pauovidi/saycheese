@@ -1,7 +1,6 @@
 export const dynamic = "force-dynamic"
 export const revalidate = 0
 
-import { Toaster } from "@/components/ui/sonner"
 import { createClient } from "@/lib/supabase/server"
 import { LatestOrders } from "@/src/components/admin/latest-orders"
 import { AdminOrderSearch } from "@/src/components/admin/order-search"
@@ -42,8 +41,6 @@ export default async function ProduccionPage() {
 
       <AdminOrderSearch />
       <LatestOrders initialOrders={orders} />
-
-      <Toaster position="bottom-center" />
     </>
   )
 }

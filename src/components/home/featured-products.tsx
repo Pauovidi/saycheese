@@ -1,12 +1,12 @@
-"use client"
-
 import Link from "next/link"
-import { getFlavors } from "@/src/data/products"
+import type { Flavor } from "@/src/data/products"
 import { ProductCard } from "@/src/components/product-card"
 
-export function FeaturedProducts() {
-  const flavors = getFlavors().slice(0, 6)
+interface FeaturedProductsProps {
+  flavors: Flavor[]
+}
 
+export function FeaturedProducts({ flavors }: FeaturedProductsProps) {
   return (
     <section id="nuestros-sabores" className="scroll-mt-20 py-16 md:py-24">
       <div className="mx-auto max-w-[1600px] px-6 lg:px-10">
@@ -14,10 +14,12 @@ export function FeaturedProducts() {
           Nuestros sabores
         </h2>
         <div className="mt-12 grid grid-cols-2 gap-4 sm:gap-10 lg:grid-cols-3">
-          {flavors.map((flavor, i) => {
+          {flavors.slice(0, 6).map((flavor, i) => {
             const product = flavor.cajita ?? flavor.tarta
             if (!product) return null
-            return <ProductCard key={flavor.category} product={product} priority={i < 3} />
+            const sibling = product.format === "tarta" ? flavor.cajita : flavor.tarta
+
+            return <ProductCard key={flavor.category} product={product} sibling={sibling} priority={i < 3} />
           })}
         </div>
         <div className="mt-14 flex justify-center">
