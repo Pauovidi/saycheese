@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react"
 import { toast } from "sonner"
 
-import { cancelOrder, markOrderDone, reopenOrder, searchOrdersByPhone } from "@/actions/orders"
+import { cancelOrder, markOrderDone, reopenOrder, searchOrders } from "@/actions/orders"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { CancelOrderDialog } from "@/src/components/admin/cancel-order-dialog"
@@ -39,7 +39,7 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 export function AdminOrderSearch() {
-  const [phoneQuery, setPhoneQuery] = useState("")
+  const [searchQuery, setSearchQuery] = useState("")
   const [results, setResults] = useState<OrderResult[]>([])
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
@@ -48,11 +48,11 @@ export function AdminOrderSearch() {
     setErrorMessage(null)
 
     startTransition(async () => {
-      const response = await searchOrdersByPhone(phoneQuery)
+      const response = await searchOrders(searchQuery)
 
       if (!response.ok) {
         setResults([])
-        setErrorMessage(response.error)
+        setErrorMessage(response.error ?? "No se pudo completar la búsqueda")
         return
       }
 
@@ -110,9 +110,9 @@ export function AdminOrderSearch() {
 
       <div className="mb-4 flex flex-col gap-3 md:flex-row">
         <Input
-          placeholder="Buscar por teléfono"
-          value={phoneQuery}
-          onChange={(event) => setPhoneQuery(event.target.value)}
+          placeholder="Buscar por nombre, teléfono o sabor"
+          value={searchQuery}
+          onChange={(event) => setSearchQuery(event.target.value)}
         />
         <Button onClick={handleSearch} disabled={isPending}>
           Buscar
@@ -121,7 +121,7 @@ export function AdminOrderSearch() {
 
       {errorMessage ? <p className="mb-3 text-sm text-red-600">{errorMessage}</p> : null}
 
-      {results.length === 0 ? (
+      {!errorMessage && results.length === 0 ? (
         <p className="text-sm text-muted-foreground">No hay resultados.</p>
       ) : (
         <div className="space-y-4">

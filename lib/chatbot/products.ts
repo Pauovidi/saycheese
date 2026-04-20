@@ -1,5 +1,3 @@
-import "server-only"
-
 import { getCustomerFacingFormatLabel } from "@/src/data/business"
 import type { Product } from "@/src/data/products"
 import {
@@ -14,6 +12,14 @@ function normalize(value: string) {
   return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim()
 }
 
+function stripNonFlavorTerms(query: string) {
+  return normalize(query)
+    .replace(/\b(quiero|pedido|encargar|para|una|un|de|la|el|por|favor|grande|tarta|cajita|caja|pequena|pequeña|pequeno|pequeño|mini|individual)\b/g, " ")
+    .replace(/[^\p{L}\s-]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+}
+
 function detectRequestedFormat(query: string): Product["format"] | undefined {
   const normalized = normalize(query)
   if (/\bcajita\b/.test(normalized)) return "cajita"
@@ -22,7 +28,7 @@ function detectRequestedFormat(query: string): Product["format"] | undefined {
 }
 
 function scoreFlavorMatch(query: string, product: Product) {
-  const normalizedQuery = normalize(query)
+  const normalizedQuery = stripNonFlavorTerms(query)
   const fields = [product.slug, product.name, product.category].map(normalize)
   const haystack = fields.join(" ")
 
@@ -33,6 +39,10 @@ function scoreFlavorMatch(query: string, product: Product) {
   const tokens = normalizedQuery.split(/\s+/).filter((token) => token.length >= 3)
   if (tokens.length && tokens.every((token) => haystack.includes(token))) {
     return 60
+  }
+
+  if (tokens.some((token) => token.length >= 4 && haystack.includes(token))) {
+    return 55
   }
 
   return 0
@@ -63,9 +73,12 @@ export async function findProductBySlugOrFlavor(q: string) {
   const exactSlug = await getCatalogProductBySlug(q)
   if (exactSlug) return exactSlug
 
+  const searchableQuery = stripNonFlavorTerms(q)
+  if (!searchableQuery) return undefined
+
   const requestedFormat = detectRequestedFormat(q)
   const bestProduct = products
-    .map((product) => ({ product, score: scoreFlavorMatch(q, product) }))
+    .map((product) => ({ product, score: scoreFlavorMatch(searchableQuery, product) }))
     .filter((entry) => entry.score > 0)
     .sort((a, b) => b.score - a.score || Number(Boolean(b.product.allergens)) - Number(Boolean(a.product.allergens)))[0]?.product
 

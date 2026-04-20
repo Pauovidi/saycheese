@@ -2,6 +2,14 @@
 
 import { z } from "zod"
 
+import {
+  buildOrderSearchPhoneVariants,
+  dedupeAdminSearchOrders,
+  escapeOrderSearchLikeValue,
+  hasOrderSearchLetters,
+  isOrderSearchQueryValid,
+  normalizeOrderSearchText,
+} from "@/lib/admin/order-search"
 import { createClient } from "@/lib/supabase/server"
 
 const orderItemSchema = z.object({
@@ -37,17 +45,18 @@ const cancelOrderSchema = z.object({
   reason: z.string().trim().max(300).optional(),
 })
 
-const searchOrdersByPhoneSchema = z.object({
-  phoneQuery: z.string(),
+const searchOrdersSchema = z.object({
+  query: z.string(),
 })
 
 const markDoneSchema = z.object({
   orderId: z.string().uuid(),
 })
 
-function normalizePhone(value: string) {
-  return value.replace(/\D/g, "")
-}
+const ORDER_SEARCH_SELECT =
+  "id, delivery_date, status, customer_name, customer_email, phone, created_at, cancelled_at, cancelled_reason, notes, order_items(type, flavor, qty)"
+
+type SearchOrderResult = Awaited<ReturnType<typeof listOrders>>[number]
 
 export async function createOrder(payload: z.infer<typeof createOrderSchema>) {
   const parsed = createOrderSchema.parse(payload)
@@ -140,32 +149,83 @@ export async function deleteOrder(payload: z.infer<typeof deleteOrderSchema>) {
   return { success: true }
 }
 
-export async function searchOrdersByPhone(phoneQuery: string) {
+export async function searchOrders(query: string) {
   try {
-    const parsed = searchOrdersByPhoneSchema.parse({ phoneQuery })
+    const parsed = searchOrdersSchema.parse({ query })
     const supabase = await createClient()
+    const textQuery = normalizeOrderSearchText(parsed.query)
+    const escapedTextQuery = escapeOrderSearchLikeValue(textQuery)
+    const phoneQueries = buildOrderSearchPhoneVariants(textQuery)
 
-    const q = normalizePhone(parsed.phoneQuery)
-
-    if (q.length < 6) {
-      return { ok: false, error: "Introduce al menos 6 dígitos", results: [] as unknown[] }
+    if (!isOrderSearchQueryValid(parsed.query)) {
+      return { ok: false, error: "Introduce al menos 2 letras o 6 dígitos", results: [] as unknown[] }
     }
 
-    const { data, error } = await supabase
-      .from("orders")
-      .select(
-        "id, delivery_date, status, customer_name, customer_email, phone, created_at, cancelled_at, cancelled_reason, order_items(type, flavor, qty)"
-      )
-      .neq("status", "cancelled")
-      .like("phone_normalized", `%${q}%`)
-      .order("created_at", { ascending: false })
-      .limit(20)
+    const resultSets: SearchOrderResult[][] = []
 
-    if (error) {
-      return { ok: false, error: error.message, results: [] as unknown[] }
+    for (const phoneQuery of phoneQueries) {
+      const { data, error } = await supabase
+        .from("orders")
+        .select(ORDER_SEARCH_SELECT)
+        .neq("status", "cancelled")
+        .like("phone_normalized", `%${phoneQuery}%`)
+        .order("created_at", { ascending: false })
+        .limit(20)
+
+      if (error) {
+        return { ok: false, error: error.message, results: [] as unknown[] }
+      }
+
+      resultSets.push((data ?? []) as SearchOrderResult[])
     }
 
-    return { ok: true, results: data ?? [] }
+    if (escapedTextQuery.length >= 2 && hasOrderSearchLetters(textQuery)) {
+      const { data, error } = await supabase
+        .from("orders")
+        .select(ORDER_SEARCH_SELECT)
+        .neq("status", "cancelled")
+        .or(
+          `customer_name.ilike.%${escapedTextQuery}%,customer_email.ilike.%${escapedTextQuery}%,notes.ilike.%${escapedTextQuery}%`
+        )
+        .order("created_at", { ascending: false })
+        .limit(20)
+
+      if (error) {
+        return { ok: false, error: error.message, results: [] as unknown[] }
+      }
+
+      resultSets.push((data ?? []) as SearchOrderResult[])
+
+      const { data: itemMatches, error: itemsError } = await supabase
+        .from("order_items")
+        .select("order_id")
+        .ilike("flavor", `%${escapedTextQuery}%`)
+        .limit(20)
+
+      if (itemsError) {
+        return { ok: false, error: itemsError.message, results: [] as unknown[] }
+      }
+
+      const orderIds = Array.from(new Set((itemMatches ?? []).map((item) => item.order_id).filter(Boolean)))
+
+      if (orderIds.length) {
+        const { data: flavorOrders, error: flavorOrdersError } = await supabase
+          .from("orders")
+          .select(ORDER_SEARCH_SELECT)
+          .neq("status", "cancelled")
+          .in("id", orderIds)
+          .order("created_at", { ascending: false })
+          .limit(20)
+
+        if (flavorOrdersError) {
+          return { ok: false, error: flavorOrdersError.message, results: [] as unknown[] }
+        }
+
+        resultSets.push((flavorOrders ?? []) as SearchOrderResult[])
+      }
+    }
+
+    return { ok: true, results: dedupeAdminSearchOrders(resultSets.flat()).slice(0, 20) }
   } catch (error) {
     const message = error instanceof Error ? error.message : "Error al buscar pedidos"
     return { ok: false, error: message, results: [] as unknown[] }

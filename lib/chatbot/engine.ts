@@ -15,6 +15,15 @@ import {
   setPauseState,
   updateSummary,
 } from "@/lib/chatbot/memory"
+import {
+  extractCustomerName,
+  extractPhoneFromText,
+  hasExplicitNewOrderIntent,
+  hasRecentOrderGuard,
+  normalizeChatText,
+  parseOrderFormat,
+} from "@/lib/chatbot/order-intake"
+import { buildChatOrderFingerprint, isRecentDuplicateFingerprint, type ChatOrderItem } from "@/lib/chatbot/order-dedupe"
 import { cancelChatOrder, createChatOrder } from "@/lib/chatbot/orders"
 import { buildMissingFieldsPrompt } from "@/lib/chatbot/order-prompts"
 import {
@@ -22,12 +31,11 @@ import {
   findProductBySlugOrFlavor,
   listFlavorsAndSizes,
 } from "@/lib/chatbot/products"
-import { hasGreetingIntent, WELCOME_MESSAGE } from "@/lib/chatbot/welcome"
+import { FLAVORS_AND_SIZES_MESSAGE, hasGreetingIntent, WELCOME_MESSAGE } from "@/lib/chatbot/welcome"
 import {
   buildHumanSupportMessage,
   buildUnconfirmedProductInfoMessage,
   CLOSED_PICKUP_DAYS_COPY,
-  FORMAT_SIZE_COPY,
   getCustomerFacingFormatLabel,
   HUMAN_SUPPORT_PHONE_E164,
   HUMAN_SUPPORT_PHONE_DISPLAY,
@@ -55,6 +63,9 @@ type OrderState = {
   finalDate?: string
   awaitingConfirm?: boolean
   awaitingName?: boolean
+  lastCreatedOrderId?: string
+  lastCreatedOrderAt?: string
+  lastCreatedOrderFingerprint?: string
 }
 
 const LEAD_DAYS_RAW = Number.parseInt(process.env.CHATBOT_LEAD_DAYS ?? "3", 10)
@@ -85,10 +96,7 @@ function getOpenAIClient() {
 }
 
 function normalize(text: string) {
-  return text
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
+  return normalizeChatText(text)
 }
 
 function shouldRequestHandoff(message: string) {
@@ -125,19 +133,6 @@ async function persistOrderState(userId: string, state: OrderState) {
   await saveMessage(userId, "system", `${ORDER_STATE_PREFIX}${JSON.stringify(state)}`)
 }
 
-function extractPhoneFromText(text: string) {
-  const match = text.match(/(?:\+?\d[\d\s-]{6,}\d)/)
-  if (!match) return undefined
-  return match[0].replace(/\s+/g, "").replace(/-/g, "")
-}
-
-function parseFormat(text: string): "tarta" | "cajita" | undefined {
-  const normalized = normalize(text)
-  if (/\b(cajita|caja|pequena|pequeña|pequeno|pequeño|mini|individual)\b/.test(normalized)) return "cajita"
-  if (/\b(tarta|grande|mediana|mediano)\b/.test(normalized)) return "tarta"
-  return undefined
-}
-
 function isAffirmative(text: string) {
   const normalized = normalize(text)
   return /\b(si|perfecto|me va bien|de acuerdo|confirmo)\b/.test(normalized)
@@ -148,158 +143,8 @@ function isNegative(text: string) {
   return /\b(no|prefiero otro dia|otro dia|otra fecha|no me va bien)\b/.test(normalized)
 }
 
-function cleanCustomerNameCandidate(value: string) {
-  return value.replace(/^[\s,:-]+|[\s,.!?;:]+$/g, "").replace(/\s+/g, " ").trim()
-}
-
 function hasNonEmptyValue(value?: string) {
   return typeof value === "string" && value.trim().length > 0
-}
-
-function splitNameCandidate(value: string) {
-  const withoutPhone = value.replace(/(?:^|\s)\+?\d[\d\s-]{5,}\d.*$/u, "")
-
-  return withoutPhone
-    .split(/[,.!?;:]+/)[0]
-    ?.split(/\b(?:y\s+)?(?:quiero|queria|quería|necesito|busco|para|seria|sería|quisiera|con|mi\s+correo|correo|email|telefono|teléfono|movil|móvil|numero|número|pero|aunque|porque|que|pues)\b/i)[0]
-    ?.trim() ?? ""
-}
-
-function isStandaloneNameMessage(text: string, candidate: string) {
-  const cleanedText = cleanCustomerNameCandidate(
-    text
-      .replace(/\+?\d[\d\s-]{5,}\d/g, " ")
-      .replace(/\b(?:mi\s+)?(?:telefono|teléfono|movil|móvil|numero|número|es)\b/gi, " ")
-      .replace(/[,.!?;:]+/g, " ")
-  )
-  if (!cleanedText || !candidate) return false
-
-  return normalize(cleanedText) === normalize(candidate)
-}
-
-async function isLikelyCustomerName(value: string) {
-  const trimmed = cleanCustomerNameCandidate(splitNameCandidate(value))
-  if (!trimmed) return false
-  if (trimmed.length < 2 || trimmed.length > 60) return false
-  if (/@/.test(trimmed) || /\d/.test(trimmed)) return false
-  const normalizedTrimmed = normalize(trimmed)
-
-  const words = trimmed.split(/\s+/)
-  if (words.length > 4) return false
-  if (!words.every((word) => /^[\p{L}'-]+$/u.test(word))) return false
-
-  if (await findProductBySlugOrFlavor(trimmed)) return false
-
-  const blockedPhrases = new Set([
-    "buenos dias",
-    "buenas tardes",
-    "buenas noches",
-    "hola buenos dias",
-    "hola buenas",
-    "el lunes",
-    "el martes",
-    "el miercoles",
-    "el miércoles",
-    "el jueves",
-    "el viernes",
-    "el sabado",
-    "el sábado",
-    "el domingo",
-  ])
-  if (blockedPhrases.has(normalizedTrimmed)) return false
-
-  const blocked = new Set([
-    "pues",
-    "si",
-    "sí",
-    "no",
-    "nop",
-    "nope",
-    "bueno",
-    "genial",
-    "claro",
-    "perfecto",
-    "entonces",
-    "luego",
-    "oye",
-    "mira",
-    "nah",
-    "nada",
-    "ninguno",
-    "ninguna",
-    "vale",
-    "ok",
-    "perfecto",
-    "pedido",
-    "tarta",
-    "cajita",
-    "hoy",
-    "manana",
-    "mañana",
-    "lunes",
-    "martes",
-    "miercoles",
-    "miércoles",
-    "jueves",
-    "viernes",
-    "sabado",
-    "sábado",
-    "domingo",
-    "enero",
-    "febrero",
-    "marzo",
-    "abril",
-    "mayo",
-    "junio",
-    "julio",
-    "agosto",
-    "septiembre",
-    "setiembre",
-    "octubre",
-    "noviembre",
-    "diciembre",
-    "ene",
-    "feb",
-    "mar",
-    "abr",
-    "may",
-    "jun",
-    "jul",
-    "ago",
-    "sep",
-    "sept",
-    "oct",
-    "nov",
-    "dic",
-    "hola",
-    "buenas",
-    "gracias",
-  ])
-  return !words.some((word) => blocked.has(normalize(word)))
-}
-
-async function extractCustomerName(text: string) {
-  const patterns = [
-    /(?:me\s+llamo|soy)\s+(.+)/i,
-    /mi\s+nombre\s+es\s+(.+)/i,
-    /a\s+nombre\s+de\s+(.+)/i,
-    /^nombre\s*[:\-]?\s*(.+)$/i,
-  ]
-
-  for (const pattern of patterns) {
-    const match = text.match(pattern)
-    const candidate = cleanCustomerNameCandidate(splitNameCandidate(match?.[1] ?? ""))
-    if (await isLikelyCustomerName(candidate)) {
-      return candidate
-    }
-  }
-
-  const directCandidate = cleanCustomerNameCandidate(splitNameCandidate(text))
-  if (isStandaloneNameMessage(text, directCandidate) && await isLikelyCustomerName(directCandidate)) {
-    return directCandidate
-  }
-
-  return undefined
 }
 
 function extractEmailFromText(text: string) {
@@ -389,13 +234,7 @@ function hasExistingOrderQueryIntent(text: string) {
 }
 
 async function buildFlavorsReply() {
-  const flavors = await listFlavorsAndSizes()
-  const lines = flavors.map((entry) => {
-    const sizes = entry.sizes.map((size) => `${size.label}: ${size.priceText}`).join(" | ")
-    return `- ${entry.flavor}: ${sizes}`
-  })
-
-  return `${FORMAT_SIZE_COPY}\n${lines.join("\n")}\n${PICKUP_ONLY_COPY}`
+  return FLAVORS_AND_SIZES_MESSAGE
 }
 
 function requestedProductFacts(message: string) {
@@ -453,14 +292,35 @@ async function buildProductFactsReply(message: string, channel: "web" | "whatsap
 }
 
 async function buildOrderItemLabel(state: OrderState) {
-  if (!state.flavor) return state.format === "cajita" ? "una pequeña" : state.format === "tarta" ? "una grande" : "el pedido"
+  if (!state.flavor) return state.format === "cajita" ? "una cajita" : state.format === "tarta" ? "una grande" : "el pedido"
 
   const flavorFacts = await findFlavorFactsByQuery(state.flavor)
   const product = await findProductBySlugOrFlavor(state.flavor)
   const flavorLabel = flavorFacts?.label ?? product?.name ?? state.flavor.replace(/-/g, " ")
-  if (state.format === "cajita") return `una ${flavorLabel} pequeña`
-  if (state.format === "tarta") return `una ${flavorLabel} grande`
+  if (state.format === "cajita") return `una cajita de ${flavorLabel}`
+  if (state.format === "tarta") return `una grande de ${flavorLabel}`
   return `el pedido de ${flavorLabel}`
+}
+
+function buildCurrentOrderFingerprint(state: OrderState) {
+  if (!state.customerName || !state.phone || !state.finalDate || !state.format || !state.flavor) {
+    return null
+  }
+
+  const items: ChatOrderItem[] = [
+    {
+      type: state.format === "cajita" ? "box" : "cake",
+      flavor: state.flavor,
+      qty: 1,
+    },
+  ]
+
+  return buildChatOrderFingerprint({
+    customerName: state.customerName,
+    phone: state.phone,
+    deliveryDate: state.finalDate,
+    items,
+  })
 }
 
 async function buildContextualOrderReply(state: OrderState, channel: "web" | "whatsapp", tz: string) {
@@ -481,8 +341,20 @@ async function buildContextualOrderReply(state: OrderState, channel: "web" | "wh
 
 function resetOrderState(state: OrderState, channel: "web" | "whatsapp"): OrderState {
   return {
+    flavor: undefined,
+    format: undefined,
     phone: channel === "whatsapp" ? state.phone : undefined,
+    customerName: undefined,
+    customerEmail: undefined,
+    desiredDate: undefined,
+    suggestedDate: undefined,
+    finalDate: undefined,
     inOrderFlow: false,
+    awaitingConfirm: false,
+    awaitingName: false,
+    lastCreatedOrderId: state.lastCreatedOrderId,
+    lastCreatedOrderAt: state.lastCreatedOrderAt,
+    lastCreatedOrderFingerprint: state.lastCreatedOrderFingerprint,
   }
 }
 
@@ -626,6 +498,28 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
 
   const orderFlow = hasOrderIntent(message) || state.inOrderFlow || state.awaitingConfirm || state.awaitingName
   if (orderFlow) {
+    const explicitNewOrderIntent = hasExplicitNewOrderIntent(message)
+    if (explicitNewOrderIntent) {
+      state.flavor = undefined
+      state.format = undefined
+      state.customerName = undefined
+      state.customerEmail = undefined
+      state.desiredDate = undefined
+      state.suggestedDate = undefined
+      state.finalDate = undefined
+      state.awaitingConfirm = false
+      state.awaitingName = false
+      state.lastCreatedOrderId = undefined
+      state.lastCreatedOrderAt = undefined
+      state.lastCreatedOrderFingerprint = undefined
+    } else if (hasRecentOrderGuard(state.lastCreatedOrderAt, now) && !state.inOrderFlow) {
+      return saveAndReply(
+        userId,
+        'Tu último pedido ya quedó creado. Si quieres iniciar otro, escribe "nuevo pedido" y dime sabor, tamaño y fecha.',
+        state
+      )
+    }
+
     state.inOrderFlow = true
 
     const product = await detectProductMention(message)
@@ -633,7 +527,7 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
       state.flavor = product.category
     }
 
-    const format = parseFormat(message)
+    const format = parseOrderFormat(message)
     if (format) {
       state.format = format
     }
@@ -658,7 +552,7 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
       !parsedDate &&
       !product &&
       !format &&
-      !(await extractCustomerName(message)) &&
+      !extractCustomerName(message) &&
       !email
     ) {
       return saveAndReply(userId, await buildPendingOrderReply(state, channel, SHOP_TZ), state)
@@ -701,7 +595,7 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
       state.awaitingConfirm = false
     }
 
-    const customerName = await extractCustomerName(message)
+    const customerName = extractCustomerName(message)
     if (customerName) {
       state.customerName = customerName
       state.awaitingName = false
@@ -730,6 +624,22 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
       return saveAndReply(userId, await buildContextualOrderReply(state, channel, SHOP_TZ), state)
     }
 
+    const orderFingerprint = buildCurrentOrderFingerprint(state)
+    if (
+      orderFingerprint &&
+      isRecentDuplicateFingerprint({
+        fingerprint: orderFingerprint,
+        previousFingerprint: state.lastCreatedOrderFingerprint,
+        previousCreatedAt: state.lastCreatedOrderAt,
+      })
+    ) {
+      return saveAndReply(
+        userId,
+        `Ese pedido ya estaba creado. Recogida el ${formatDateEs(state.finalDate, SHOP_TZ)}. ${PICKUP_ONLY_COPY}`,
+        resetOrderState(state, channel)
+      )
+    }
+
     const confirmedCustomerName = state.customerName
     const created = await createChatOrder({
       customer_name: confirmedCustomerName.trim(),
@@ -751,9 +661,12 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
     }
 
     const nextState = resetOrderState(state, channel)
+    nextState.lastCreatedOrderId = created.orderId
+    nextState.lastCreatedOrderAt = new Date().toISOString()
+    nextState.lastCreatedOrderFingerprint = orderFingerprint ?? undefined
     return saveAndReply(
       userId,
-      `Pedido creado. Recogida el ${formatDateEs(created.deliveryDate, SHOP_TZ)}. ${PICKUP_ONLY_COPY}`,
+      `${created.reusedExisting ? "Ese pedido ya estaba creado." : "Pedido creado."} Recogida el ${formatDateEs(created.deliveryDate, SHOP_TZ)}. ${PICKUP_ONLY_COPY}`,
       nextState
     )
   }

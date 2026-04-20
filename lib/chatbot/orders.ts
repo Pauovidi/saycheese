@@ -2,6 +2,7 @@ import "server-only"
 
 import { z } from "zod"
 
+import { areEquivalentOrderItems, buildChatOrderFingerprint, type ChatOrderItem } from "@/lib/chatbot/order-dedupe"
 import { isKnownFlavor } from "@/lib/chatbot/products"
 import { computeReminderAt } from "@/lib/chatbot/reminders"
 import { getOrderPickupDateErrorMessage, validateOrderPickupDate } from "@/lib/pickup-date-validation"
@@ -30,6 +31,63 @@ const createOrderInputSchema = z.object({
 
 function normalizePhone(value: string) {
   return value.replace(/\D/g, "")
+}
+
+async function findRecentDuplicateOrder(input: {
+  createdAt: Date
+  customerName: string
+  phone: string
+  deliveryDate: string
+  items: ChatOrderItem[]
+}) {
+  const supabase = getAdminClient()
+  const createdAfter = new Date(input.createdAt.getTime() - 10 * 60 * 1000).toISOString()
+  const expectedFingerprint = buildChatOrderFingerprint({
+    customerName: input.customerName,
+    phone: input.phone,
+    deliveryDate: input.deliveryDate,
+    items: input.items,
+  })
+
+  const { data, error } = await supabase
+    .from("orders")
+    .select("id, created_at, delivery_date, customer_name, phone, reminder_at, order_items(type, flavor, qty)")
+    .neq("status", "cancelled")
+    .eq("delivery_date", input.deliveryDate)
+    .eq("customer_name", input.customerName)
+    .gte("created_at", createdAfter)
+    .order("created_at", { ascending: false })
+    .limit(10)
+
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  return (data ?? []).find((order) => {
+    const orderPhone = typeof order.phone === "string" ? normalizePhone(order.phone) : ""
+    if (orderPhone !== normalizePhone(input.phone)) {
+      return false
+    }
+
+    const orderItems = ((order.order_items ?? []) as ChatOrderItem[]).map((item) => ({
+      type: item.type,
+      flavor: item.flavor,
+      qty: item.qty,
+    }))
+
+    if (!areEquivalentOrderItems(orderItems, input.items)) {
+      return false
+    }
+
+    const orderFingerprint = buildChatOrderFingerprint({
+      customerName: order.customer_name ?? "",
+      phone: order.phone ?? "",
+      deliveryDate: order.delivery_date,
+      items: orderItems,
+    })
+
+    return orderFingerprint === expectedFingerprint
+  })
 }
 
 export async function createChatOrder(input: unknown) {
@@ -74,6 +132,23 @@ export async function createChatOrder(input: unknown) {
     deliveryDate: deliveryDateFinal,
     usedDefaultDeliveryDate: false,
   })
+  const duplicateOrder = await findRecentDuplicateOrder({
+    createdAt,
+    customerName: payload.customer_name,
+    phone: payload.phone,
+    deliveryDate: deliveryDateFinal,
+    items: payload.items,
+  })
+
+  if (duplicateOrder) {
+    return {
+      ok: true as const,
+      orderId: duplicateOrder.id,
+      deliveryDate: deliveryDateFinal,
+      reminderAt: duplicateOrder.reminder_at ?? reminderAt,
+      reusedExisting: true as const,
+    }
+  }
 
   const { data: order, error: orderError } = await supabase
     .from("orders")
@@ -107,7 +182,7 @@ export async function createChatOrder(input: unknown) {
     throw new Error(itemsError.message)
   }
 
-  return { ok: true as const, orderId: order.id, deliveryDate: deliveryDateFinal, reminderAt }
+  return { ok: true as const, orderId: order.id, deliveryDate: deliveryDateFinal, reminderAt, reusedExisting: false as const }
 }
 
 export async function cancelChatOrder(phone: string, hint?: string) {
