@@ -1,7 +1,7 @@
 {
   "crons": [
     {
-      "path": "/api/cron/send-reminders?secret=$CRON_SECRET",
+      "path": "/api/cron/send-reminders",
       "schedule": "*/15 * * * *"
     }
   ]

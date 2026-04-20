@@ -85,10 +85,11 @@ Cuando hay handoff, el bot se pausa 2h (`bot_paused_until`).
 - Dentro de 24h se puede responder con texto libre.
 - Fuera de 24h se requiere **template** de WhatsApp.
 - Los recordatorios usan template (`WHATSAPP_TEMPLATE_REMINDER_NAME`).
+- El texto visible del recordatorio no vive en el repo: debe configurarse en la plantilla aprobada de WhatsApp con el copy de negocio o equivalente validado.
 
 ## Vercel Cron
 
 Se añadió `vercel.json` para ejecutar cada 15 minutos:
-- path: `/api/cron/send-reminders?secret=CRON_SECRET`
+- path: `/api/cron/send-reminders`
 
-Recomendación: en producción usar header `x-cron-secret` desde el scheduler si está disponible.
+En producción, Vercel enviará `Authorization: Bearer ${CRON_SECRET}` si `CRON_SECRET` está configurado en el proyecto. La ruta también acepta `x-cron-secret` o `?secret=` para pruebas manuales.

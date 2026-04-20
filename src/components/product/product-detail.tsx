@@ -205,14 +205,6 @@ export function ProductDetail({ product }: ProductDetailProps) {
                   {`${PICKUP_ONLY_COPY} Una vez recogido tu pedido, consérvalo en nevera (2-4 °C) hasta 5 días. Sácalo 15-20 minutos antes de consumir. No congelar.`}
                 </AccordionContent>
               </AccordionItem>
-              <AccordionItem value="alergenos">
-                <AccordionTrigger className="text-xs font-bold uppercase tracking-[0.15em] text-foreground">
-                  {"Alérgenos"}
-                </AccordionTrigger>
-                <AccordionContent className="text-xs leading-relaxed text-muted-foreground">
-                  {"Consulta la ficha de cada sabor para ver los alérgenos confirmados de ese producto."}
-                </AccordionContent>
-              </AccordionItem>
             </Accordion>
           </div>
         </div>

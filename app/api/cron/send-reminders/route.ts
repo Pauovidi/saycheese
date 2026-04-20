@@ -3,6 +3,7 @@ import { NextResponse } from "next/server"
 import { getAdminClient } from "@/lib/supabase/admin"
 
 const GRAPH_API_BASE = "https://graph.facebook.com/v23.0"
+export const dynamic = "force-dynamic"
 
 function isAuthorized(request: Request) {
   const secret = process.env.CRON_SECRET
@@ -11,8 +12,9 @@ function isAuthorized(request: Request) {
   const { searchParams } = new URL(request.url)
   const fromQuery = searchParams.get("secret")
   const fromHeader = request.headers.get("x-cron-secret")
+  const fromAuthorization = request.headers.get("authorization")
 
-  return fromQuery === secret || fromHeader === secret
+  return fromAuthorization === `Bearer ${secret}` || fromHeader === secret || fromQuery === secret
 }
 
 async function sendReminderTemplate(phone: string) {

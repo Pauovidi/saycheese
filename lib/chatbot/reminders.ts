@@ -1,5 +1,3 @@
-import "server-only"
-
 export function addDaysToToday(days: number) {
   const date = new Date()
   date.setDate(date.getDate() + days)

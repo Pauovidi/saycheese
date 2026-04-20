@@ -22,6 +22,7 @@ import {
   findProductBySlugOrFlavor,
   listFlavorsAndSizes,
 } from "@/lib/chatbot/products"
+import { buildChatOrderFingerprint, isRecentDuplicateFingerprint, type ChatOrderItem } from "@/lib/chatbot/order-dedupe"
 import { hasGreetingIntent, WELCOME_MESSAGE } from "@/lib/chatbot/welcome"
 import {
   buildHumanSupportMessage,
@@ -55,6 +56,9 @@ type OrderState = {
   finalDate?: string
   awaitingConfirm?: boolean
   awaitingName?: boolean
+  lastCreatedOrderId?: string
+  lastCreatedOrderAt?: string
+  lastCreatedOrderFingerprint?: string
 }
 
 const LEAD_DAYS_RAW = Number.parseInt(process.env.CHATBOT_LEAD_DAYS ?? "3", 10)
@@ -62,6 +66,20 @@ const LEAD_DAYS = Number.isFinite(LEAD_DAYS_RAW) && LEAD_DAYS_RAW > 0 ? LEAD_DAY
 const SHOP_TZ = process.env.SHOP_TZ ?? "Europe/Madrid"
 const SUMMARY_THRESHOLD = 30
 const ORDER_STATE_PREFIX = "__ORDER_STATE__:"
+const ORDER_STATE_STRING_KEYS = [
+  "flavor",
+  "format",
+  "phone",
+  "customerName",
+  "customerEmail",
+  "desiredDate",
+  "suggestedDate",
+  "finalDate",
+  "lastCreatedOrderId",
+  "lastCreatedOrderAt",
+  "lastCreatedOrderFingerprint",
+] as const
+const ORDER_STATE_BOOLEAN_KEYS = ["inOrderFlow", "awaitingConfirm", "awaitingName"] as const
 
 const SYSTEM_PROMPT = `Eres el asistente de SayCheese.
 Responde en español, claro y breve.
@@ -107,22 +125,52 @@ function sanitizeAssistantText(text: string) {
 }
 
 function extractOrderState(messages: { role: string; content: string }[]): OrderState {
-  const stateMessage = [...messages]
-    .reverse()
-    .find((message) => message.role === "system" && message.content.startsWith(ORDER_STATE_PREFIX))
+  const stateMessages = messages.filter(
+    (message) => message.role === "system" && message.content.startsWith(ORDER_STATE_PREFIX)
+  )
 
-  if (!stateMessage) return {}
+  return stateMessages.reduce<OrderState>((state, message) => {
+    try {
+      const parsed = JSON.parse(message.content.slice(ORDER_STATE_PREFIX.length)) as Record<string, unknown>
 
-  try {
-    const parsed = JSON.parse(stateMessage.content.slice(ORDER_STATE_PREFIX.length)) as OrderState
-    return parsed ?? {}
-  } catch {
-    return {}
+      for (const key of ORDER_STATE_STRING_KEYS) {
+        if (!(key in parsed)) continue
+        const value = parsed[key]
+        ;(state as Record<string, string | boolean | undefined>)[key] =
+          typeof value === "string" && value.trim() ? value : undefined
+      }
+
+      for (const key of ORDER_STATE_BOOLEAN_KEYS) {
+        if (!(key in parsed)) continue
+        const value = parsed[key]
+        ;(state as Record<string, string | boolean | undefined>)[key] =
+          typeof value === "boolean" ? value : undefined
+      }
+    } catch {
+      return state
+    }
+
+    return state
+  }, {})
+}
+
+function serializeOrderState(state: OrderState) {
+  const payload: Record<string, string | boolean | null> = {}
+
+  for (const key of ORDER_STATE_STRING_KEYS) {
+    const value = (state as Record<string, unknown>)[key]
+    payload[key] = typeof value === "string" && value.trim() ? value : null
   }
+
+  for (const key of ORDER_STATE_BOOLEAN_KEYS) {
+    payload[key] = Boolean((state as Record<string, unknown>)[key])
+  }
+
+  return payload
 }
 
 async function persistOrderState(userId: string, state: OrderState) {
-  await saveMessage(userId, "system", `${ORDER_STATE_PREFIX}${JSON.stringify(state)}`)
+  await saveMessage(userId, "system", `${ORDER_STATE_PREFIX}${JSON.stringify(serializeOrderState(state))}`)
 }
 
 function extractPhoneFromText(text: string) {
@@ -455,10 +503,33 @@ function buildProductFactsReply(message: string, channel: "web" | "whatsapp") {
 function buildOrderItemLabel(state: OrderState) {
   if (!state.flavor) return state.format === "cajita" ? "una pequeña" : state.format === "tarta" ? "una grande" : "el pedido"
 
-  const flavorLabel = findFlavorFactsByQuery(state.flavor)?.label ?? findProductBySlugOrFlavor(state.flavor)?.name ?? state.flavor.replace(/-/g, " ")
+  const flavorFacts = findFlavorFactsByQuery(state.flavor)
+  const product = findProductBySlugOrFlavor(state.flavor)
+  const flavorLabel = flavorFacts?.label ?? product?.name ?? state.flavor.replace(/-/g, " ")
   if (state.format === "cajita") return `una ${flavorLabel} pequeña`
   if (state.format === "tarta") return `una ${flavorLabel} grande`
   return `el pedido de ${flavorLabel}`
+}
+
+function buildCurrentOrderFingerprint(state: OrderState) {
+  if (!state.customerName || !state.phone || !state.finalDate || !state.format || !state.flavor) {
+    return null
+  }
+
+  const items: ChatOrderItem[] = [
+    {
+      type: state.format === "cajita" ? "box" : "cake",
+      flavor: state.flavor,
+      qty: 1,
+    },
+  ]
+
+  return buildChatOrderFingerprint({
+    customerName: state.customerName,
+    phone: state.phone,
+    deliveryDate: state.finalDate,
+    items,
+  })
 }
 
 function buildContextualOrderReply(state: OrderState, channel: "web" | "whatsapp", tz: string) {
@@ -479,8 +550,20 @@ function buildContextualOrderReply(state: OrderState, channel: "web" | "whatsapp
 
 function resetOrderState(state: OrderState, channel: "web" | "whatsapp"): OrderState {
   return {
+    flavor: undefined,
+    format: undefined,
     phone: channel === "whatsapp" ? state.phone : undefined,
+    customerName: undefined,
+    customerEmail: undefined,
+    desiredDate: undefined,
+    suggestedDate: undefined,
+    finalDate: undefined,
     inOrderFlow: false,
+    awaitingConfirm: false,
+    awaitingName: false,
+    lastCreatedOrderId: state.lastCreatedOrderId,
+    lastCreatedOrderAt: state.lastCreatedOrderAt,
+    lastCreatedOrderFingerprint: state.lastCreatedOrderFingerprint,
   }
 }
 
@@ -611,7 +694,7 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
   }
 
   if (hasScheduleIntent(message)) {
-    return saveAndReply(userId, STORE_HOURS_TEXT)
+    return saveAndReply(userId, `🕒 ${STORE_HOURS_TEXT}`)
   }
 
   if (hasAllergensIntent(message)) {
@@ -728,9 +811,30 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
       return saveAndReply(userId, buildContextualOrderReply(state, channel, SHOP_TZ), state)
     }
 
-    const confirmedCustomerName = state.customerName
+    const orderFingerprint = buildCurrentOrderFingerprint(state)
+    if (
+      orderFingerprint &&
+      isRecentDuplicateFingerprint({
+        fingerprint: orderFingerprint,
+        previousFingerprint: state.lastCreatedOrderFingerprint,
+        previousCreatedAt: state.lastCreatedOrderAt,
+      })
+    ) {
+      return saveAndReply(
+        userId,
+        `Ese pedido ya estaba creado ✅. Recogida el ${formatDateEs(state.finalDate, SHOP_TZ)}. ${PICKUP_ONLY_COPY}`,
+        resetOrderState(state, channel)
+      )
+    }
+
+    const confirmedCustomerName = state.customerName?.trim()
+    if (!confirmedCustomerName) {
+      state.awaitingName = true
+      return saveAndReply(userId, buildContextualOrderReply(state, channel, SHOP_TZ), state)
+    }
+
     const created = await createChatOrder({
-      customer_name: confirmedCustomerName.trim(),
+      customer_name: confirmedCustomerName,
       customer_email: state.customerEmail,
       phone: state.phone,
       delivery_date: state.finalDate,
@@ -749,9 +853,12 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
     }
 
     const nextState = resetOrderState(state, channel)
+    nextState.lastCreatedOrderId = created.orderId
+    nextState.lastCreatedOrderAt = new Date().toISOString()
+    nextState.lastCreatedOrderFingerprint = orderFingerprint ?? undefined
     return saveAndReply(
       userId,
-      `Pedido creado. Recogida el ${formatDateEs(created.deliveryDate, SHOP_TZ)}. ${PICKUP_ONLY_COPY}`,
+      `${created.reusedExisting ? "Ese pedido ya estaba creado ✅." : "Pedido creado ✅."} Recogida el ${formatDateEs(created.deliveryDate, SHOP_TZ)}. ${PICKUP_ONLY_COPY}`,
       nextState
     )
   }
