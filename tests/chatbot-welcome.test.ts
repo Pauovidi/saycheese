@@ -6,7 +6,7 @@ import { FLAVORS_AND_SIZES_MESSAGE, hasGreetingIntent, WELCOME_MESSAGE } from ".
 test("mantiene exactamente el saludo histórico del chatbot", () => {
   assert.equal(
     WELCOME_MESSAGE,
-    "¡Hola! Puedes reservar tu tarta para una fecha concreta y, además, normalmente también hay tartas en tienda para compra directa hasta agotar existencias. Si quieres, te ayudo con sabores, tamaños, precios o con una reserva."
+    "¡Hola! 👋 Puedes reservar tu tarta para una fecha concreta y, además, normalmente también hay tartas en tienda para compra directa hasta agotar existencias. Si quieres, te ayudo con sabores, tamaños, precios o con una reserva."
   )
 })
 
@@ -19,7 +19,7 @@ test("reconoce el saludo simple para devolver el mensaje histórico", () => {
 test("usa el copy simplificado para sabores y tamaños", () => {
   assert.equal(
     FLAVORS_AND_SIZES_MESSAGE,
-    `¡Hola! Siempre trabajamos con 2 tamaños: grande, con un precio de 35 € y cajita, con un precio de 12 €.
+    `¡Hola! 🍰 Siempre trabajamos con 2 tamaños: grande, con un precio de 35 € y cajita, con un precio de 12 €.
 
 Sabores:
 - Clásica

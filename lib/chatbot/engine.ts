@@ -633,11 +633,11 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
         previousCreatedAt: state.lastCreatedOrderAt,
       })
     ) {
-      return saveAndReply(
-        userId,
-        `Ese pedido ya estaba creado. Recogida el ${formatDateEs(state.finalDate, SHOP_TZ)}. ${PICKUP_ONLY_COPY}`,
-        resetOrderState(state, channel)
-      )
+        return saveAndReply(
+          userId,
+          `Ese pedido ya estaba creado ✅ Recogida el ${formatDateEs(state.finalDate, SHOP_TZ)}. ${PICKUP_ONLY_COPY}`,
+          resetOrderState(state, channel)
+        )
     }
 
     const confirmedCustomerName = state.customerName
@@ -664,11 +664,11 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
     nextState.lastCreatedOrderId = created.orderId
     nextState.lastCreatedOrderAt = new Date().toISOString()
     nextState.lastCreatedOrderFingerprint = orderFingerprint ?? undefined
-    return saveAndReply(
-      userId,
-      `${created.reusedExisting ? "Ese pedido ya estaba creado." : "Pedido creado."} Recogida el ${formatDateEs(created.deliveryDate, SHOP_TZ)}. ${PICKUP_ONLY_COPY}`,
-      nextState
-    )
+      return saveAndReply(
+        userId,
+        `${created.reusedExisting ? "Ese pedido ya estaba creado ✅" : "Pedido creado ✅"} Recogida el ${formatDateEs(created.deliveryDate, SHOP_TZ)}. ${PICKUP_ONLY_COPY}`,
+        nextState
+      )
   }
 
   const openai = getOpenAIClient()
