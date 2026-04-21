@@ -28,10 +28,11 @@ import { cancelChatOrder, createChatOrder } from "@/lib/chatbot/orders"
 import { buildMissingFieldsPrompt } from "@/lib/chatbot/order-prompts"
 import {
   findFlavorFactsByQuery,
+  findExplicitFlavorSelection,
   findProductBySlugOrFlavor,
   listFlavorsAndSizes,
 } from "@/lib/chatbot/products"
-import { FLAVORS_AND_SIZES_MESSAGE, hasGreetingIntent, WELCOME_MESSAGE } from "@/lib/chatbot/welcome"
+import { buildFlavorsAndSizesMessage, hasGreetingIntent, WELCOME_MESSAGE } from "@/lib/chatbot/welcome"
 import {
   buildHumanSupportMessage,
   buildUnconfirmedProductInfoMessage,
@@ -233,8 +234,8 @@ function hasExistingOrderQueryIntent(text: string) {
   return patterns.some((pattern) => pattern.test(normalized))
 }
 
-async function buildFlavorsReply() {
-  return FLAVORS_AND_SIZES_MESSAGE
+async function buildFlavorsReply(includeGreeting: boolean) {
+  return buildFlavorsAndSizesMessage(includeGreeting)
 }
 
 function requestedProductFacts(message: string) {
@@ -423,8 +424,9 @@ async function saveAndReply(userId: string, text: string, state?: OrderState) {
 
 export async function handleMessage({ sessionId, message, phone, channel }: HandleMessageInput) {
   const model = process.env.OPENAI_MODEL ?? "gpt-4.1-mini"
+  const messagePhone = phone ?? extractPhoneFromText(message)
 
-  const { userId } = await getOrCreateUser({ channel, externalId: sessionId, phone })
+  const { userId } = await getOrCreateUser({ channel, externalId: sessionId, phone: messagePhone })
   const handoffText = getHandoffText(channel)
 
   if (isWhatsappConversationResetCommand(channel, message)) {
@@ -452,8 +454,9 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
   const context = await loadContext(userId)
   const state = extractOrderState(context.messagesLastN)
   const now = new Date()
+  const nonSystemMessages = context.messagesLastN.filter((item) => item.role !== "system")
+  const isOpeningConversation = nonSystemMessages.length <= 1
 
-  const messagePhone = phone ?? extractPhoneFromText(message)
   if (messagePhone) {
     state.phone = messagePhone
   }
@@ -463,7 +466,9 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
     state.customerEmail = email
   }
 
-  if (hasGreetingIntent(message)) {
+  const explicitFlavorSelection = await findExplicitFlavorSelection(message)
+
+  if (hasGreetingIntent(message) && !state.inOrderFlow && !state.awaitingConfirm && !state.awaitingName) {
     return saveAndReply(userId, WELCOME_MESSAGE)
   }
 
@@ -492,11 +497,16 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
     return saveAndReply(userId, await buildProductFactsReply(message, channel))
   }
 
-  if (hasFlavorsIntent(message) && !hasOrderIntent(message)) {
-    return saveAndReply(userId, await buildFlavorsReply())
+  if (hasFlavorsIntent(message) && !hasOrderIntent(message) && !explicitFlavorSelection) {
+    return saveAndReply(userId, await buildFlavorsReply(isOpeningConversation))
   }
 
-  const orderFlow = hasOrderIntent(message) || state.inOrderFlow || state.awaitingConfirm || state.awaitingName
+  const orderFlow =
+    hasOrderIntent(message) ||
+    state.inOrderFlow ||
+    state.awaitingConfirm ||
+    state.awaitingName ||
+    Boolean(explicitFlavorSelection)
   if (orderFlow) {
     const explicitNewOrderIntent = hasExplicitNewOrderIntent(message)
     if (explicitNewOrderIntent) {
@@ -522,7 +532,7 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
 
     state.inOrderFlow = true
 
-    const product = await detectProductMention(message)
+    const product = explicitFlavorSelection ?? await detectProductMention(message)
     if (product) {
       state.flavor = product.category
     }
@@ -552,7 +562,9 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
       !parsedDate &&
       !product &&
       !format &&
-      !extractCustomerName(message) &&
+      !extractCustomerName(message, {
+        blockedNormalizedTerms: product ? [product.name, product.category] : [],
+      }) &&
       !email
     ) {
       return saveAndReply(userId, await buildPendingOrderReply(state, channel, SHOP_TZ), state)
@@ -595,7 +607,9 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
       state.awaitingConfirm = false
     }
 
-    const customerName = extractCustomerName(message)
+    const customerName = extractCustomerName(message, {
+      blockedNormalizedTerms: product ? [product.name, product.category] : [],
+    })
     if (customerName) {
       state.customerName = customerName
       state.awaitingName = false

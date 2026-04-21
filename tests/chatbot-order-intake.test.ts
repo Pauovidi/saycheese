@@ -8,7 +8,7 @@ import {
   hasRecentOrderGuard,
   parseOrderFormat,
 } from "../lib/chatbot/order-intake"
-import { findProductBySlugOrFlavor } from "../lib/chatbot/products"
+import { findExplicitFlavorSelection, findProductBySlugOrFlavor } from "../lib/chatbot/products"
 
 test("captura varios datos en una sola intervención", async () => {
   const message = "mango, grande. Pau. 645290441"
@@ -23,6 +23,11 @@ test("trata cajita y pequeña como formato y no como sabor", async () => {
   assert.equal(parseOrderFormat("cajita"), "cajita")
   assert.equal(parseOrderFormat("pequeña"), "cajita")
   assert.equal(await findProductBySlugOrFlavor("cajita"), undefined)
+})
+
+test("prioriza un sabor válido como sabor y no como nombre", async () => {
+  assert.equal((await findExplicitFlavorSelection("Gofio"))?.category, "gofio")
+  assert.equal(extractCustomerName("Gofio", { blockedNormalizedTerms: ["gofio"] }), undefined)
 })
 
 test("solo permite otro pedido reciente cuando la intención es explícita", () => {

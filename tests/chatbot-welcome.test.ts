@@ -1,7 +1,12 @@
 import test from "node:test"
 import assert from "node:assert/strict"
 
-import { FLAVORS_AND_SIZES_MESSAGE, hasGreetingIntent, WELCOME_MESSAGE } from "../lib/chatbot/welcome"
+import {
+  buildFlavorsAndSizesMessage,
+  FLAVORS_AND_SIZES_MESSAGE,
+  hasGreetingIntent,
+  WELCOME_MESSAGE,
+} from "../lib/chatbot/welcome"
 
 test("mantiene exactamente el saludo histórico del chatbot", () => {
   assert.equal(
@@ -13,6 +18,7 @@ test("mantiene exactamente el saludo histórico del chatbot", () => {
 test("reconoce el saludo simple para devolver el mensaje histórico", () => {
   assert.equal(hasGreetingIntent("hola"), true)
   assert.equal(hasGreetingIntent("buenas"), true)
+  assert.equal(hasGreetingIntent("hola que sabores hay"), false)
   assert.equal(hasGreetingIntent("quiero una tarta"), false)
 })
 
@@ -34,4 +40,9 @@ Sabores:
 
 Solo recogida en tienda. No hacemos envíos. Plazo mínimo 3 días.`
   )
+})
+
+test("puede responder sabores sin repetir hola en mitad del flujo", () => {
+  assert.equal(buildFlavorsAndSizesMessage(false).startsWith("¡Hola!"), false)
+  assert.equal(buildFlavorsAndSizesMessage(true), FLAVORS_AND_SIZES_MESSAGE)
 })

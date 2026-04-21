@@ -68,6 +68,24 @@ export async function listFlavorsAndSizes() {
   }))
 }
 
+export async function findExplicitFlavorSelection(query: string) {
+  const searchableQuery = stripNonFlavorTerms(query)
+  if (!searchableQuery) return undefined
+
+  const normalizedQuery = normalize(searchableQuery)
+  const flavors = await getCatalogFlavors()
+  const exactFlavor = flavors.find(
+    (flavor) =>
+      normalize(flavor.category) === normalizedQuery ||
+      normalize(flavor.label) === normalizedQuery
+  )
+
+  if (!exactFlavor) return undefined
+
+  return (await getCatalogProductsByCategory(exactFlavor.category)).find((product) => Boolean(product.allergens)) ??
+    (await getCatalogProductsByCategory(exactFlavor.category))[0]
+}
+
 export async function findProductBySlugOrFlavor(q: string) {
   const products = await getCatalogProducts()
   const exactSlug = await getCatalogProductBySlug(q)

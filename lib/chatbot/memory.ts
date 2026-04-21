@@ -6,26 +6,127 @@ type Channel = "web" | "whatsapp"
 
 type MessageRole = "user" | "assistant" | "system"
 
+function normalizeChatUserPhone(phone?: string) {
+  return phone?.replace(/\D/g, "") ?? ""
+}
+
+function buildChatUserPhoneVariants(phone?: string) {
+  const digits = normalizeChatUserPhone(phone)
+  if (!digits) return []
+
+  const variants = new Set<string>([digits])
+  if (digits.startsWith("34") && digits.length > 9) {
+    variants.add(digits.slice(2))
+  }
+  if (digits.length === 9) {
+    variants.add(`34${digits}`)
+  }
+
+  return [...variants]
+}
+
+async function findUserByPhone(channel: Channel, phone?: string) {
+  const variants = buildChatUserPhoneVariants(phone)
+  if (!variants.length) return null
+
+  const supabase = getAdminClient()
+  const { data, error } = await supabase
+    .from("chat_users")
+    .select("id, external_id, phone")
+    .eq("channel", channel)
+    .in("phone", variants)
+    .order("created_at", { ascending: false })
+    .limit(1)
+
+  if (error) throw new Error(error.message)
+
+  return data?.[0] ?? null
+}
+
+async function mergeChatUsers(fromUserId: string, intoUserId: string, externalId: string, phone?: string) {
+  if (fromUserId === intoUserId) {
+    return
+  }
+
+  const supabase = getAdminClient()
+  const [{ data: fromState, error: fromStateError }, { data: intoState, error: intoStateError }] = await Promise.all([
+    supabase.from("chat_user_state").select("summary, bot_paused_until, last_openai_response_id").eq("user_id", fromUserId).maybeSingle(),
+    supabase.from("chat_user_state").select("summary, bot_paused_until, last_openai_response_id").eq("user_id", intoUserId).maybeSingle(),
+  ])
+
+  if (fromStateError) throw new Error(fromStateError.message)
+  if (intoStateError) throw new Error(intoStateError.message)
+
+  const { error: messagesError } = await supabase.from("chat_messages").update({ user_id: intoUserId }).eq("user_id", fromUserId)
+  if (messagesError) throw new Error(messagesError.message)
+
+  if (fromState) {
+    const mergedState = {
+      user_id: intoUserId,
+      summary: intoState?.summary ?? fromState.summary ?? null,
+      bot_paused_until: intoState?.bot_paused_until ?? fromState.bot_paused_until ?? null,
+      last_openai_response_id: intoState?.last_openai_response_id ?? fromState.last_openai_response_id ?? null,
+    }
+
+    const { error: upsertStateError } = await supabase.from("chat_user_state").upsert(mergedState, { onConflict: "user_id" })
+    if (upsertStateError) throw new Error(upsertStateError.message)
+  }
+
+  const { error: deleteStateError } = await supabase.from("chat_user_state").delete().eq("user_id", fromUserId)
+  if (deleteStateError) throw new Error(deleteStateError.message)
+
+  const { error: deleteUserError } = await supabase.from("chat_users").delete().eq("id", fromUserId)
+  if (deleteUserError) throw new Error(deleteUserError.message)
+
+  const updates: { external_id?: string; phone?: string } = { external_id: externalId }
+  const normalizedPhone = normalizeChatUserPhone(phone)
+  if (normalizedPhone) {
+    updates.phone = normalizedPhone
+  }
+
+  const { error: updateUserError } = await supabase.from("chat_users").update(updates).eq("id", intoUserId)
+  if (updateUserError) throw new Error(updateUserError.message)
+}
+
 export async function getOrCreateUser(input: { channel: Channel; externalId: string; phone?: string }) {
   const supabase = getAdminClient()
+  const normalizedPhone = normalizeChatUserPhone(input.phone)
 
-  const { data: existing, error: lookupError } = await supabase
-    .from("chat_users")
-    .select("id")
-    .eq("channel", input.channel)
-    .eq("external_id", input.externalId)
-    .maybeSingle()
+  const [{ data: existing, error: lookupError }, phoneUser] = await Promise.all([
+    supabase
+      .from("chat_users")
+      .select("id")
+      .eq("channel", input.channel)
+      .eq("external_id", input.externalId)
+      .maybeSingle(),
+    findUserByPhone(input.channel, normalizedPhone),
+  ])
 
   if (lookupError) throw new Error(lookupError.message)
 
-  if (existing?.id) {
-    if (input.phone) {
+  if (existing?.id && phoneUser?.id && existing.id !== phoneUser.id) {
+    await mergeChatUsers(existing.id, phoneUser.id, input.externalId, normalizedPhone)
+    return { userId: phoneUser.id }
+  }
+
+  const targetUserId = phoneUser?.id ?? existing?.id
+  if (targetUserId) {
+    const updates: { phone?: string; external_id?: string } = {}
+    if (normalizedPhone) {
+      updates.phone = normalizedPhone
+    }
+    if (phoneUser?.id === targetUserId && phoneUser.external_id !== input.externalId) {
+      updates.external_id = input.externalId
+    }
+
+    if (Object.keys(updates).length) {
       await supabase
         .from("chat_users")
-        .update({ phone: input.phone })
-        .eq("id", existing.id)
+        .update(updates)
+        .eq("id", targetUserId)
     }
-    return { userId: existing.id }
+
+    return { userId: targetUserId }
   }
 
   const { data, error } = await supabase
@@ -33,7 +134,7 @@ export async function getOrCreateUser(input: { channel: Channel; externalId: str
     .insert({
       channel: input.channel,
       external_id: input.externalId,
-      phone: input.phone,
+      phone: normalizedPhone || null,
     })
     .select("id")
     .single()

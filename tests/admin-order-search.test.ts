@@ -9,6 +9,7 @@ import {
   isOrderSearchQueryValid,
   normalizeOrderSearchPhone,
   normalizeOrderSearchText,
+  orderPhoneMatchesSearch,
 } from "../lib/admin/order-search"
 
 test("acepta búsquedas por nombre aunque no haya teléfono", () => {
@@ -20,6 +21,12 @@ test("genera variantes para teléfonos con y sin prefijo +34", () => {
   assert.equal(normalizeOrderSearchPhone("+34 645 29 04 41"), "34645290441")
   assert.deepEqual(buildOrderSearchPhoneVariants("+34 645 29 04 41"), ["34645290441", "645290441"])
   assert.deepEqual(buildOrderSearchPhoneVariants("645290441"), ["645290441", "34645290441"])
+})
+
+test("encuentra el mismo pedido por teléfono exacto, sin prefijo y parcial", () => {
+  assert.equal(orderPhoneMatchesSearch("+34 645 29 04 41", "+34 645 29 04 41"), true)
+  assert.equal(orderPhoneMatchesSearch("+34 645 29 04 41", "645290441"), true)
+  assert.equal(orderPhoneMatchesSearch("+34 645 29 04 41", "290441"), true)
 })
 
 test("rechaza búsquedas demasiado cortas y distingue texto real", () => {

@@ -46,12 +46,17 @@ function isStandaloneNameMessage(text: string, candidate: string) {
   return normalizeChatText(cleanedText) === normalizeChatText(candidate)
 }
 
-function isLikelyCustomerName(value: string) {
+type ExtractCustomerNameOptions = {
+  blockedNormalizedTerms?: string[]
+}
+
+function isLikelyCustomerName(value: string, options?: ExtractCustomerNameOptions) {
   const trimmed = cleanCustomerNameCandidate(splitNameCandidate(value))
   if (!trimmed) return false
   if (trimmed.length < 2 || trimmed.length > 60) return false
   if (/@/.test(trimmed) || /\d/.test(trimmed)) return false
   const normalizedTrimmed = normalizeChatText(trimmed)
+  const blockedNormalizedTerms = new Set((options?.blockedNormalizedTerms ?? []).map((term) => normalizeChatText(term)))
 
   const words = trimmed.split(/\s+/)
   if (words.length > 4) return false
@@ -73,7 +78,7 @@ function isLikelyCustomerName(value: string) {
     "el sábado",
     "el domingo",
   ])
-  if (blockedPhrases.has(normalizedTrimmed)) return false
+  if (blockedPhrases.has(normalizedTrimmed) || blockedNormalizedTerms.has(normalizedTrimmed)) return false
 
   const blocked = new Set([
     "pues",
@@ -147,15 +152,19 @@ function isLikelyCustomerName(value: string) {
     "pequeño",
   ])
 
+  for (const blockedTerm of blockedNormalizedTerms) {
+    blocked.add(blockedTerm)
+  }
+
   return !words.some((word) => blocked.has(normalizeChatText(word)))
 }
 
-function extractNameFromSegment(segment: string) {
+function extractNameFromSegment(segment: string, options?: ExtractCustomerNameOptions) {
   const candidate = cleanCustomerNameCandidate(splitNameCandidate(segment))
-  return isLikelyCustomerName(candidate) ? candidate : undefined
+  return isLikelyCustomerName(candidate, options) ? candidate : undefined
 }
 
-export function extractCustomerName(text: string) {
+export function extractCustomerName(text: string, options?: ExtractCustomerNameOptions) {
   const patterns = [
     /(?:me\s+llamo|soy)\s+(.+)/i,
     /mi\s+nombre\s+es\s+(.+)/i,
@@ -165,7 +174,7 @@ export function extractCustomerName(text: string) {
 
   for (const pattern of patterns) {
     const match = text.match(pattern)
-    const candidate = extractNameFromSegment(match?.[1] ?? "")
+    const candidate = extractNameFromSegment(match?.[1] ?? "", options)
     if (candidate) {
       return candidate
     }
@@ -181,14 +190,14 @@ export function extractCustomerName(text: string) {
       continue
     }
 
-    const candidate = extractNameFromSegment(segment)
+    const candidate = extractNameFromSegment(segment, options)
     if (candidate) {
       return candidate
     }
   }
 
   const directCandidate = cleanCustomerNameCandidate(splitNameCandidate(text))
-  if (isStandaloneNameMessage(text, directCandidate) && isLikelyCustomerName(directCandidate)) {
+  if (isStandaloneNameMessage(text, directCandidate) && isLikelyCustomerName(directCandidate, options)) {
     return directCandidate
   }
 

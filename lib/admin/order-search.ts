@@ -28,6 +28,13 @@ export function buildOrderSearchPhoneVariants(value: string) {
   return [...variants].filter((entry) => entry.length >= 6)
 }
 
+export function orderPhoneMatchesSearch(phone: string | null | undefined, query: string) {
+  const normalizedPhone = normalizeOrderSearchPhone(phone ?? "")
+  if (!normalizedPhone) return false
+
+  return buildOrderSearchPhoneVariants(query).some((variant) => normalizedPhone.includes(variant))
+}
+
 export function escapeOrderSearchLikeValue(value: string) {
   return value.replace(/[%_]/g, "").trim()
 }

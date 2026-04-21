@@ -9,7 +9,9 @@ import {
   hasOrderSearchLetters,
   isOrderSearchQueryValid,
   normalizeOrderSearchText,
+  orderPhoneMatchesSearch,
 } from "@/lib/admin/order-search"
+import { getOrderPickupDateErrorMessage, validateOrderPickupDate } from "@/lib/pickup-date-validation"
 import { createClient } from "@/lib/supabase/server"
 
 const orderItemSchema = z.object({
@@ -57,6 +59,9 @@ const ORDER_SEARCH_SELECT =
   "id, delivery_date, status, customer_name, customer_email, phone, created_at, cancelled_at, cancelled_reason, notes, order_items(type, flavor, qty)"
 
 type SearchOrderResult = Awaited<ReturnType<typeof listOrders>>[number]
+const LEAD_DAYS_RAW = Number.parseInt(process.env.CHATBOT_LEAD_DAYS ?? "3", 10)
+const LEAD_DAYS = Number.isFinite(LEAD_DAYS_RAW) && LEAD_DAYS_RAW > 0 ? LEAD_DAYS_RAW : 3
+const SHOP_TZ = process.env.SHOP_TZ ?? "Europe/Madrid"
 
 export async function createOrder(payload: z.infer<typeof createOrderSchema>) {
   const parsed = createOrderSchema.parse(payload)
@@ -71,15 +76,20 @@ export async function createOrder(payload: z.infer<typeof createOrderSchema>) {
     throw new Error("No autenticado")
   }
 
+  const deliveryDateValidation = validateOrderPickupDate(parsed.delivery_date, new Date(), LEAD_DAYS, SHOP_TZ)
+  if (deliveryDateValidation.kind !== "valid") {
+    throw new Error(getOrderPickupDateErrorMessage(deliveryDateValidation, LEAD_DAYS, SHOP_TZ))
+  }
+
   const { data: order, error: orderError } = await supabase
     .from("orders")
     .insert({
       user_id: user.id,
-      delivery_date: parsed.delivery_date,
-      status: parsed.status,
+      delivery_date: deliveryDateValidation.pickupDate,
+      status: parsed.status || "pending",
       customer_name: parsed.customer_name,
       customer_email: parsed.customer_email ?? null,
-      phone: parsed.phone,
+      phone: parsed.phone?.trim() || null,
       notes: parsed.notes,
     })
     .select("id")
@@ -172,11 +182,25 @@ export async function searchOrders(query: string) {
         .order("created_at", { ascending: false })
         .limit(20)
 
-      if (error) {
-        return { ok: false, error: error.message, results: [] as unknown[] }
+      if (!error) {
+        resultSets.push((data ?? []) as SearchOrderResult[])
       }
+    }
 
-      resultSets.push((data ?? []) as SearchOrderResult[])
+    if (phoneQueries.length) {
+      const { data: fallbackPhoneData, error: fallbackPhoneError } = await supabase
+        .from("orders")
+        .select(ORDER_SEARCH_SELECT)
+        .neq("status", "cancelled")
+        .not("phone", "is", null)
+        .order("created_at", { ascending: false })
+        .limit(200)
+
+      if (!fallbackPhoneError) {
+        resultSets.push(
+          ((fallbackPhoneData ?? []) as SearchOrderResult[]).filter((order) => orderPhoneMatchesSearch(order.phone, textQuery))
+        )
+      }
     }
 
     if (escapedTextQuery.length >= 2 && hasOrderSearchLetters(textQuery)) {
