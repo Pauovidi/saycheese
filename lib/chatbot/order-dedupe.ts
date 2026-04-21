@@ -14,7 +14,16 @@ function normalizeText(value: string) {
 }
 
 function normalizePhone(value: string) {
-  return value.replace(/\D/g, "")
+  const digits = value.replace(/\D/g, "")
+  if (digits.startsWith("34") && digits.length > 9) {
+    return digits.slice(2)
+  }
+
+  return digits
+}
+
+function areSameItem(left: ChatOrderItem, right: ChatOrderItem) {
+  return left.type === right.type && normalizeText(left.flavor) === normalizeText(right.flavor)
 }
 
 export function buildOrderItemsSignature(items: ChatOrderItem[]) {
@@ -37,17 +46,31 @@ export function buildOrderItemsSignature(items: ChatOrderItem[]) {
 }
 
 export function buildChatOrderFingerprint(input: {
-  customerName: string
   phone: string
   deliveryDate: string
   items: ChatOrderItem[]
 }) {
   return [
-    normalizeText(input.customerName),
     normalizePhone(input.phone),
     input.deliveryDate,
     buildOrderItemsSignature(input.items),
   ].join("::")
+}
+
+export function appendOrderItem(items: ChatOrderItem[], nextItem: ChatOrderItem) {
+  const existingIndex = items.findIndex((item) => areSameItem(item, nextItem))
+  if (existingIndex === -1) {
+    return [...items, nextItem]
+  }
+
+  return items.map((item, index) =>
+    index === existingIndex
+      ? {
+          ...item,
+          qty: item.qty + nextItem.qty,
+        }
+      : item
+  )
 }
 
 export function areEquivalentOrderItems(left: ChatOrderItem[], right: ChatOrderItem[]) {

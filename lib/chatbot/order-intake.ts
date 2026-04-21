@@ -216,6 +216,39 @@ export function hasExplicitNewOrderIntent(text: string) {
   ].some((pattern) => pattern.test(normalized))
 }
 
+export function hasMultipleCakeOrderIntent(text: string) {
+  const normalized = normalizeChatText(text)
+  return [
+    /\b(?:dos|2|tres|3|cuatro|4)\s+(?:tartas|cajitas)\b/,
+    /\bvarias\s+(?:tartas|cajitas)\b/,
+    /\bmas\s+de\s+una\s+(?:tarta|cajita)\b/,
+  ].some((pattern) => pattern.test(normalized))
+}
+
+export function hasAddAnotherCakeIntent(text: string) {
+  const normalized = normalizeChatText(text)
+  return [
+    /\banadir\s+otra\b/,
+    /\bquiero\s+otra\b/,
+    /\botra\s+(?:tarta|cajita)\b/,
+    /\buna\s+mas\b/,
+    /\bsumar\s+otra\b/,
+  ].some((pattern) => pattern.test(normalized))
+}
+
+export function hasCloseOrderIntent(text: string) {
+  const normalized = normalizeChatText(text)
+  return [
+    /\bcerrar(?:\s+el\s+pedido)?\b/,
+    /\bconfirmar(?:\s+el\s+pedido)?\b/,
+    /\bfinalizar\b/,
+    /\bterminar\b/,
+    /\beso\s+es\s+todo\b/,
+    /\bnada\s+mas\b/,
+    /\bsolo\s+esa\b/,
+  ].some((pattern) => pattern.test(normalized))
+}
+
 export function hasRecentOrderGuard(previousCreatedAt?: string, now = new Date(), windowMs = 30 * 60 * 1000) {
   if (!previousCreatedAt) return false
 

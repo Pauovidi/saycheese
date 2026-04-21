@@ -18,6 +18,7 @@ const createOrderInputSchema = z.object({
   phone: z.string().trim().min(6),
   delivery_date: z.string().date().optional(),
   notes: z.string().optional(),
+  forceNewOrder: z.boolean().optional(),
   items: z
     .array(
       z.object({
@@ -30,12 +31,16 @@ const createOrderInputSchema = z.object({
 })
 
 function normalizePhone(value: string) {
-  return value.replace(/\D/g, "")
+  const digits = value.replace(/\D/g, "")
+  if (digits.startsWith("34") && digits.length > 9) {
+    return digits.slice(2)
+  }
+
+  return digits
 }
 
 async function findRecentDuplicateOrder(input: {
   createdAt: Date
-  customerName: string
   phone: string
   deliveryDate: string
   items: ChatOrderItem[]
@@ -43,18 +48,18 @@ async function findRecentDuplicateOrder(input: {
   const supabase = getAdminClient()
   const createdAfter = new Date(input.createdAt.getTime() - 10 * 60 * 1000).toISOString()
   const expectedFingerprint = buildChatOrderFingerprint({
-    customerName: input.customerName,
     phone: input.phone,
     deliveryDate: input.deliveryDate,
     items: input.items,
   })
+  const normalizedPhone = normalizePhone(input.phone)
 
   const { data, error } = await supabase
     .from("orders")
     .select("id, created_at, delivery_date, customer_name, phone, reminder_at, order_items(type, flavor, qty)")
     .neq("status", "cancelled")
     .eq("delivery_date", input.deliveryDate)
-    .eq("customer_name", input.customerName)
+    .like("phone_normalized", `%${normalizedPhone}%`)
     .gte("created_at", createdAfter)
     .order("created_at", { ascending: false })
     .limit(10)
@@ -65,7 +70,7 @@ async function findRecentDuplicateOrder(input: {
 
   return (data ?? []).find((order) => {
     const orderPhone = typeof order.phone === "string" ? normalizePhone(order.phone) : ""
-    if (orderPhone !== normalizePhone(input.phone)) {
+    if (orderPhone !== normalizedPhone) {
       return false
     }
 
@@ -80,7 +85,6 @@ async function findRecentDuplicateOrder(input: {
     }
 
     const orderFingerprint = buildChatOrderFingerprint({
-      customerName: order.customer_name ?? "",
       phone: order.phone ?? "",
       deliveryDate: order.delivery_date,
       items: orderItems,
@@ -132,13 +136,14 @@ export async function createChatOrder(input: unknown) {
     deliveryDate: deliveryDateFinal,
     usedDefaultDeliveryDate: false,
   })
-  const duplicateOrder = await findRecentDuplicateOrder({
-    createdAt,
-    customerName: payload.customer_name,
-    phone: payload.phone,
-    deliveryDate: deliveryDateFinal,
-    items: payload.items,
-  })
+  const duplicateOrder = payload.forceNewOrder
+    ? null
+    : await findRecentDuplicateOrder({
+        createdAt,
+        phone: payload.phone,
+        deliveryDate: deliveryDateFinal,
+        items: payload.items,
+      })
 
   if (duplicateOrder) {
     return {

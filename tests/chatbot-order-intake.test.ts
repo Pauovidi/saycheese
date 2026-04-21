@@ -4,7 +4,10 @@ import assert from "node:assert/strict"
 import {
   extractCustomerName,
   extractPhoneFromText,
+  hasAddAnotherCakeIntent,
+  hasCloseOrderIntent,
   hasExplicitNewOrderIntent,
+  hasMultipleCakeOrderIntent,
   hasRecentOrderGuard,
   parseOrderFormat,
 } from "../lib/chatbot/order-intake"
@@ -38,4 +41,17 @@ test("solo permite otro pedido reciente cuando la intención es explícita", () 
     hasRecentOrderGuard("2026-04-20T10:00:00.000Z", new Date("2026-04-20T10:20:00.000Z")),
     true
   )
+})
+
+test("detecta cuando el usuario quiere varias tartas en el mismo pedido", () => {
+  assert.equal(hasMultipleCakeOrderIntent("quiero dos tartas para el viernes"), true)
+  assert.equal(hasMultipleCakeOrderIntent("quiero varias cajitas"), true)
+  assert.equal(hasMultipleCakeOrderIntent("quiero una tarta"), false)
+})
+
+test("distingue entre añadir otra tarta y cerrar el pedido", () => {
+  assert.equal(hasAddAnotherCakeIntent("añadir otra"), true)
+  assert.equal(hasAddAnotherCakeIntent("otra tarta de lotus"), true)
+  assert.equal(hasCloseOrderIntent("cerrar el pedido"), true)
+  assert.equal(hasCloseOrderIntent("eso es todo"), true)
 })
