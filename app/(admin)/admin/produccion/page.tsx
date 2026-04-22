@@ -1,13 +1,12 @@
 export const dynamic = "force-dynamic"
 export const revalidate = 0
 
-import { Toaster } from "@/components/ui/sonner"
 import { createClient } from "@/lib/supabase/server"
 import { ManualOrderDialog } from "@/src/components/admin/manual-order-dialog"
 import { LatestOrders } from "@/src/components/admin/latest-orders"
 import { AdminOrderSearch } from "@/src/components/admin/order-search"
 import { ProductionPanel } from "@/src/components/admin/production-panel"
-import { getFlavors } from "@/src/data/products"
+import { getCatalogFlavors } from "@/src/data/products-store"
 
 type OrderItem = {
   type: "cake" | "box"
@@ -28,7 +27,7 @@ type AdminOrder = {
 
 export default async function ProduccionPage() {
   const supabase = await createClient()
-  const flavors = getFlavors()
+  const flavors = await getCatalogFlavors()
   const { data, error } = await supabase
     .from("orders")
     .select("id, created_at, delivery_date, customer_name, customer_email, phone, status, order_items(type, flavor, qty)")
@@ -53,8 +52,6 @@ export default async function ProduccionPage() {
 
       <AdminOrderSearch />
       <LatestOrders initialOrders={orders} />
-
-      <Toaster position="bottom-center" />
     </>
   )
 }

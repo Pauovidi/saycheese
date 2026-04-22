@@ -7,7 +7,6 @@ import { Minus, Plus } from "lucide-react"
 import { useCart } from "@/src/context/cart-context"
 import { getCustomerFacingFormatLabel, PICKUP_ONLY_COPY } from "@/src/data/business"
 import type { Product } from "@/src/data/products"
-import { getSibling } from "@/src/data/products"
 import {
   Accordion,
   AccordionContent,
@@ -17,6 +16,7 @@ import {
 
 interface ProductDetailProps {
   product: Product
+  sibling?: Product
 }
 
 const ALLERGEN_BADGES = [
@@ -38,11 +38,10 @@ function getAllergenBadges(allergens?: string) {
   return ALLERGEN_BADGES.filter((item) => normalized.includes(item.key))
 }
 
-export function ProductDetail({ product }: ProductDetailProps) {
+export function ProductDetail({ product, sibling }: ProductDetailProps) {
   const [quantity, setQuantity] = useState(1)
   const { addItem } = useCart()
   const router = useRouter()
-  const sibling = getSibling(product)
   const hasBothFormats = !!sibling
   const allergenBadges = getAllergenBadges(product.allergens)
 

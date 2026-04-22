@@ -6,16 +6,15 @@ import { useState } from "react"
 import { useCart } from "@/src/context/cart-context"
 import { getCustomerFacingFormatLabel } from "@/src/data/business"
 import type { Product } from "@/src/data/products"
-import { getSibling } from "@/src/data/products"
 
 interface ProductCardProps {
   product: Product
+  sibling?: Product
   priority?: boolean
 }
 
-export function ProductCard({ product, priority = false }: ProductCardProps) {
+export function ProductCard({ product, sibling, priority = false }: ProductCardProps) {
   const { addItem } = useCart()
-  const sibling = getSibling(product)
   const hasBothFormats = !!sibling
 
   // The card starts showing whichever format was passed in

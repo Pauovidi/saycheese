@@ -1,5 +1,12 @@
 import { getCustomerFacingFormatLabel } from "@/src/data/business"
-import { getFlavorFacts, getFlavors, getProductBySlug, getProductsByCategory, products, type Product } from "@/src/data/products"
+import type { Product } from "@/src/data/products"
+import {
+  getCatalogFlavorFacts,
+  getCatalogFlavors,
+  getCatalogProductBySlug,
+  getCatalogProducts,
+  getCatalogProductsByCategory,
+} from "@/src/data/products-store"
 
 function normalize(value: string) {
   return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim()
@@ -41,7 +48,8 @@ function scoreFlavorMatch(query: string, product: Product) {
   return 0
 }
 
-export function listFlavorsAndSizes() {
+export async function listFlavorsAndSizes() {
+  const products = await getCatalogProducts()
   const grouped = new Map<string, { flavor: string; sizes: { format: "tarta" | "cajita"; label: string; priceText: string }[] }>()
 
   for (const product of products) {
@@ -60,13 +68,14 @@ export function listFlavorsAndSizes() {
   }))
 }
 
-export function findProductBySlugOrFlavor(q: string) {
-  const exactSlug = getProductBySlug(q)
+export async function findProductBySlugOrFlavor(q: string) {
+  const exactSlug = await getCatalogProductBySlug(q)
   if (exactSlug) return exactSlug
 
   const searchableQuery = stripNonFlavorTerms(q)
   if (!searchableQuery) return undefined
 
+  const products = await getCatalogProducts()
   const requestedFormat = detectRequestedFormat(q)
   const bestProduct = products
     .map((product) => ({ product, score: scoreFlavorMatch(searchableQuery, product) }))
@@ -75,18 +84,19 @@ export function findProductBySlugOrFlavor(q: string) {
 
   if (!bestProduct) return undefined
   if (requestedFormat) {
-    return getProductsByCategory(bestProduct.category).find((product) => product.format === requestedFormat) ?? bestProduct
+    return (await getCatalogProductsByCategory(bestProduct.category)).find((product) => product.format === requestedFormat) ?? bestProduct
   }
 
-  return getProductsByCategory(bestProduct.category).find((product) => Boolean(product.allergens)) ?? bestProduct
+  return (await getCatalogProductsByCategory(bestProduct.category)).find((product) => Boolean(product.allergens)) ?? bestProduct
 }
 
-export function findExplicitFlavorSelection(query: string) {
+export async function findExplicitFlavorSelection(query: string) {
   const searchableQuery = stripNonFlavorTerms(query)
   if (!searchableQuery) return undefined
 
   const normalizedQuery = normalize(searchableQuery)
-  const exactFlavor = getFlavors().find(
+  const flavors = await getCatalogFlavors()
+  const exactFlavor = flavors.find(
     (flavor) =>
       normalize(flavor.category) === normalizedQuery ||
       normalize(flavor.label) === normalizedQuery
@@ -94,17 +104,18 @@ export function findExplicitFlavorSelection(query: string) {
 
   if (!exactFlavor) return undefined
 
-  return getProductsByCategory(exactFlavor.category).find((product) => Boolean(product.allergens)) ??
-    getProductsByCategory(exactFlavor.category)[0]
+  const flavorProducts = await getCatalogProductsByCategory(exactFlavor.category)
+  return flavorProducts.find((product) => Boolean(product.allergens)) ?? flavorProducts[0]
 }
 
-export function findFlavorFactsByQuery(q: string) {
-  const product = findProductBySlugOrFlavor(q)
+export async function findFlavorFactsByQuery(q: string) {
+  const product = await findProductBySlugOrFlavor(q)
   if (!product) return undefined
-  return getFlavorFacts(product.category)
+  return getCatalogFlavorFacts(product.category)
 }
 
-export function isKnownFlavor(flavor: string) {
+export async function isKnownFlavor(flavor: string) {
   const normalized = normalize(flavor)
-  return getFlavors().some((flavorEntry) => normalize(flavorEntry.category) === normalized || normalize(flavorEntry.label) === normalized)
+  const flavors = await getCatalogFlavors()
+  return flavors.some((flavorEntry) => normalize(flavorEntry.category) === normalized || normalize(flavorEntry.label) === normalized)
 }
