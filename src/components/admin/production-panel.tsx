@@ -6,6 +6,7 @@ import { es } from "date-fns/locale"
 import { CalendarIcon, Copy, Loader2 } from "lucide-react"
 
 import { getProduction, type ProductionResponse } from "@/actions/production"
+import { getFlavorEmoji, getProductionTypeLabel } from "@/lib/admin/production-presentation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -13,71 +14,10 @@ import { Label } from "@/components/ui/label"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Calendar } from "@/components/ui/calendar"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
 import { toast } from "sonner"
-
-const flavorEmojis: Record<string, string> = {
-  "Clásica": "🍰",
-  Hippo: "🦛",
-  Pistacho: "🟢",
-  "Mango-Maracuyá": "🥭",
-  Lotus: "🧁",
-  Gofio: "🌾",
-  Nutella: "🍫",
-  Tiramisú: "☕",
-  "Polvito Uruguayo": "✨",
-}
-
-function getFlavorEmoji(flavor: string): string {
-  return flavorEmojis[flavor] ?? ""
-}
-
-function formatDMY(d: Date): string {
-  return format(d, "dd/MM/yyyy")
-}
 
 function formatISODate(d: Date): string {
   return format(d, "yyyy-MM-dd")
-}
-
-function getProductionTypeLabel(type: "cake" | "box"): string {
-  return type === "cake" ? "Tarta grande" : "Cajita / pequeña"
-}
-
-function getProductionPhone(phone: string | null): string {
-  return phone?.trim() || "Sin teléfono"
-}
-
-function buildProductionCopyText(result: ProductionResponse, rangeLabel: string): string {
-  const lines: string[] = []
-
-  lines.push(`Rango: ${rangeLabel}`)
-  lines.push("")
-  lines.push(`TARTAS GRANDES (${result.totals.cakes})`)
-  lines.push(`CAJITAS / PEQUEÑAS (${result.totals.boxes})`)
-
-  if (result.details.length > 0) {
-    lines.push("")
-    lines.push("DETALLE")
-
-    for (const line of result.details) {
-      const emoji = getFlavorEmoji(line.flavor)
-      const flavorLabel = emoji ? `${line.flavor} ${emoji}` : line.flavor
-
-      lines.push(
-        `${getProductionTypeLabel(line.type)} · ${flavorLabel} — ${line.qty} — ${getProductionPhone(line.phone)}`
-      )
-    }
-  }
-
-  return lines.join("\n")
 }
 
 export function ProductionPanel() {
@@ -90,7 +30,6 @@ export function ProductionPanel() {
   const [includeDone, setIncludeDone] = useState(false)
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<ProductionResponse | null>(null)
-  const [rangeLabel, setRangeLabel] = useState("")
 
   const handleCalculate = useCallback(async () => {
     const from = rangeMode === "single" ? singleDate : dateFrom
@@ -122,11 +61,6 @@ export function ProductionPanel() {
       })
 
       setResult(data)
-      setRangeLabel(
-        rangeMode === "single"
-          ? formatDMY(from)
-          : `${formatDMY(from)} → ${formatDMY(to)}`
-      )
     } catch {
       toast.error("No se pudo calcular la producción")
     } finally {
@@ -136,10 +70,10 @@ export function ProductionPanel() {
 
   const handleCopy = useCallback(() => {
     if (!result) return
-    navigator.clipboard.writeText(buildProductionCopyText(result, rangeLabel)).then(() => {
+    navigator.clipboard.writeText(result.copyText).then(() => {
       toast.success("Copiado al portapapeles")
     })
-  }, [result, rangeLabel])
+  }, [result])
 
   return (
     <div className="flex flex-col gap-6">
@@ -231,9 +165,9 @@ export function ProductionPanel() {
         </Button>
       </div>
 
-      {rangeLabel && (
+      {result?.rangeLabel && (
         <p className="text-sm text-muted-foreground">
-          <span className="font-semibold text-foreground">Rango:</span> {rangeLabel}
+          <span className="font-semibold text-foreground">Rango:</span> {result.rangeLabel}
         </p>
       )}
 
@@ -244,78 +178,65 @@ export function ProductionPanel() {
       )}
 
       {!loading && result && (
-        <div className="grid gap-4 md:grid-cols-2">
-          {includeTartas && (
+        <div className="space-y-4">
+          <div className="grid gap-4 md:grid-cols-2">
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-base">Tartas ({result.totals.cakes})</CardTitle>
+                <CardTitle className="text-base">Tartas grandes ({result.totals.cakes})</CardTitle>
               </CardHeader>
               <CardContent>
-                {result.cakes.length === 0 ? (
-                  <p className="py-6 text-center text-sm text-muted-foreground">
-                    No hay resultados en el rango
-                  </p>
-                ) : (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Sabor</TableHead>
-                        <TableHead className="text-right">Unidades</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {result.cakes.map((line) => (
-                        <TableRow key={line.flavor}>
-                          <TableCell className="font-medium">
-                            {line.flavor} {getFlavorEmoji(line.flavor)}
-                          </TableCell>
-                          <TableCell className="text-right font-bold tabular-nums">
-                            {line.qty}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                )}
+                <p className="text-3xl font-bold tabular-nums text-foreground">{result.totals.cakes}</p>
               </CardContent>
             </Card>
-          )}
 
-          {includeCajitas && (
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-base">Cajitas ({result.totals.boxes})</CardTitle>
+                <CardTitle className="text-base">Cajitas / pequeñas ({result.totals.boxes})</CardTitle>
               </CardHeader>
               <CardContent>
-                {result.boxes.length === 0 ? (
-                  <p className="py-6 text-center text-sm text-muted-foreground">
-                    No hay resultados en el rango
-                  </p>
-                ) : (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Sabor</TableHead>
-                        <TableHead className="text-right">Unidades</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {result.boxes.map((line) => (
-                        <TableRow key={line.flavor}>
-                          <TableCell className="font-medium">
-                            {line.flavor} {getFlavorEmoji(line.flavor)}
-                          </TableCell>
-                          <TableCell className="text-right font-bold tabular-nums">
-                            {line.qty}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                )}
+                <p className="text-3xl font-bold tabular-nums text-foreground">{result.totals.boxes}</p>
               </CardContent>
             </Card>
-          )}
+          </div>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Detalle</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {result.groups.length === 0 ? (
+                <p className="py-6 text-center text-sm text-muted-foreground">
+                  No hay resultados en el rango
+                </p>
+              ) : (
+                <div className="space-y-6">
+                  {result.groups.map((group) => (
+                    <div key={group.key} className="space-y-3 border-b border-border/60 pb-5 last:border-b-0 last:pb-0">
+                      <p className="text-sm font-semibold text-foreground">{group.label}:</p>
+                      <div className="space-y-2">
+                        {group.entries.map((entry, index) => {
+                          const emoji = getFlavorEmoji(entry.flavor)
+                          const flavorLabel = emoji ? `${entry.flavor} ${emoji}` : entry.flavor
+
+                          return (
+                            <div
+                              key={`${group.key}-${entry.orderId}-${entry.type}-${entry.flavor}-${index}`}
+                              className="flex items-start justify-between gap-4 rounded-md bg-muted/30 px-3 py-2 text-sm"
+                            >
+                              <p className="text-foreground">
+                                {getProductionTypeLabel(entry.type)} · {flavorLabel}
+                              </p>
+                              <p className="font-semibold tabular-nums text-foreground">{entry.qty}</p>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </div>
       )}
     </div>
