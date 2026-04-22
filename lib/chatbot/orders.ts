@@ -3,6 +3,7 @@ import "server-only"
 import { z } from "zod"
 
 import { areEquivalentOrderItems, buildChatOrderFingerprint, type ChatOrderItem } from "@/lib/chatbot/order-dedupe"
+import { normalizePhone, normalizePhoneOrNull } from "@/lib/phone"
 import { isKnownFlavor } from "@/lib/chatbot/products"
 import { computeReminderAt } from "@/lib/chatbot/reminders"
 import { getOrderPickupDateErrorMessage, validateOrderPickupDate } from "@/lib/pickup-date-validation"
@@ -30,15 +31,6 @@ const createOrderInputSchema = z.object({
     .min(1),
 })
 
-function normalizePhone(value: string) {
-  const digits = value.replace(/\D/g, "")
-  if (digits.startsWith("34") && digits.length > 9) {
-    return digits.slice(2)
-  }
-
-  return digits
-}
-
 async function findRecentDuplicateOrder(input: {
   createdAt: Date
   phone: string
@@ -56,20 +48,19 @@ async function findRecentDuplicateOrder(input: {
 
   const { data, error } = await supabase
     .from("orders")
-    .select("id, created_at, delivery_date, customer_name, phone, reminder_at, order_items(type, flavor, qty)")
+    .select("id, created_at, delivery_date, customer_name, phone, phone_normalized, reminder_at, order_items(type, flavor, qty)")
     .neq("status", "cancelled")
     .eq("delivery_date", input.deliveryDate)
-    .like("phone_normalized", `%${normalizedPhone}%`)
     .gte("created_at", createdAfter)
     .order("created_at", { ascending: false })
-    .limit(10)
+    .limit(25)
 
   if (error) {
     throw new Error(error.message)
   }
 
   return (data ?? []).find((order) => {
-    const orderPhone = typeof order.phone === "string" ? normalizePhone(order.phone) : ""
+    const orderPhone = normalizePhone(order.phone_normalized ?? order.phone ?? "")
     if (orderPhone !== normalizedPhone) {
       return false
     }
@@ -164,6 +155,7 @@ export async function createChatOrder(input: unknown) {
       customer_name: payload.customer_name,
       customer_email: payload.customer_email ?? null,
       phone: payload.phone,
+      phone_normalized: normalizePhoneOrNull(payload.phone),
       notes: payload.notes,
       reminder_at: reminderAt,
       reminder_status: "pending",
@@ -196,16 +188,15 @@ export async function cancelChatOrder(phone: string, hint?: string) {
 
   const query = supabase
     .from("orders")
-    .select("id, created_at")
+    .select("id, created_at, phone, phone_normalized")
     .neq("status", "cancelled")
-    .like("phone_normalized", `%${normalizedPhone}%`)
 
   const finalQuery = hint?.trim() ? query.ilike("id", `${hint.trim()}%`) : query
-  const { data, error } = await finalQuery.order("created_at", { ascending: false }).limit(1)
+  const { data, error } = await finalQuery.order("created_at", { ascending: false }).limit(50)
 
   if (error) throw new Error(error.message)
 
-  const order = data?.[0]
+  const order = (data ?? []).find((candidate) => normalizePhone(candidate.phone_normalized ?? candidate.phone ?? "") === normalizedPhone)
   if (!order) {
     return { ok: false as const, error: "No encontré un pedido activo para ese teléfono.", shouldHandoff: true }
   }

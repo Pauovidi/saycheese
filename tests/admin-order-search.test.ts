@@ -19,7 +19,7 @@ test("acepta búsquedas por nombre aunque no haya teléfono", () => {
 
 test("genera variantes para teléfonos con y sin prefijo +34", () => {
   assert.equal(normalizeOrderSearchPhone("+34 645 29 04 41"), "34645290441")
-  assert.deepEqual(buildOrderSearchPhoneVariants("+34 645 29 04 41"), ["34645290441", "645290441"])
+  assert.deepEqual(buildOrderSearchPhoneVariants("+34 645 29 04 41"), ["645290441", "34645290441"])
   assert.deepEqual(buildOrderSearchPhoneVariants("645290441"), ["645290441", "34645290441"])
 })
 

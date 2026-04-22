@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 
 import { computeReminderAt } from "@/lib/chatbot/reminders"
+import { normalizePhoneOrNull } from "@/lib/phone"
 import { getOrderPickupDateErrorMessage, validateOrderPickupDate } from "@/lib/pickup-date-validation"
 import { getAdminClient, getAdminUid } from "@/lib/supabase/admin"
 
@@ -56,6 +57,7 @@ export async function POST(request: Request) {
         customer_name: payload.customer_name,
         customer_email: payload.customer_email ?? null,
         phone: payload.phone,
+        phone_normalized: normalizePhoneOrNull(payload.phone),
         reminder_at: reminderAt,
         reminder_status: "pending",
       })

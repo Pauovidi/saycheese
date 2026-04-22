@@ -1,5 +1,6 @@
 import "server-only"
 
+import { buildPhoneSearchVariants, normalizePhone } from "@/lib/phone"
 import { getAdminClient } from "@/lib/supabase/admin"
 
 type Channel = "web" | "whatsapp"
@@ -7,22 +8,11 @@ type Channel = "web" | "whatsapp"
 type MessageRole = "user" | "assistant" | "system"
 
 function normalizeChatUserPhone(phone?: string) {
-  return phone?.replace(/\D/g, "") ?? ""
+  return normalizePhone(phone)
 }
 
 function buildChatUserPhoneVariants(phone?: string) {
-  const digits = normalizeChatUserPhone(phone)
-  if (!digits) return []
-
-  const variants = new Set<string>([digits])
-  if (digits.startsWith("34") && digits.length > 9) {
-    variants.add(digits.slice(2))
-  }
-  if (digits.length === 9) {
-    variants.add(`34${digits}`)
-  }
-
-  return [...variants]
+  return buildPhoneSearchVariants(phone)
 }
 
 async function findUserByPhone(channel: Channel, phone?: string) {

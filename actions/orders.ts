@@ -11,6 +11,7 @@ import {
   normalizeOrderSearchText,
   orderPhoneMatchesSearch,
 } from "@/lib/admin/order-search"
+import { normalizePhoneOrNull } from "@/lib/phone"
 import { getOrderPickupDateErrorMessage, validateOrderPickupDate } from "@/lib/pickup-date-validation"
 import { createClient } from "@/lib/supabase/server"
 
@@ -90,6 +91,7 @@ export async function createOrder(payload: z.infer<typeof createOrderSchema>) {
       customer_name: parsed.customer_name,
       customer_email: parsed.customer_email ?? null,
       phone: parsed.phone?.trim() || null,
+      phone_normalized: normalizePhoneOrNull(parsed.phone),
       notes: parsed.notes,
     })
     .select("id")
@@ -132,10 +134,18 @@ export async function updateOrder(payload: z.infer<typeof updateOrderSchema>) {
   const parsed = updateOrderSchema.parse(payload)
   const { id, ...updates } = parsed
   const supabase = await createClient()
+  const updatesWithNormalizedPhone = {
+    ...updates,
+    ...(Object.prototype.hasOwnProperty.call(updates, "phone")
+      ? {
+          phone_normalized: normalizePhoneOrNull(updates.phone ?? null),
+        }
+      : {}),
+  }
 
   const { data, error } = await supabase
     .from("orders")
-    .update(updates)
+    .update(updatesWithNormalizedPhone)
     .eq("id", id)
     .select("id")
     .single()

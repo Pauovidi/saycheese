@@ -1,3 +1,5 @@
+import { normalizePhone } from "@/lib/phone"
+
 export type ChatOrderItem = {
   type: "cake" | "box"
   flavor: string
@@ -11,15 +13,6 @@ function normalizeText(value: string) {
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/\s+/g, " ")
-}
-
-function normalizePhone(value: string) {
-  const digits = value.replace(/\D/g, "")
-  if (digits.startsWith("34") && digits.length > 9) {
-    return digits.slice(2)
-  }
-
-  return digits
 }
 
 function areSameItem(left: ChatOrderItem, right: ChatOrderItem) {
