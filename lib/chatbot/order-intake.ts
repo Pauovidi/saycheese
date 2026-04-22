@@ -48,6 +48,18 @@ function isStandaloneNameMessage(text: string, candidate: string) {
 
 type ExtractCustomerNameOptions = {
   blockedNormalizedTerms?: string[]
+  allowSegmentExtraction?: boolean
+}
+
+export type AdditionalCakeDecisionIntent = "close" | "add" | "unknown"
+
+function isLowConfidenceStandaloneName(word: string) {
+  const normalized = normalizeChatText(word)
+  if (!normalized) return true
+  if (!/[aeiouy]/.test(normalized)) return true
+  if (/(.)\1\1/.test(normalized)) return true
+  if (normalized.length >= 6 && /^(.{2,3})\1+$/.test(normalized)) return true
+  return false
 }
 
 function isLikelyCustomerName(value: string, options?: ExtractCustomerNameOptions) {
@@ -68,6 +80,11 @@ function isLikelyCustomerName(value: string, options?: ExtractCustomerNameOption
     "buenas noches",
     "hola buenos dias",
     "hola buenas",
+    "ya esta",
+    "ya está",
+    "cerrar pedido",
+    "cerrar el pedido",
+    "pedido cerrado",
     "el lunes",
     "el martes",
     "el miercoles",
@@ -150,10 +167,27 @@ function isLikelyCustomerName(value: string, options?: ExtractCustomerNameOption
     "pequeña",
     "pequeno",
     "pequeño",
+    "ya",
+    "esta",
+    "está",
+    "listo",
+    "cerrar",
+    "cerrado",
+    "confirmar",
+    "finalizar",
+    "terminar",
+    "blabla",
+    "asdf",
+    "prueba",
+    "test",
   ])
 
   for (const blockedTerm of blockedNormalizedTerms) {
     blocked.add(blockedTerm)
+  }
+
+  if (words.length === 1 && isLowConfidenceStandaloneName(words[0] ?? "")) {
+    return false
   }
 
   return !words.some((word) => blocked.has(normalizeChatText(word)))
@@ -165,6 +199,7 @@ function extractNameFromSegment(segment: string, options?: ExtractCustomerNameOp
 }
 
 export function extractCustomerName(text: string, options?: ExtractCustomerNameOptions) {
+  const allowSegmentExtraction = options?.allowSegmentExtraction ?? true
   const patterns = [
     /(?:me\s+llamo|soy)\s+(.+)/i,
     /mi\s+nombre\s+es\s+(.+)/i,
@@ -180,19 +215,21 @@ export function extractCustomerName(text: string, options?: ExtractCustomerNameO
     }
   }
 
-  const segments = text
-    .split(/[.!?;\n]+/)
-    .map((segment) => segment.trim())
-    .filter(Boolean)
+  if (allowSegmentExtraction) {
+    const segments = text
+      .split(/[.!?;\n]+/)
+      .map((segment) => segment.trim())
+      .filter(Boolean)
 
-  for (const segment of segments) {
-    if (parseOrderFormat(segment) || extractPhoneFromText(segment) || /@/.test(segment)) {
-      continue
-    }
+    for (const segment of segments) {
+      if (parseOrderFormat(segment) || extractPhoneFromText(segment) || /@/.test(segment)) {
+        continue
+      }
 
-    const candidate = extractNameFromSegment(segment, options)
-    if (candidate) {
-      return candidate
+      const candidate = extractNameFromSegment(segment, options)
+      if (candidate) {
+        return candidate
+      }
     }
   }
 
@@ -239,6 +276,11 @@ export function hasAddAnotherCakeIntent(text: string) {
 export function hasCloseOrderIntent(text: string) {
   const normalized = normalizeChatText(text)
   return [
+    /\bya\s+esta\b/,
+    /\bya\s+estaria\b/,
+    /\bvale\b/,
+    /\bok(?:ay)?\b/,
+    /\blisto\b/,
     /\bcerrar(?:\s+el\s+pedido)?\b/,
     /\bconfirmar(?:\s+el\s+pedido)?\b/,
     /\bfinalizar\b/,
@@ -247,6 +289,12 @@ export function hasCloseOrderIntent(text: string) {
     /\bnada\s+mas\b/,
     /\bsolo\s+esa\b/,
   ].some((pattern) => pattern.test(normalized))
+}
+
+export function getAdditionalCakeDecisionIntent(text: string): AdditionalCakeDecisionIntent {
+  if (hasCloseOrderIntent(text)) return "close"
+  if (hasAddAnotherCakeIntent(text)) return "add"
+  return "unknown"
 }
 
 export function hasRecentOrderGuard(previousCreatedAt?: string, now = new Date(), windowMs = 30 * 60 * 1000) {

@@ -4,8 +4,7 @@ import assert from "node:assert/strict"
 import {
   extractCustomerName,
   extractPhoneFromText,
-  hasAddAnotherCakeIntent,
-  hasCloseOrderIntent,
+  getAdditionalCakeDecisionIntent,
   hasExplicitNewOrderIntent,
   hasMultipleCakeOrderIntent,
   hasRecentOrderGuard,
@@ -50,8 +49,21 @@ test("detecta cuando el usuario quiere varias tartas en el mismo pedido", () => 
 })
 
 test("distingue entre añadir otra tarta y cerrar el pedido", () => {
-  assert.equal(hasAddAnotherCakeIntent("añadir otra"), true)
-  assert.equal(hasAddAnotherCakeIntent("otra tarta de lotus"), true)
-  assert.equal(hasCloseOrderIntent("cerrar el pedido"), true)
-  assert.equal(hasCloseOrderIntent("eso es todo"), true)
+  assert.equal(getAdditionalCakeDecisionIntent("añadir otra"), "add")
+  assert.equal(getAdditionalCakeDecisionIntent("otra tarta de lotus"), "add")
+  assert.equal(getAdditionalCakeDecisionIntent("cerrar el pedido"), "close")
+  assert.equal(getAdditionalCakeDecisionIntent("eso es todo"), "close")
+})
+
+test("trata 'ya está', 'vale', 'ok' y 'listo' como cierre cuando toca y no como nombre", () => {
+  for (const message of ["ya está", "vale", "ok", "listo", "cerrar pedido"]) {
+    assert.equal(getAdditionalCakeDecisionIntent(message), "close")
+    assert.equal(extractCustomerName(message, { allowSegmentExtraction: false }), undefined)
+  }
+})
+
+test("no acepta texto basura como nombre y deja espacio al recovery corto", () => {
+  assert.equal(extractCustomerName("blabla", { allowSegmentExtraction: false }), undefined)
+  assert.equal(extractCustomerName("asdf", { allowSegmentExtraction: false }), undefined)
+  assert.equal(extractCustomerName("zzzz", { allowSegmentExtraction: false }), undefined)
 })

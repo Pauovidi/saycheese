@@ -17,9 +17,8 @@ import {
 } from "@/lib/chatbot/memory"
 import {
   extractCustomerName,
+  getAdditionalCakeDecisionIntent,
   extractPhoneFromText,
-  hasAddAnotherCakeIntent,
-  hasCloseOrderIntent,
   hasExplicitNewOrderIntent,
   hasMultipleCakeOrderIntent,
   hasRecentOrderGuard,
@@ -630,14 +629,21 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
     const format = parseOrderFormat(message)
     const parsedDate = parseSpanishDesiredDate(message, now, SHOP_TZ)
     const genericMessage = isGenericNonOperationalMessage(message)
-    const customerName = extractCustomerName(message, {
-      blockedNormalizedTerms: product ? [product.name, product.category] : [],
-    })
+    const additionalCakeDecisionIntent = state.awaitingAdditionalCakeDecision ? getAdditionalCakeDecisionIntent(message) : "unknown"
+    const customerName =
+      additionalCakeDecisionIntent === "close"
+        ? undefined
+        : extractCustomerName(message, {
+            blockedNormalizedTerms: product ? [product.name, product.category] : [],
+            allowSegmentExtraction: Boolean(product || format || parsedDate || email || messagePhone),
+          })
     const hasStructuredContribution = Boolean(product || format || parsedDate || customerName || email || messagePhone)
 
     if (state.awaitingAdditionalCakeDecision) {
-      const wantsCloseOrder = hasCloseOrderIntent(message) || (isNegative(message) && !hasStructuredContribution)
-      const wantsAddAnotherCake = hasAddAnotherCakeIntent(message) || Boolean(product || format || parsedDate)
+      const wantsCloseOrder =
+        additionalCakeDecisionIntent === "close" || (isNegative(message) && !hasStructuredContribution)
+      const wantsAddAnotherCake =
+        additionalCakeDecisionIntent === "add" || Boolean(product || format || parsedDate)
 
       if (wantsCloseOrder) {
         state.awaitingAdditionalCakeDecision = false
