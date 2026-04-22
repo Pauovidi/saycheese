@@ -3,9 +3,11 @@ export const revalidate = 0
 
 import { Toaster } from "@/components/ui/sonner"
 import { createClient } from "@/lib/supabase/server"
+import { ManualOrderDialog } from "@/src/components/admin/manual-order-dialog"
 import { LatestOrders } from "@/src/components/admin/latest-orders"
 import { AdminOrderSearch } from "@/src/components/admin/order-search"
 import { ProductionPanel } from "@/src/components/admin/production-panel"
+import { getFlavors } from "@/src/data/products"
 
 type OrderItem = {
   type: "cake" | "box"
@@ -26,6 +28,7 @@ type AdminOrder = {
 
 export default async function ProduccionPage() {
   const supabase = await createClient()
+  const flavors = getFlavors()
   const { data, error } = await supabase
     .from("orders")
     .select("id, created_at, delivery_date, customer_name, customer_email, phone, status, order_items(type, flavor, qty)")
@@ -37,7 +40,15 @@ export default async function ProduccionPage() {
 
   return (
     <>
-      <h1 className="mb-6 text-xl font-bold text-foreground">Producción</h1>
+      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <h1 className="text-xl font-bold text-foreground">Producción</h1>
+        <ManualOrderDialog
+          flavors={flavors.map((flavor) => ({
+            category: flavor.category,
+            label: flavor.label,
+          }))}
+        />
+      </div>
       <ProductionPanel />
 
       <AdminOrderSearch />
