@@ -20,10 +20,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { NEW_FLAVOR_KEY, resolveEditorSelection } from "@/src/components/admin/cake-catalog-editor-state"
 import { CatalogImageUpload } from "@/src/components/admin/catalog-image-upload"
 import { slugifyFlavorName, type EditableFlavorRecord } from "@/src/data/products"
-
-const NEW_FLAVOR_KEY = "__new__"
 
 type FlavorFormState = {
   name: string
@@ -119,10 +118,11 @@ function FlavorPreviewCard({
 }
 
 export function CakeCatalogEditor({ initialFlavors }: { initialFlavors: EditableFlavorRecord[] }) {
+  const initialSelection = resolveEditorSelection(initialFlavors)
   const [flavors, setFlavors] = useState(initialFlavors)
-  const [selectedSlug, setSelectedSlug] = useState(initialFlavors[0]?.slug ?? NEW_FLAVOR_KEY)
+  const [selectedSlug, setSelectedSlug] = useState(initialSelection.selectedSlug)
   const [form, setForm] = useState<FlavorFormState>(() =>
-    initialFlavors[0] ? flavorToForm(initialFlavors[0]) : emptyForm()
+    initialSelection.selectedFlavor ? flavorToForm(initialSelection.selectedFlavor) : emptyForm()
   )
   const [isPending, startTransition] = useTransition()
 
@@ -162,6 +162,14 @@ export function CakeCatalogEditor({ initialFlavors }: { initialFlavors: Editable
     }))
   }
 
+  function syncEditorState(nextFlavors: EditableFlavorRecord[], preferredSlug?: string | null) {
+    const nextSelection = resolveEditorSelection(nextFlavors, preferredSlug)
+
+    setFlavors(nextFlavors)
+    setSelectedSlug(nextSelection.selectedSlug)
+    setForm(nextSelection.selectedFlavor ? flavorToForm(nextSelection.selectedFlavor) : emptyForm())
+  }
+
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
 
@@ -188,19 +196,13 @@ export function CakeCatalogEditor({ initialFlavors }: { initialFlavors: Editable
         return
       }
 
-      setFlavors(response.flavors)
-
       if (isCreating) {
-        const createdSlug = slugifyFlavorName(form.name)
-        const createdFlavor = response.flavors.find((flavor) => flavor.slug === createdSlug)
-        setSelectedSlug(createdFlavor?.slug ?? response.flavors[0]?.slug ?? NEW_FLAVOR_KEY)
-        setForm(createdFlavor ? flavorToForm(createdFlavor) : emptyForm())
+        syncEditorState(response.flavors, response.selectedSlug)
         toast.success("Sabor creado")
         return
       }
 
-      const updatedFlavor = response.flavors.find((flavor) => flavor.slug === selectedSlug)
-      setForm(updatedFlavor ? flavorToForm(updatedFlavor) : form)
+      syncEditorState(response.flavors, response.selectedSlug ?? selectedSlug)
       toast.success("Cambios guardados")
     })
   }
@@ -216,10 +218,7 @@ export function CakeCatalogEditor({ initialFlavors }: { initialFlavors: Editable
         return
       }
 
-      setFlavors(response.flavors)
-      const nextSelected = response.flavors[0]
-      setSelectedSlug(nextSelected?.slug ?? NEW_FLAVOR_KEY)
-      setForm(nextSelected ? flavorToForm(nextSelected) : emptyForm())
+      syncEditorState(response.flavors, response.selectedSlug)
       toast.success("Sabor borrado")
     })
   }
