@@ -89,6 +89,7 @@ Cuando hay handoff, el bot se pausa 2h (`bot_paused_until`).
 ## Vercel Cron
 
 Se añadió `vercel.json` para ejecutar cada 15 minutos:
-- path: `/api/cron/send-reminders?secret=CRON_SECRET`
+- path: `/api/cron/send-reminders`
 
-Recomendación: en producción usar header `x-cron-secret` desde el scheduler si está disponible.
+En Vercel, `CRON_SECRET` se envía automáticamente por `Authorization: Bearer <CRON_SECRET>`.
+Para pruebas manuales se mantiene compatibilidad con `x-cron-secret` y `?secret=...`.
