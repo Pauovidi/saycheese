@@ -1,8 +1,7 @@
 import "server-only"
 
-import { z } from "zod"
-
 import { areEquivalentOrderItems, buildChatOrderFingerprint, type ChatOrderItem } from "@/lib/chatbot/order-dedupe"
+import { createOrderInputSchema } from "@/lib/chatbot/order-schema"
 import { normalizePhone, normalizePhoneOrNull } from "@/lib/phone"
 import { isKnownFlavor } from "@/lib/chatbot/products"
 import { computeReminderAt } from "@/lib/chatbot/reminders"
@@ -12,24 +11,6 @@ import { getAdminClient, getAdminUid } from "@/lib/supabase/admin"
 const LEAD_DAYS_RAW = Number.parseInt(process.env.CHATBOT_LEAD_DAYS ?? "3", 10)
 const LEAD_DAYS = Number.isFinite(LEAD_DAYS_RAW) && LEAD_DAYS_RAW > 0 ? LEAD_DAYS_RAW : 3
 const SHOP_TZ = process.env.SHOP_TZ ?? "Europe/Madrid"
-
-const createOrderInputSchema = z.object({
-  customer_name: z.string().trim().min(1),
-  customer_email: z.string().trim().email().optional(),
-  phone: z.string().trim().min(6),
-  delivery_date: z.string().date().optional(),
-  notes: z.string().optional(),
-  forceNewOrder: z.boolean().optional(),
-  items: z
-    .array(
-      z.object({
-        type: z.enum(["cake", "box"]),
-        flavor: z.string().min(1),
-        qty: z.number().int().positive(),
-      })
-    )
-    .min(1),
-})
 
 async function findRecentDuplicateOrder(input: {
   createdAt: Date

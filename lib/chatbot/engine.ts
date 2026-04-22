@@ -46,6 +46,7 @@ import {
   findProductBySlugOrFlavor,
   listFlavorsAndSizes,
 } from "@/lib/chatbot/products"
+import { CANCEL_ORDER_TOOL_PARAMETERS, CREATE_ORDER_TOOL_PARAMETERS, HANDOFF_TO_HUMAN_TOOL_PARAMETERS } from "@/lib/chatbot/tool-schemas"
 import { buildFlavorsAndSizesMessage, hasGreetingIntent, WELCOME_MESSAGE } from "@/lib/chatbot/welcome"
 import {
   buildHumanSupportMessage,
@@ -815,57 +816,21 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
       name: "create_order",
       description: "Crea pedido",
       strict: true,
-      parameters: {
-        type: "object",
-        properties: {
-          customer_name: { type: "string" },
-          customer_email: { type: "string" },
-          phone: { type: "string" },
-          delivery_date: { type: "string" },
-          notes: { type: "string" },
-          items: {
-            type: "array",
-            items: {
-              type: "object",
-              properties: {
-                type: { type: "string", enum: ["cake", "box"] },
-                flavor: { type: "string" },
-                qty: { type: "number" },
-              },
-              required: ["type", "flavor", "qty"],
-              additionalProperties: false,
-            },
-          },
-        },
-        required: ["customer_name", "phone", "delivery_date", "items"],
-        additionalProperties: false,
-      },
+      parameters: CREATE_ORDER_TOOL_PARAMETERS,
     },
     {
       type: "function",
       name: "cancel_order",
       description: "Cancela pedido por teléfono",
       strict: true,
-      parameters: {
-        type: "object",
-        properties: {
-          phone: { type: "string" },
-          order_hint: { type: "string" },
-        },
-        required: ["phone"],
-        additionalProperties: false,
-      },
+      parameters: CANCEL_ORDER_TOOL_PARAMETERS,
     },
     {
       type: "function",
       name: "handoff_to_human",
       description: "Deriva conversación a humano y pausa bot",
       strict: true,
-      parameters: {
-        type: "object",
-        properties: { reason: { type: "string" } },
-        additionalProperties: false,
-      },
+      parameters: HANDOFF_TO_HUMAN_TOOL_PARAMETERS,
     },
   ]
 
