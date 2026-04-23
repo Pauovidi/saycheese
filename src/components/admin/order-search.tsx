@@ -4,6 +4,7 @@ import { useState, useTransition } from "react"
 import { toast } from "sonner"
 
 import { cancelOrder, markOrderDone, reopenOrder, searchOrders } from "@/actions/orders"
+import { getProductionEntryLine, resolveCanonicalFlavorLabel, type ProductionCatalogFlavor } from "@/lib/admin/production-presentation"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { CancelOrderDialog } from "@/src/components/admin/cancel-order-dialog"
@@ -38,7 +39,7 @@ function StatusBadge({ status }: { status: string }) {
   return <span className="rounded bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-700">PENDIENTE</span>
 }
 
-export function AdminOrderSearch() {
+export function AdminOrderSearch({ flavorCatalog }: { flavorCatalog: ProductionCatalogFlavor[] }) {
   const [searchQuery, setSearchQuery] = useState("")
   const [results, setResults] = useState<OrderResult[]>([])
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
@@ -140,7 +141,11 @@ export function AdminOrderSearch() {
               <ul className="mt-2 list-disc pl-5 text-sm">
                 {(order.order_items ?? []).map((item, idx) => (
                   <li key={`${order.id}-${idx}`}>
-                    {item.type === "cake" ? "Tarta" : "Cajita"} · {item.flavor} · {item.qty}
+                    {getProductionEntryLine({
+                      type: item.type,
+                      flavor: resolveCanonicalFlavorLabel(item.flavor, flavorCatalog),
+                      qty: item.qty,
+                    })}
                   </li>
                 ))}
               </ul>

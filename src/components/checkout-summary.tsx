@@ -2,7 +2,6 @@
 
 import Link from "next/link"
 import { useMemo, useState } from "react"
-import { useRouter } from "next/navigation"
 import { z } from "zod"
 import { toast } from "sonner"
 
@@ -27,14 +26,20 @@ type CheckoutSummaryProps = {
   shopTimeZone: string
 }
 
+type CheckoutConfirmation = {
+  orderId: string
+  customerName: string
+  deliveryDateLabel: string
+}
+
 export function CheckoutSummary({ leadDays, shopTimeZone }: CheckoutSummaryProps) {
-  const router = useRouter()
   const { items, subtotal, clearCart } = useCart()
   const [loading, setLoading] = useState(false)
   const [customerName, setCustomerName] = useState("")
   const [phone, setPhone] = useState("")
   const [deliveryDate, setDeliveryDate] = useState("")
   const [deliveryDateError, setDeliveryDateError] = useState<string | null>(null)
+  const [confirmation, setConfirmation] = useState<CheckoutConfirmation | null>(null)
 
   const payloadItems = useMemo(
     () =>
@@ -50,6 +55,37 @@ export function CheckoutSummary({ leadDays, shopTimeZone }: CheckoutSummaryProps
     [leadDays, shopTimeZone]
   )
   const pickupDateHelpText = `Elige una fecha de recogida obligatoria. Necesitamos mínimo ${leadDays} días de antelación y ${CLOSED_PICKUP_DAYS_COPY}. Primera fecha disponible: ${formatDateEs(earliestPickupDate, shopTimeZone)}.`
+
+  if (confirmation) {
+    return (
+      <div className="flex flex-col gap-6 rounded-2xl border border-emerald-200 bg-emerald-50/80 p-6 text-emerald-950">
+        <div className="space-y-2">
+          <p className="text-xs font-bold uppercase tracking-[0.2em] text-emerald-700">Pedido confirmado</p>
+          <h2 className="text-2xl font-bold">Tu pedido se ha registrado correctamente.</h2>
+          <p className="text-sm text-emerald-900/80">
+            {confirmation.customerName}, te esperamos el {confirmation.deliveryDateLabel}. Guarda esta referencia por si la necesitas: <span className="font-semibold">{confirmation.orderId}</span>.
+          </p>
+        </div>
+
+        <p className="text-sm text-emerald-900/80">{PICKUP_ONLY_COPY}</p>
+
+        <div className="flex flex-wrap gap-3">
+          <Link
+            href="/"
+            className="inline-flex items-center justify-center bg-emerald-700 px-5 py-3 text-xs font-bold uppercase tracking-[0.2em] text-white transition-opacity hover:opacity-90"
+          >
+            Volver al inicio
+          </Link>
+          <Link
+            href="/productos"
+            className="inline-flex items-center justify-center border border-emerald-700 px-5 py-3 text-xs font-bold uppercase tracking-[0.2em] text-emerald-800 transition-colors hover:bg-emerald-100"
+          >
+            Seguir viendo sabores
+          </Link>
+        </div>
+      </div>
+    )
+  }
 
   if (items.length === 0) {
     return (
@@ -134,9 +170,18 @@ export function CheckoutSummary({ leadDays, shopTimeZone }: CheckoutSummaryProps
 
       clearCart()
       const finalDate = data.delivery_date_final as string | undefined
-      toast.success(`Pedido creado para ${finalDate}. ${PICKUP_ONLY_COPY}`)
-      router.push("/")
-      router.refresh()
+      const orderId = data.orderId as string | undefined
+      const deliveryDateFinal = finalDate ?? deliveryDateValidation.pickupDate
+      setConfirmation({
+        orderId: orderId ?? "Sin referencia",
+        customerName: parsed.data.customer_name,
+        deliveryDateLabel: formatDateEs(deliveryDateFinal, shopTimeZone),
+      })
+      setCustomerName("")
+      setPhone("")
+      setDeliveryDate("")
+      setDeliveryDateError(null)
+      toast.success(`Pedido creado para ${formatDateEs(deliveryDateFinal, shopTimeZone)}. ${PICKUP_ONLY_COPY}`)
     } catch (error) {
       const message = error instanceof Error ? error.message : "Error al crear pedido"
       toast.error(message)

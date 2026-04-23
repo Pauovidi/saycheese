@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 
 import { cancelOrder, markOrderDone, reopenOrder } from "@/actions/orders"
+import { getProductionEntryLine, resolveCanonicalFlavorLabel, type ProductionCatalogFlavor } from "@/lib/admin/production-presentation"
 import { Button } from "@/components/ui/button"
 import { CancelOrderDialog } from "@/src/components/admin/cancel-order-dialog"
 import { MarkDoneDialog } from "@/src/components/admin/mark-done-dialog"
@@ -27,6 +28,7 @@ type LatestOrder = {
 
 type LatestOrdersProps = {
   initialOrders: LatestOrder[]
+  flavorCatalog: ProductionCatalogFlavor[]
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -41,7 +43,7 @@ function StatusBadge({ status }: { status: string }) {
   return <span className="rounded bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-700">PENDIENTE</span>
 }
 
-export function LatestOrders({ initialOrders }: LatestOrdersProps) {
+export function LatestOrders({ initialOrders, flavorCatalog }: LatestOrdersProps) {
   const router = useRouter()
   const [orders, setOrders] = useState(initialOrders)
   const [, startTransition] = useTransition()
@@ -115,7 +117,11 @@ export function LatestOrders({ initialOrders }: LatestOrdersProps) {
               <ul className="mt-2 list-disc pl-5 text-sm">
                 {(order.order_items ?? []).map((item, idx) => (
                   <li key={`${order.id}-${idx}`}>
-                    {item.type === "cake" ? "Tarta" : "Cajita"} · {item.flavor} · {item.qty}
+                    {getProductionEntryLine({
+                      type: item.type,
+                      flavor: resolveCanonicalFlavorLabel(item.flavor, flavorCatalog),
+                      qty: item.qty,
+                    })}
                   </li>
                 ))}
               </ul>

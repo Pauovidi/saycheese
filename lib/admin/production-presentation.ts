@@ -104,12 +104,26 @@ export function resolveCanonicalFlavorLabel(rawFlavor: string, catalogFlavors: P
   return getFlavorMap(catalogFlavors).get(normalizedFlavor) ?? rawFlavor.trim()
 }
 
+export function getProductionFlavorLabel(flavor: string) {
+  const emoji = getFlavorEmoji(flavor)
+  return emoji ? `${flavor} ${emoji}` : flavor
+}
+
+export function getProductionEntryLine(entry: { type: ProductionPresentationType; flavor: string; qty?: number }) {
+  const baseLine = `${getProductionTypeLabel(entry.type)} · ${getProductionFlavorLabel(entry.flavor)}`
+
+  if (typeof entry.qty !== "number") {
+    return baseLine
+  }
+
+  return `${baseLine} — ${entry.qty}`
+}
+
 export function buildGroupedProductionDetails(details: ProductionDetailInput[], catalogFlavors: ProductionCatalogFlavor[]) {
-  const flavorMap = getFlavorMap(catalogFlavors)
   const groups = new Map<string, ProductionGroupedBlock>()
 
   for (const line of details) {
-    const flavor = flavorMap.get(normalizeText(line.flavor)) ?? line.flavor.trim()
+    const flavor = resolveCanonicalFlavorLabel(line.flavor, catalogFlavors)
     const groupKey = getGroupKey(line)
     const existing = groups.get(groupKey)
 
@@ -178,9 +192,7 @@ export function buildProductionCopyText(input: {
     lines.push(`${group.label}:`)
 
     for (const entry of group.entries) {
-      const emoji = getFlavorEmoji(entry.flavor)
-      const flavorLabel = emoji ? `${entry.flavor} ${emoji}` : entry.flavor
-      lines.push(`${getProductionTypeLabel(entry.type)} · ${flavorLabel} — ${entry.qty}`)
+      lines.push(getProductionEntryLine(entry))
     }
 
     if (groupIndex < input.groups.length - 1) {

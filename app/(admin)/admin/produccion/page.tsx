@@ -50,8 +50,19 @@ export default async function ProduccionPage() {
       </div>
       <ProductionPanel />
 
-      <AdminOrderSearch />
-      <LatestOrders initialOrders={orders} />
+      <AdminOrderSearch
+        flavorCatalog={flavors.map((flavor) => ({
+          category: flavor.category,
+          label: flavor.label,
+        }))}
+      />
+      <LatestOrders
+        initialOrders={orders}
+        flavorCatalog={flavors.map((flavor) => ({
+          category: flavor.category,
+          label: flavor.label,
+        }))}
+      />
     </>
   )
 }

@@ -11,6 +11,7 @@ export function buildManualOrderPayload(values: ManualOrderFormValues) {
   return {
     delivery_date: values.deliveryDate.trim(),
     status: "pending",
+    skip_lead_days: true,
     customer_name: values.customerName.trim(),
     phone: values.phone.trim(),
     items: [

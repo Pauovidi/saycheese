@@ -1,5 +1,6 @@
 "use server"
 
+import { revalidatePath } from "next/cache"
 import { z } from "zod"
 
 import {
@@ -11,6 +12,7 @@ import {
   normalizeOrderSearchText,
   orderPhoneMatchesSearch,
 } from "@/lib/admin/order-search"
+import { getAdminClient } from "@/lib/supabase/admin"
 import { normalizePhoneOrNull } from "@/lib/phone"
 import { getOrderPickupDateErrorMessage, validateOrderPickupDate } from "@/lib/pickup-date-validation"
 import { createClient } from "@/lib/supabase/server"
@@ -24,6 +26,7 @@ const orderItemSchema = z.object({
 const createOrderSchema = z.object({
   delivery_date: z.string(),
   status: z.string().default("pending"),
+  skip_lead_days: z.boolean().optional().default(false),
   customer_name: z.string().min(1),
   customer_email: z.string().email().optional(),
   phone: z.string().optional(),
@@ -63,11 +66,10 @@ type SearchOrderResult = Awaited<ReturnType<typeof listOrders>>[number]
 const LEAD_DAYS_RAW = Number.parseInt(process.env.CHATBOT_LEAD_DAYS ?? "3", 10)
 const LEAD_DAYS = Number.isFinite(LEAD_DAYS_RAW) && LEAD_DAYS_RAW > 0 ? LEAD_DAYS_RAW : 3
 const SHOP_TZ = process.env.SHOP_TZ ?? "Europe/Madrid"
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL?.toLowerCase()
 
-export async function createOrder(payload: z.infer<typeof createOrderSchema>) {
-  const parsed = createOrderSchema.parse(payload)
+async function requireAdminUser() {
   const supabase = await createClient()
-
   const {
     data: { user },
     error: authError,
@@ -77,9 +79,21 @@ export async function createOrder(payload: z.infer<typeof createOrderSchema>) {
     throw new Error("No autenticado")
   }
 
-  const deliveryDateValidation = validateOrderPickupDate(parsed.delivery_date, new Date(), LEAD_DAYS, SHOP_TZ)
+  if (!ADMIN_EMAIL || user.email?.toLowerCase() !== ADMIN_EMAIL) {
+    throw new Error("No autorizado")
+  }
+
+  return user
+}
+
+export async function createOrder(payload: z.infer<typeof createOrderSchema>) {
+  const parsed = createOrderSchema.parse(payload)
+  const user = await requireAdminUser()
+  const supabase = getAdminClient()
+  const effectiveLeadDays = parsed.skip_lead_days ? 0 : LEAD_DAYS
+  const deliveryDateValidation = validateOrderPickupDate(parsed.delivery_date, new Date(), effectiveLeadDays, SHOP_TZ)
   if (deliveryDateValidation.kind !== "valid") {
-    throw new Error(getOrderPickupDateErrorMessage(deliveryDateValidation, LEAD_DAYS, SHOP_TZ))
+    throw new Error(getOrderPickupDateErrorMessage(deliveryDateValidation, effectiveLeadDays, SHOP_TZ))
   }
 
   const { data: order, error: orderError } = await supabase
@@ -109,8 +123,11 @@ export async function createOrder(payload: z.infer<typeof createOrderSchema>) {
   )
 
   if (itemsError) {
+    await supabase.from("orders").delete().eq("id", order.id)
     throw new Error(itemsError.message)
   }
+
+  revalidatePath("/admin/produccion")
 
   return order
 }

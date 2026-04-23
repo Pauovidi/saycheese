@@ -45,3 +45,13 @@ test("una fecha válida es aceptada", () => {
     pickupDate: "2026-03-18",
   })
 })
+
+test("con leadDays a 0 permite pedidos manuales cercanos si el día está abierto", () => {
+  const validation = validateOrderPickupDate("2026-03-13", NOW, 0, SHOP_TZ)
+
+  assert.deepEqual(validation, {
+    kind: "valid",
+    requestedDate: "2026-03-13",
+    pickupDate: "2026-03-13",
+  })
+})

@@ -16,6 +16,7 @@ test("mapea el formulario manual al modelo real de pedido", () => {
     {
       delivery_date: "2026-05-02",
       status: "pending",
+      skip_lead_days: true,
       customer_name: "Pau Ovidi",
       phone: "+34 645 29 04 41",
       items: [

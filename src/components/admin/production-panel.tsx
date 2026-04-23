@@ -6,7 +6,7 @@ import { es } from "date-fns/locale"
 import { CalendarIcon, Copy, Loader2 } from "lucide-react"
 
 import { getProduction, type ProductionResponse } from "@/actions/production"
-import { getFlavorEmoji, getProductionTypeLabel } from "@/lib/admin/production-presentation"
+import { getProductionEntryLine } from "@/lib/admin/production-presentation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -215,17 +215,12 @@ export function ProductionPanel() {
                       <p className="text-sm font-semibold text-foreground">{group.label}:</p>
                       <div className="space-y-2">
                         {group.entries.map((entry, index) => {
-                          const emoji = getFlavorEmoji(entry.flavor)
-                          const flavorLabel = emoji ? `${entry.flavor} ${emoji}` : entry.flavor
-
                           return (
                             <div
                               key={`${group.key}-${entry.orderId}-${entry.type}-${entry.flavor}-${index}`}
                               className="flex items-start justify-between gap-4 rounded-md bg-muted/30 px-3 py-2 text-sm"
                             >
-                              <p className="text-foreground">
-                                {getProductionTypeLabel(entry.type)} · {flavorLabel}
-                              </p>
+                              <p className="text-foreground">{getProductionEntryLine({ type: entry.type, flavor: entry.flavor })}</p>
                               <p className="font-semibold tabular-nums text-foreground">{entry.qty}</p>
                             </div>
                           )
