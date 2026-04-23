@@ -27,7 +27,6 @@ type CheckoutSummaryProps = {
 }
 
 type CheckoutConfirmation = {
-  orderId: string
   customerName: string
   deliveryDateLabel: string
 }
@@ -61,10 +60,9 @@ export function CheckoutSummary({ leadDays, shopTimeZone }: CheckoutSummaryProps
       <div className="flex flex-col gap-6 rounded-2xl border border-emerald-200 bg-emerald-50/80 p-6 text-emerald-950">
         <div className="space-y-2">
           <p className="text-xs font-bold uppercase tracking-[0.2em] text-emerald-700">Pedido confirmado</p>
-          <h2 className="text-2xl font-bold">Tu pedido se ha registrado correctamente.</h2>
-          <p className="text-sm text-emerald-900/80">
-            {confirmation.customerName}, te esperamos el {confirmation.deliveryDateLabel}. Guarda esta referencia por si la necesitas: <span className="font-semibold">{confirmation.orderId}</span>.
-          </p>
+          <h2 className="text-2xl font-bold">
+            Tu pedido se ha registrado correctamente. ¡{confirmation.customerName}, te esperamos el {confirmation.deliveryDateLabel} en nuestra tienda!
+          </h2>
         </div>
 
         <p className="text-sm text-emerald-900/80">{PICKUP_ONLY_COPY}</p>
@@ -170,10 +168,8 @@ export function CheckoutSummary({ leadDays, shopTimeZone }: CheckoutSummaryProps
 
       clearCart()
       const finalDate = data.delivery_date_final as string | undefined
-      const orderId = data.orderId as string | undefined
       const deliveryDateFinal = finalDate ?? deliveryDateValidation.pickupDate
       setConfirmation({
-        orderId: orderId ?? "Sin referencia",
         customerName: parsed.data.customer_name,
         deliveryDateLabel: formatDateEs(deliveryDateFinal, shopTimeZone),
       })
