@@ -2,7 +2,7 @@ import "server-only"
 
 import OpenAI from "openai"
 
-import { isWhatsappConversationResetCommand } from "@/lib/chatbot/commands"
+import { resolveConversationCommand } from "@/lib/chatbot/commands"
 import { formatDateEs, parseSpanishDesiredDate, resolveRequestedPickupDate } from "@/lib/chatbot/dates"
 import {
   clearConversationState,
@@ -174,13 +174,7 @@ function extractEmailFromText(text: string) {
 
 function hasResetOrderIntent(text: string) {
   const normalized = normalize(text)
-  return [
-    /\breiniciar\b/,
-    /\bempezar\s+de\s+nuevo\b/,
-    /\bcancelar\s+pedido\b/,
-    /\bcancelar\b/,
-    /\breset\b/,
-  ].some((pattern) => pattern.test(normalized))
+  return [/\breiniciar\b/, /\bempezar\s+de\s+nuevo\b/, /\breset\b/].some((pattern) => pattern.test(normalized))
 }
 
 function isGenericNonOperationalMessage(text: string) {
@@ -409,6 +403,10 @@ function mergeIntroReply(intro: string | null, reply: string) {
   return intro ? `${intro} ${reply}` : reply
 }
 
+function getCancelOrderHandoffText(channel: "web" | "whatsapp") {
+  return buildHumanSupportMessage("Para cancelar un pedido, te atiende una persona del equipo aquí:", channel)
+}
+
 async function activateHandoff(userId: string, channel: "web" | "whatsapp", reason?: string) {
   const until = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString()
   await setPauseState(userId, until)
@@ -510,11 +508,12 @@ async function finalizeOrderFromState(userId: string, state: OrderState, channel
 export async function handleMessage({ sessionId, message, phone, channel }: HandleMessageInput) {
   const model = process.env.OPENAI_MODEL ?? "gpt-4.1-mini"
   const messagePhone = phone ?? extractPhoneFromText(message)
+  const conversationCommand = resolveConversationCommand(channel, message)
 
   const { userId } = await getOrCreateUser({ channel, externalId: sessionId, phone: messagePhone })
   const handoffText = getHandoffText(channel)
 
-  if (isWhatsappConversationResetCommand(channel, message)) {
+  if (conversationCommand === "whatsapp_reset") {
     await clearConversationState(userId)
     await saveMessage(userId, "user", message)
     await saveMessage(userId, "assistant", WHATSAPP_RESET_REPLY)
@@ -529,6 +528,13 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
   }
 
   await saveMessage(userId, "user", message)
+
+  if (conversationCommand === "cancel_order_handoff") {
+    await activateHandoff(userId, channel, "Solicitud de cancelación de pedido")
+    const cancelOrderHandoffText = getCancelOrderHandoffText(channel)
+    await saveMessage(userId, "assistant", cancelOrderHandoffText)
+    return { text: cancelOrderHandoffText }
+  }
 
   if (shouldRequestHandoff(message)) {
     const handoff = await activateHandoff(userId, channel, "Solicitud explícita")

@@ -1,6 +1,5 @@
-import { z } from "zod"
-
 import { getAdminClient } from "@/lib/supabase/admin"
+import { buildCatalogDocument, parseCatalogDocument } from "@/src/data/catalog-document"
 import {
   buildProductsFromFlavorRecords,
   getFlavorFactsFromProducts,
@@ -15,40 +14,36 @@ import {
 
 const CATALOG_BUCKET = "saycheese-admin"
 const CATALOG_OBJECT_PATH = "catalog/tartas.json"
+const STORAGE_READ_RETRY_COUNT = 4
+const STORAGE_READ_RETRY_DELAY_MS = 250
 
-const flavorRecordSchema = z.object({
-  slug: z.string().min(1),
-  name: z.string().min(1),
-  description: z.string().default(""),
-  allergens: z.string().default(""),
-  tartaImage: z.string().default(""),
-  cajitaImage: z.string().default(""),
-  tartaPrice: z.number().positive(),
-  cajitaPrice: z.number().positive(),
-  position: z.number().int().nonnegative(),
-  createdAt: z.string().optional(),
-  updatedAt: z.string().optional(),
-})
-
-const catalogDocumentSchema = z.object({
-  version: z.literal(1),
-  updatedAt: z.string(),
-  flavors: z.array(flavorRecordSchema),
-})
+let cachedCatalogDocument: EditableCatalogDocument | null = null
 
 function cloneFlavorRecords(records: EditableFlavorRecord[]) {
   return records.map((record) => ({ ...record }))
 }
 
-function buildCatalogDocument(records: EditableFlavorRecord[]): EditableCatalogDocument {
+function cloneCatalogDocument(document: EditableCatalogDocument): EditableCatalogDocument {
   return {
-    version: 1,
-    updatedAt: new Date().toISOString(),
-    flavors: sortFlavorRecords(records).map((record, index) => ({
-      ...record,
-      position: index,
-    })),
+    ...document,
+    flavors: cloneFlavorRecords(document.flavors),
   }
+}
+
+function getCachedCatalogDocument() {
+  return cachedCatalogDocument ? cloneCatalogDocument(cachedCatalogDocument) : null
+}
+
+function rememberCatalogDocument(document: EditableCatalogDocument) {
+  cachedCatalogDocument = cloneCatalogDocument(document)
+}
+
+function isMissingCatalogError(message: string) {
+  return /not found|Object not found/i.test(message)
+}
+
+function waitForStorage(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 async function ensureCatalogBucket() {
@@ -76,8 +71,61 @@ async function ensureCatalogBucket() {
   return supabase
 }
 
-async function uploadCatalogDocument(records: EditableFlavorRecord[]) {
-  const supabase = await ensureCatalogBucket()
+type CatalogDownloadResult =
+  | { kind: "ok"; document: EditableCatalogDocument }
+  | { kind: "missing" }
+  | { kind: "retryable"; error: Error }
+
+async function downloadCatalogDocument(
+  supabase: Awaited<ReturnType<typeof ensureCatalogBucket>>
+): Promise<CatalogDownloadResult> {
+  const { data, error } = await supabase.storage.from(CATALOG_BUCKET).download(CATALOG_OBJECT_PATH)
+
+  if (error) {
+    if (isMissingCatalogError(error.message)) {
+      return { kind: "missing" }
+    }
+
+    return { kind: "retryable", error: new Error(error.message) }
+  }
+
+  const raw = await data.text()
+  const parsed = parseCatalogDocument(raw)
+
+  if (!parsed) {
+    return { kind: "retryable", error: new Error("Documento de catálogo inválido") }
+  }
+
+  return {
+    kind: "ok",
+    document: parsed,
+  }
+}
+
+async function waitForCatalogVisibility(
+  supabase: Awaited<ReturnType<typeof ensureCatalogBucket>>,
+  updatedAt: string
+) {
+  for (let attempt = 0; attempt < STORAGE_READ_RETRY_COUNT; attempt += 1) {
+    const result = await downloadCatalogDocument(supabase)
+
+    if (result.kind === "ok" && result.document.updatedAt >= updatedAt) {
+      rememberCatalogDocument(result.document)
+      return result.document
+    }
+
+    if (attempt < STORAGE_READ_RETRY_COUNT - 1) {
+      await waitForStorage(STORAGE_READ_RETRY_DELAY_MS)
+    }
+  }
+
+  return null
+}
+
+async function persistCatalogDocument(
+  supabase: Awaited<ReturnType<typeof ensureCatalogBucket>>,
+  records: EditableFlavorRecord[]
+) {
   const document = buildCatalogDocument(records)
   const body = JSON.stringify(document, null, 2)
 
@@ -93,36 +141,55 @@ async function uploadCatalogDocument(records: EditableFlavorRecord[]) {
     throw new Error(error.message)
   }
 
-  return document.flavors
+  rememberCatalogDocument(document)
+
+  const visibleDocument = await waitForCatalogVisibility(supabase, document.updatedAt)
+  if (visibleDocument && visibleDocument.updatedAt >= document.updatedAt) {
+    return cloneFlavorRecords(visibleDocument.flavors)
+  }
+
+  return cloneFlavorRecords(document.flavors)
+}
+
+async function uploadCatalogDocument(records: EditableFlavorRecord[]) {
+  const supabase = await ensureCatalogBucket()
+  return persistCatalogDocument(supabase, records)
 }
 
 async function readCatalogDocumentFromStorage() {
   const supabase = await ensureCatalogBucket()
-  const { data, error } = await supabase.storage.from(CATALOG_BUCKET).download(CATALOG_OBJECT_PATH)
 
-  if (error) {
-    if (/not found/i.test(error.message) || /Object not found/i.test(error.message)) {
-      const seeded = await uploadCatalogDocument(seedFlavorRecords)
-      return seeded
+  try {
+    for (let attempt = 0; attempt < STORAGE_READ_RETRY_COUNT; attempt += 1) {
+      const result = await downloadCatalogDocument(supabase)
+
+      if (result.kind === "ok") {
+        rememberCatalogDocument(result.document)
+        return cloneFlavorRecords(result.document.flavors)
+      }
+
+      if (result.kind === "missing") {
+        return persistCatalogDocument(supabase, seedFlavorRecords)
+      }
+
+      if (attempt < STORAGE_READ_RETRY_COUNT - 1) {
+        await waitForStorage(STORAGE_READ_RETRY_DELAY_MS)
+        continue
+      }
+
+      throw result.error
     }
 
-    throw new Error(error.message)
-  }
+    return persistCatalogDocument(supabase, seedFlavorRecords)
+  } catch (error) {
+    const cached = getCachedCatalogDocument()
+    if (cached) {
+      return cached.flavors
+    }
 
-  const raw = await data.text()
-  const parsed = catalogDocumentSchema.safeParse(JSON.parse(raw))
-
-  if (!parsed.success) {
-    const seeded = await uploadCatalogDocument(seedFlavorRecords)
+    const seeded = await persistCatalogDocument(supabase, seedFlavorRecords)
     return seeded
   }
-
-  if (!parsed.data.flavors.length) {
-    const seeded = await uploadCatalogDocument(seedFlavorRecords)
-    return seeded
-  }
-
-  return sortFlavorRecords(parsed.data.flavors)
 }
 
 export async function getCatalogFlavorRecords(): Promise<EditableFlavorRecord[]> {

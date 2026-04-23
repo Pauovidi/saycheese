@@ -35,11 +35,26 @@ function revalidateCatalogRoutes(slug: string) {
   revalidatePath(`/producto/cajita-${slug}`)
 }
 
-function ok(flavors: EditableFlavorRecord[]) {
-  return { ok: true as const, flavors }
+type CatalogActionResult =
+  | {
+      ok: true
+      flavors: EditableFlavorRecord[]
+      selectedSlug?: string
+    }
+  | {
+      ok: false
+      error: string
+    }
+
+function ok(flavors: EditableFlavorRecord[], selectedSlug?: string): CatalogActionResult {
+  return {
+    ok: true as const,
+    flavors,
+    ...(selectedSlug ? { selectedSlug } : {}),
+  }
 }
 
-function fail(error: unknown) {
+function fail(error: unknown): CatalogActionResult {
   const message = error instanceof Error ? error.message : "No se pudo guardar el catálogo"
   return { ok: false as const, error: message }
 }
@@ -72,7 +87,7 @@ export async function createCakeFlavor(payload: z.infer<typeof createFlavorSchem
 
     const saved = await saveCatalogFlavorRecords(next)
     revalidateCatalogRoutes(slug)
-    return ok(saved)
+    return ok(saved, slug)
   } catch (error) {
     return fail(error)
   }
@@ -102,7 +117,7 @@ export async function updateCakeFlavor(payload: z.infer<typeof updateFlavorSchem
 
     const saved = await saveCatalogFlavorRecords(next)
     revalidateCatalogRoutes(parsed.slug)
-    return ok(saved)
+    return ok(saved, parsed.slug)
   } catch (error) {
     return fail(error)
   }
@@ -124,7 +139,7 @@ export async function deleteCakeFlavor(payload: z.infer<typeof deleteFlavorSchem
 
     const saved = await saveCatalogFlavorRecords(next)
     revalidateCatalogRoutes(parsed.slug)
-    return ok(saved)
+    return ok(saved, saved[0]?.slug)
   } catch (error) {
     return fail(error)
   }
