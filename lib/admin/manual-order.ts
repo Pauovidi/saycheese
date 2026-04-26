@@ -8,6 +8,8 @@ export type ManualOrderFormValues = {
 }
 
 export function buildManualOrderPayload(values: ManualOrderFormValues) {
+  const type: "cake" | "box" = values.format === "tarta" ? "cake" : "box"
+
   return {
     delivery_date: values.deliveryDate.trim(),
     status: "pending",
@@ -16,7 +18,7 @@ export function buildManualOrderPayload(values: ManualOrderFormValues) {
     phone: values.phone.trim(),
     items: [
       {
-        type: values.format === "tarta" ? "cake" : "box",
+        type,
         flavor: values.flavor.trim(),
         qty: values.quantity,
       },

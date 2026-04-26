@@ -6,7 +6,10 @@
     "dev": "next dev",
     "build": "next build --webpack",
     "start": "next start",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "test": "tsx --test tests/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "catalog:import:legacy": "tsx scripts/import-cake-catalog-from-storage.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",

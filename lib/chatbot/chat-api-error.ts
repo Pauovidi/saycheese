@@ -26,7 +26,7 @@ function createChatApiError(message: string) {
 export function normalizeChatApiError(error: unknown): ChatApiError {
   if (error instanceof Error) {
     const normalized = error as ChatApiError
-    const unknownError = error as Record<string, unknown>
+    const unknownError = error as unknown as Record<string, unknown>
 
     if (typeof unknownError.status === "number") {
       normalized.status = unknownError.status

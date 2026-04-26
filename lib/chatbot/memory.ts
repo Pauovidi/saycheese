@@ -105,7 +105,7 @@ export async function getOrCreateUser(input: { channel: Channel; externalId: str
     if (normalizedPhone) {
       updates.phone = normalizedPhone
     }
-    if (phoneUser?.id === targetUserId && phoneUser.external_id !== input.externalId) {
+    if (phoneUser && phoneUser.id === targetUserId && phoneUser.external_id !== input.externalId) {
       updates.external_id = input.externalId
     }
 

@@ -1,21 +1,10 @@
 import { NextResponse } from "next/server"
 
+import { isAuthorizedCronRequest } from "@/lib/cron-auth"
 import { getAdminClient } from "@/lib/supabase/admin"
 
 const GRAPH_API_BASE = "https://graph.facebook.com/v23.0"
 export const dynamic = "force-dynamic"
-
-export function isAuthorized(request: Request) {
-  const secret = process.env.CRON_SECRET
-  if (!secret) return false
-
-  const { searchParams } = new URL(request.url)
-  const fromQuery = searchParams.get("secret")
-  const fromHeader = request.headers.get("x-cron-secret")
-  const fromAuthorization = request.headers.get("authorization")
-
-  return fromAuthorization === `Bearer ${secret}` || fromHeader === secret || fromQuery === secret
-}
 
 async function sendReminderTemplate(phone: string) {
   const token = process.env.WHATSAPP_ACCESS_TOKEN
@@ -50,7 +39,7 @@ async function sendReminderTemplate(phone: string) {
 }
 
 export async function GET(request: Request) {
-  if (!isAuthorized(request)) {
+  if (!isAuthorizedCronRequest(request)) {
     return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 })
   }
 

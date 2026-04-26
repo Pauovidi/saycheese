@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 
-import { isAuthorized } from "../app/api/cron/send-reminders/route"
+import { isAuthorizedCronRequest } from "../lib/cron-auth"
 
 test("acepta Authorization Bearer de Vercel Cron y mantiene compatibilidad manual", () => {
   const previousSecret = process.env.CRON_SECRET
@@ -9,7 +9,7 @@ test("acepta Authorization Bearer de Vercel Cron y mantiene compatibilidad manua
 
   try {
     assert.equal(
-      isAuthorized(
+      isAuthorizedCronRequest(
         new Request("https://example.com/api/cron/send-reminders", {
           headers: { authorization: "Bearer test-cron-secret" },
         })
@@ -18,7 +18,7 @@ test("acepta Authorization Bearer de Vercel Cron y mantiene compatibilidad manua
     )
 
     assert.equal(
-      isAuthorized(
+      isAuthorizedCronRequest(
         new Request("https://example.com/api/cron/send-reminders", {
           headers: { "x-cron-secret": "test-cron-secret" },
         })
@@ -26,7 +26,7 @@ test("acepta Authorization Bearer de Vercel Cron y mantiene compatibilidad manua
       true
     )
 
-    assert.equal(isAuthorized(new Request("https://example.com/api/cron/send-reminders?secret=test-cron-secret")), true)
+    assert.equal(isAuthorizedCronRequest(new Request("https://example.com/api/cron/send-reminders?secret=test-cron-secret")), true)
   } finally {
     if (previousSecret === undefined) {
       delete process.env.CRON_SECRET
@@ -41,9 +41,9 @@ test("rechaza requests sin secreto válido", () => {
   process.env.CRON_SECRET = "test-cron-secret"
 
   try {
-    assert.equal(isAuthorized(new Request("https://example.com/api/cron/send-reminders")), false)
+    assert.equal(isAuthorizedCronRequest(new Request("https://example.com/api/cron/send-reminders")), false)
     assert.equal(
-      isAuthorized(
+      isAuthorizedCronRequest(
         new Request("https://example.com/api/cron/send-reminders", {
           headers: { authorization: "Bearer wrong-secret" },
         })

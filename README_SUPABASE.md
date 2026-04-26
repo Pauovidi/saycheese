@@ -1,5 +1,20 @@
 # Supabase setup para Admin + Checkout
 
+## Catalogo de tartas
+
+El catalogo editable de tartas ya no usa `saycheese-admin/catalog/tartas.json` como fuente viva. La fuente de verdad es Postgres:
+
+- `public.cake_flavors`
+- `public.cake_flavor_revisions`
+
+Aplica la migracion `supabase/migrations/202604260001_add_cake_catalog_tables.sql` y despues importa una vez el JSON legacy:
+
+```bash
+pnpm catalog:import:legacy
+```
+
+Mas detalle operativo en `docs/CATALOG_PERSISTENCE.md`.
+
 ## 1) Crear proyecto y Auth
 1. Crea un proyecto en Supabase.
 2. En **Authentication > Providers**, activa **Email** (email/password).

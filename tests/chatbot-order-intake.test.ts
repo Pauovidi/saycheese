@@ -12,6 +12,8 @@ import {
 } from "../lib/chatbot/order-intake"
 import { findExplicitFlavorSelection, findProductBySlugOrFlavor } from "../lib/chatbot/products"
 
+process.env.CATALOG_TEST_READONLY_SEED_FALLBACK = "1"
+
 test("captura varios datos en una sola intervención", async () => {
   const message = "mango, grande. Pau. 645290441"
 

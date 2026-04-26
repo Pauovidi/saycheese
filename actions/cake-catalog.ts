@@ -4,7 +4,11 @@ import { revalidatePath } from "next/cache"
 import { z } from "zod"
 
 import { requireAdminUser } from "@/lib/admin-auth"
-import { getCatalogFlavorRecords, saveCatalogFlavorRecords } from "@/src/data/products-store"
+import {
+  createCakeFlavorRecordInDb,
+  softDeleteCakeFlavorRecordInDb,
+  updateCakeFlavorRecordInDb,
+} from "@/src/data/products-store"
 import { slugifyFlavorName, type EditableFlavorRecord } from "@/src/data/products"
 
 const baseFlavorSchema = z.object({
@@ -26,6 +30,15 @@ const updateFlavorSchema = baseFlavorSchema.extend({
 const deleteFlavorSchema = z.object({
   slug: z.string().min(1),
 })
+
+type CakeFlavorFormPayload = Omit<z.input<typeof baseFlavorSchema>, "tartaPrice" | "cajitaPrice"> & {
+  tartaPrice: string | number
+  cajitaPrice: string | number
+}
+
+type UpdateCakeFlavorFormPayload = CakeFlavorFormPayload & {
+  slug: string
+}
 
 function revalidateCatalogRoutes(slug: string) {
   revalidatePath("/")
@@ -59,33 +72,23 @@ function fail(error: unknown): CatalogActionResult {
   return { ok: false as const, error: message }
 }
 
-export async function createCakeFlavor(payload: z.infer<typeof createFlavorSchema>) {
+export async function createCakeFlavor(payload: CakeFlavorFormPayload) {
   try {
-    await requireAdminUser()
+    const { user } = await requireAdminUser()
     const parsed = createFlavorSchema.parse(payload)
-    const current = await getCatalogFlavorRecords()
     const slug = slugifyFlavorName(parsed.name)
 
     if (!slug) {
       throw new Error("No se pudo generar un identificador válido para ese sabor")
     }
 
-    if (current.some((flavor) => flavor.slug === slug)) {
-      throw new Error("Ya existe un sabor con ese nombre")
-    }
-
-    const next = [
-      ...current,
+    const saved = await createCakeFlavorRecordInDb(
       {
         ...parsed,
         slug,
-        position: current.length,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
       },
-    ]
-
-    const saved = await saveCatalogFlavorRecords(next)
+      user.email ?? user.id
+    )
     revalidateCatalogRoutes(slug)
     return ok(saved, slug)
   } catch (error) {
@@ -93,29 +96,23 @@ export async function createCakeFlavor(payload: z.infer<typeof createFlavorSchem
   }
 }
 
-export async function updateCakeFlavor(payload: z.infer<typeof updateFlavorSchema>) {
+export async function updateCakeFlavor(payload: UpdateCakeFlavorFormPayload) {
   try {
-    await requireAdminUser()
+    const { user } = await requireAdminUser()
     const parsed = updateFlavorSchema.parse(payload)
-    const current = await getCatalogFlavorRecords()
-    const target = current.find((flavor) => flavor.slug === parsed.slug)
-
-    if (!target) {
-      throw new Error("No se encontró el sabor a editar")
-    }
-
-    const next = current.map((flavor) =>
-      flavor.slug === parsed.slug
-        ? {
-            ...flavor,
-            ...parsed,
-            slug: flavor.slug,
-            updatedAt: new Date().toISOString(),
-          }
-        : flavor
+    const saved = await updateCakeFlavorRecordInDb(
+      parsed.slug,
+      {
+        name: parsed.name,
+        description: parsed.description,
+        allergens: parsed.allergens,
+        tartaImage: parsed.tartaImage,
+        cajitaImage: parsed.cajitaImage,
+        tartaPrice: parsed.tartaPrice,
+        cajitaPrice: parsed.cajitaPrice,
+      },
+      user.email ?? user.id
     )
-
-    const saved = await saveCatalogFlavorRecords(next)
     revalidateCatalogRoutes(parsed.slug)
     return ok(saved, parsed.slug)
   } catch (error) {
@@ -125,19 +122,9 @@ export async function updateCakeFlavor(payload: z.infer<typeof updateFlavorSchem
 
 export async function deleteCakeFlavor(payload: z.infer<typeof deleteFlavorSchema>) {
   try {
-    await requireAdminUser()
+    const { user } = await requireAdminUser()
     const parsed = deleteFlavorSchema.parse(payload)
-    const current = await getCatalogFlavorRecords()
-
-    if (!current.some((flavor) => flavor.slug === parsed.slug)) {
-      throw new Error("No se encontró el sabor a borrar")
-    }
-
-    const next = current
-      .filter((flavor) => flavor.slug !== parsed.slug)
-      .map((flavor, index) => ({ ...flavor, position: index }))
-
-    const saved = await saveCatalogFlavorRecords(next)
+    const saved = await softDeleteCakeFlavorRecordInDb(parsed.slug, user.email ?? user.id)
     revalidateCatalogRoutes(parsed.slug)
     return ok(saved, saved[0]?.slug)
   } catch (error) {
