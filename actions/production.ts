@@ -2,7 +2,13 @@
 
 import { z } from "zod"
 
-import { buildGroupedProductionDetails, buildProductionCopyText, type ProductionGroupedBlock } from "@/lib/admin/production-presentation"
+import {
+  buildGroupedProductionDetails,
+  buildProductionCopyText,
+  buildProductionFlavorSummary,
+  type ProductionFlavorSummaryGroup,
+  type ProductionGroupedBlock,
+} from "@/lib/admin/production-presentation"
 import { createClient } from "@/lib/supabase/server"
 import { getCatalogFlavors } from "@/src/data/products-store"
 
@@ -51,6 +57,7 @@ export interface ProductionResponse {
     cakes: number
     boxes: number
   }
+  summaryByType: ProductionFlavorSummaryGroup[]
   groups: ProductionGroupedBlock[]
   copyText: string
 }
@@ -151,22 +158,23 @@ export async function getProduction(input: z.infer<typeof productionInputSchema>
   })
 
   const catalogFlavors = await getCatalogFlavors()
-  const groups = buildGroupedProductionDetails(
-    details,
-    catalogFlavors.map((flavor) => ({
-      category: flavor.category,
-      label: flavor.label,
-    }))
-  )
+  const productionCatalogFlavors = catalogFlavors.map((flavor) => ({
+    category: flavor.category,
+    label: flavor.label,
+  }))
+  const summaryByType = buildProductionFlavorSummary(details, productionCatalogFlavors)
+  const groups = buildGroupedProductionDetails(details, productionCatalogFlavors)
   const rangeLabel = toRangeLabel(parsed)
 
   return {
     rangeLabel,
     totals,
+    summaryByType,
     groups,
     copyText: buildProductionCopyText({
       rangeLabel,
       totals,
+      summaryByType,
       groups,
     }),
   }

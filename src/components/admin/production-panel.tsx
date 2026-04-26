@@ -182,7 +182,7 @@ export function ProductionPanel() {
           <div className="grid gap-4 md:grid-cols-2">
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-base">Tartas grandes ({result.totals.cakes})</CardTitle>
+                <CardTitle className="text-base">Tartas grandes</CardTitle>
               </CardHeader>
               <CardContent>
                 <p className="text-3xl font-bold tabular-nums text-foreground">{result.totals.cakes}</p>
@@ -191,7 +191,7 @@ export function ProductionPanel() {
 
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-base">Cajitas / pequeñas ({result.totals.boxes})</CardTitle>
+                <CardTitle className="text-base">Cajitas</CardTitle>
               </CardHeader>
               <CardContent>
                 <p className="text-3xl font-bold tabular-nums text-foreground">{result.totals.boxes}</p>
@@ -210,6 +210,27 @@ export function ProductionPanel() {
                 </p>
               ) : (
                 <div className="space-y-6">
+                  {result.summaryByType.length > 0 && (
+                    <div className="space-y-4 rounded-md border border-border/70 bg-muted/20 p-4">
+                      {result.summaryByType.map((group) => (
+                        <div key={group.type} className="space-y-2">
+                          <p className="text-sm font-semibold text-foreground">{group.label}:</p>
+                          <div className="space-y-1">
+                            {group.entries.map((entry) => (
+                              <div
+                                key={`${group.type}-${entry.flavor}`}
+                                className="flex items-baseline gap-2 text-sm"
+                              >
+                                <span className="font-semibold tabular-nums text-foreground">{entry.qty}</span>
+                                <span className="text-foreground">{entry.flavor}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
                   {result.groups.map((group) => (
                     <div key={group.key} className="space-y-3 border-b border-border/60 pb-5 last:border-b-0 last:pb-0">
                       <p className="text-sm font-semibold text-foreground">{group.label}:</p>

@@ -31,6 +31,17 @@ export type ProductionGroupedBlock = {
   entries: ProductionGroupedEntry[]
 }
 
+export type ProductionFlavorSummaryEntry = {
+  flavor: string
+  qty: number
+}
+
+export type ProductionFlavorSummaryGroup = {
+  type: ProductionPresentationType
+  label: string
+  entries: ProductionFlavorSummaryEntry[]
+}
+
 const flavorEmojis: Record<string, string> = {
   "Clásica": "🍰",
   Hippo: "🦛",
@@ -68,13 +79,13 @@ function getFlavorMap(flavors: ProductionCatalogFlavor[]) {
 
 function getGroupLabel(phone?: string | null, customerName?: string | null) {
   const normalizedPhone = normalizePhone(phone)
-  if (normalizedPhone) return normalizedPhone
-
   const rawPhone = phone?.trim()
-  if (rawPhone) return rawPhone
-
   const name = customerName?.trim()
+  const phoneLabel = normalizedPhone || rawPhone
+
+  if (name && phoneLabel) return `${name} · ${phoneLabel}`
   if (name) return name
+  if (phoneLabel) return phoneLabel
 
   return "Sin teléfono"
 }
@@ -90,7 +101,11 @@ function getGroupKey(line: ProductionDetailInput) {
 }
 
 export function getProductionTypeLabel(type: ProductionPresentationType) {
-  return type === "cake" ? "Tarta grande" : "Cajita / pequeña"
+  return type === "cake" ? "Tarta grande" : "Cajita"
+}
+
+export function getProductionSummaryTypeLabel(type: ProductionPresentationType) {
+  return type === "cake" ? "Grandes" : "Cajitas"
 }
 
 export function getFlavorEmoji(flavor: string) {
@@ -170,20 +185,72 @@ export function buildGroupedProductionDetails(details: ProductionDetailInput[], 
   }))
 }
 
+export function buildProductionFlavorSummary(details: ProductionDetailInput[], catalogFlavors: ProductionCatalogFlavor[]) {
+  const byType = new Map<ProductionPresentationType, Map<string, number>>()
+
+  for (const line of details) {
+    const flavor = resolveCanonicalFlavorLabel(line.flavor, catalogFlavors)
+    const byFlavor = byType.get(line.type) ?? new Map<string, number>()
+
+    byFlavor.set(flavor, (byFlavor.get(flavor) ?? 0) + line.qty)
+    byType.set(line.type, byFlavor)
+  }
+
+  const order: ProductionPresentationType[] = ["cake", "box"]
+
+  return order.flatMap((type): ProductionFlavorSummaryGroup[] => {
+    const byFlavor = byType.get(type)
+    if (!byFlavor?.size) return []
+
+    return [
+      {
+        type,
+        label: getProductionSummaryTypeLabel(type),
+        entries: [...byFlavor.entries()]
+          .map(([flavor, qty]) => ({ flavor, qty }))
+          .sort((left, right) => {
+            if (left.qty !== right.qty) {
+              return right.qty - left.qty
+            }
+
+            return left.flavor.localeCompare(right.flavor, "es")
+          }),
+      },
+    ]
+  })
+}
+
 export function buildProductionCopyText(input: {
   rangeLabel: string
   totals: { cakes: number; boxes: number }
+  summaryByType: ProductionFlavorSummaryGroup[]
   groups: ProductionGroupedBlock[]
 }) {
   const lines = [
     `Rango: ${input.rangeLabel}`,
     "",
     `TARTAS GRANDES (${input.totals.cakes})`,
-    `CAJITAS / PEQUEÑAS (${input.totals.boxes})`,
+    `CAJITAS (${input.totals.boxes})`,
   ]
 
   if (!input.groups.length) {
     return lines.join("\n")
+  }
+
+  if (input.summaryByType.length) {
+    lines.push("", "RESUMEN POR SABOR")
+
+    input.summaryByType.forEach((group, groupIndex) => {
+      lines.push(`${group.label}:`)
+
+      for (const entry of group.entries) {
+        lines.push(`${entry.qty} ${entry.flavor}`)
+      }
+
+      if (groupIndex < input.summaryByType.length - 1) {
+        lines.push("")
+      }
+    })
   }
 
   lines.push("", "DETALLE")
