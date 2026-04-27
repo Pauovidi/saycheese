@@ -4,6 +4,7 @@ import test from "node:test"
 import { validateOrderPickupDate } from "../lib/pickup-date-validation"
 
 const NOW = new Date("2026-03-12T10:00:00Z")
+const APRIL_2026_NOW = new Date("2026-04-27T10:00:00Z")
 const SHOP_TZ = "Europe/Madrid"
 const LEAD_DAYS = 3
 
@@ -53,5 +54,15 @@ test("con leadDays a 0 permite pedidos manuales cercanos si el día está abiert
     kind: "valid",
     requestedDate: "2026-03-13",
     pickupDate: "2026-03-13",
+  })
+})
+
+test("normaliza fecha numérica sin año antes de validar pedidos estructurados", () => {
+  const validation = validateOrderPickupDate("30/04", APRIL_2026_NOW, LEAD_DAYS, SHOP_TZ)
+
+  assert.deepEqual(validation, {
+    kind: "valid",
+    requestedDate: "2026-04-30",
+    pickupDate: "2026-04-30",
   })
 })

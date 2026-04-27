@@ -4,7 +4,7 @@ export const createOrderInputSchema = z.object({
   customer_name: z.string().trim().min(1),
   customer_email: z.string().trim().email().nullable().optional(),
   phone: z.string().trim().min(6),
-  delivery_date: z.string().date().optional(),
+  delivery_date: z.string().trim().min(1).optional(),
   notes: z.string().nullable().optional(),
   forceNewOrder: z.boolean().optional(),
   items: z

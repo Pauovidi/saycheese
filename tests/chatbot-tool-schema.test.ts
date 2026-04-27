@@ -36,3 +36,16 @@ test("el pedido sigue siendo válido sin email si el tool envía null", () => {
 
   assert.equal(parsed.success, true)
 })
+
+test("el tool acepta fecha numérica sin año para que la validación la normalice", () => {
+  const parsed = createOrderInputSchema.safeParse({
+    customer_name: "Pau",
+    customer_email: null,
+    phone: "645290441",
+    delivery_date: "30/04",
+    notes: null,
+    items: [{ type: "cake", flavor: "Lotus", qty: 1 }],
+  })
+
+  assert.equal(parsed.success, true)
+})

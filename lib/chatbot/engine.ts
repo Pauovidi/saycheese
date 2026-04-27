@@ -728,6 +728,16 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
         )
       }
 
+      if (resolution.kind === "invalid") {
+        state.finalDate = undefined
+
+        return saveAndReply(
+          userId,
+          mergeIntroReply(multipleCakeIntro, "No pude validar esa fecha. Dímela como 30/04, 30 de abril o jueves."),
+          state
+        )
+      }
+
       state.finalDate = resolution.pickupDate
       state.suggestedDate = undefined
       state.awaitingConfirm = false

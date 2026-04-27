@@ -5,6 +5,7 @@ type PickupDateResolution =
   | { kind: "valid"; requestedDate: string; pickupDate: string }
   | { kind: "too_soon"; requestedDate: string; earliestDate: string }
   | { kind: "closed"; requestedDate: string; nextAvailableDate: string }
+  | { kind: "invalid"; requestedDate: string; earliestDate: string }
 
 const WEEKDAY_INDEX: Record<string, number> = {
   domingo: 0,
@@ -93,6 +94,18 @@ function partsFromISO(iso: string) {
     month: month ?? 1,
     day: day ?? 1,
   }
+}
+
+function parseISODateParts(iso: string) {
+  const match = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (!match) return undefined
+
+  const year = Number(match[1])
+  const month = Number(match[2])
+  const day = Number(match[3])
+
+  if (!isValidDateParts(year, month, day)) return undefined
+  return { year, month, day, iso: isoFromParts(year, month, day) }
 }
 
 function isValidDateParts(year: number, month: number, day: number) {
@@ -272,32 +285,43 @@ export function formatDateEs(iso: string, tz: string) {
 export function resolveRequestedPickupDate(requestedISO: string, now: Date, leadDays: number, tz: string): PickupDateResolution {
   const todayISO = isoTodayInTz(now, tz)
   const earliestDate = earliestPickupDateISO(now, leadDays, tz)
+  const requested = parseISODateParts(requestedISO)
 
-  if (!isBusinessOpenOnDate(requestedISO)) {
-    let nextAvailableDate = getNextAvailablePickupDate(requestedISO)
+  if (!requested) {
+    return {
+      kind: "invalid",
+      requestedDate: requestedISO,
+      earliestDate,
+    }
+  }
+
+  const normalizedRequestedISO = requested.iso
+
+  if (!isBusinessOpenOnDate(normalizedRequestedISO)) {
+    let nextAvailableDate = getNextAvailablePickupDate(normalizedRequestedISO)
     if (nextAvailableDate < earliestDate) {
       nextAvailableDate = earliestDate
     }
 
     return {
       kind: "closed",
-      requestedDate: requestedISO,
+      requestedDate: normalizedRequestedISO,
       nextAvailableDate,
     }
   }
 
-  if (requestedISO < todayISO || requestedISO < earliestDate) {
+  if (normalizedRequestedISO < todayISO || normalizedRequestedISO < earliestDate) {
     return {
       kind: "too_soon",
-      requestedDate: requestedISO,
+      requestedDate: normalizedRequestedISO,
       earliestDate,
     }
   }
 
   return {
     kind: "valid",
-    requestedDate: requestedISO,
-    pickupDate: requestedISO,
+    requestedDate: normalizedRequestedISO,
+    pickupDate: normalizedRequestedISO,
   }
 }
 
@@ -312,6 +336,14 @@ export function parseSpanishDesiredDate(text: string, now: Date, tz: string): Da
   const weekday = parseWeekday(normalizedText)
 
   if (numericDate) {
+    if (weekday !== undefined && weekdayFromISO(numericDate) !== weekday) {
+      const weekdayLabel = INDEX_WEEKDAY[weekday] ?? "ese día"
+      return {
+        kind: "ambiguous",
+        question: `El ${formatDateEs(numericDate, tz)} cae ${INDEX_WEEKDAY[weekdayFromISO(numericDate)]}, no ${weekdayLabel}. ¿Quieres que lo apunte para ${formatDateEs(numericDate, tz)}?`,
+      }
+    }
+
     return { kind: "date", iso: numericDate }
   }
 

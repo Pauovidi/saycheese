@@ -3,11 +3,13 @@ import test from "node:test"
 
 import {
   earliestPickupDateISO,
+  formatDateEs,
   parseSpanishDesiredDate,
   resolveRequestedPickupDate,
 } from "../lib/chatbot/date-rules"
 
 const NOW = new Date("2026-03-12T10:00:00Z")
+const APRIL_2026_NOW = new Date("2026-04-27T10:00:00Z")
 const SHOP_TZ = "Europe/Madrid"
 const LEAD_DAYS = 3
 
@@ -69,4 +71,41 @@ test("acepta miércoles válido cuando cumple plazo y apertura", () => {
 
 test("la primera fecha disponible ya respeta días abiertos", () => {
   assert.equal(earliestPickupDateISO(NOW, LEAD_DAYS, SHOP_TZ), "2026-03-15")
+})
+
+test("interpreta jueves 30/04 con el año actual de la fecha base", () => {
+  const parsed = parseSpanishDesiredDate("jueves 30/04", APRIL_2026_NOW, SHOP_TZ)
+
+  assert.deepEqual(parsed, { kind: "date", iso: "2026-04-30" })
+  assert.equal(formatDateEs("2026-04-30", SHOP_TZ), "jueves 30/04")
+})
+
+test("interpreta fecha numérica sin año con el año actual, no con un año anterior", () => {
+  const parsed = parseSpanishDesiredDate("30/04", APRIL_2026_NOW, SHOP_TZ)
+
+  assert.deepEqual(parsed, { kind: "date", iso: "2026-04-30" })
+})
+
+test("acepta jueves 30/04 cuando cumple plazo y no lo trata como martes cerrado", () => {
+  const parsed = parseSpanishDesiredDate("jueves 30/04", APRIL_2026_NOW, SHOP_TZ)
+  assert.deepEqual(parsed, { kind: "date", iso: "2026-04-30" })
+
+  const resolution = resolveRequestedPickupDate(parsed.iso, APRIL_2026_NOW, LEAD_DAYS, SHOP_TZ)
+  assert.deepEqual(resolution, {
+    kind: "valid",
+    requestedDate: "2026-04-30",
+    pickupDate: "2026-04-30",
+  })
+})
+
+test("la primera fecha disponible no salta si 30/04 ya es válido", () => {
+  assert.equal(earliestPickupDateISO(APRIL_2026_NOW, LEAD_DAYS, SHOP_TZ), "2026-04-30")
+})
+
+test("pide confirmación si el día de semana escrito no coincide con la fecha numérica", () => {
+  const parsed = parseSpanishDesiredDate("martes 30/04", APRIL_2026_NOW, SHOP_TZ)
+
+  assert.equal(parsed?.kind, "ambiguous")
+  assert.match(parsed?.question ?? "", /30\/04 cae jueves/)
+  assert.match(parsed?.question ?? "", /no martes/)
 })
