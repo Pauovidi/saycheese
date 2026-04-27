@@ -9,24 +9,24 @@ import { hasGreetingIntent, WELCOME_MESSAGE } from "../lib/chatbot/welcome"
 
 const catalogABC: ChatbotAvailableCakeFlavor[] = [
   {
-    flavor: "A",
+    flavor: "Clásica",
     sizes: [
       { format: "tarta", label: "grande", priceText: "35 €" },
       { format: "cajita", label: "cajita", priceText: "12 €" },
     ],
   },
   {
-    flavor: "B",
+    flavor: "Lotus",
     sizes: [
-      { format: "tarta", label: "grande", priceText: "36 €" },
-      { format: "cajita", label: "cajita", priceText: "13 €" },
+      { format: "tarta", label: "grande", priceText: "35 €" },
+      { format: "cajita", label: "cajita", priceText: "12 €" },
     ],
   },
   {
-    flavor: "C",
+    flavor: "Pistacho",
     sizes: [
-      { format: "tarta", label: "grande", priceText: "37 €" },
-      { format: "cajita", label: "cajita", priceText: "14 €" },
+      { format: "tarta", label: "grande", priceText: "35 €" },
+      { format: "cajita", label: "cajita", priceText: "12 €" },
     ],
   },
 ]
@@ -48,44 +48,58 @@ test("reconoce el saludo simple para devolver el mensaje histórico", () => {
 test("lista los sabores publicados del catálogo recibido", () => {
   const message = buildFlavorListMessage(catalogABC, { includeGreeting: true, channel: "web", leadDays: 4 })
 
-  assert.match(message, /A: grande 35 €, cajita 12 €/)
-  assert.match(message, /B: grande 36 €, cajita 13 €/)
-  assert.match(message, /C: grande 37 €, cajita 14 €/)
-  assert.match(message, /Plazo mínimo 4 días/)
+  assert.match(message, /Tenemos estos sabores disponibles:/)
+  assert.match(message, /^- Clásica$/m)
+  assert.match(message, /^- Lotus$/m)
+  assert.match(message, /^- Pistacho$/m)
+  assert.match(message, /Trabajamos con 2 tamaños:/)
+  assert.match(message, /^- Grande: 35 €$/m)
+  assert.match(message, /^- Cajita: 12 €$/m)
+  assert.match(message, /Solo recogida en tienda\. No hacemos envíos\./)
+  assert.match(message, /Plazo mínimo: 4 días\./)
 })
 
 test("si se elimina o desactiva un sabor, deja de aparecer sin tocar el bot", () => {
-  const withoutB = catalogABC.filter((flavor) => flavor.flavor !== "B")
+  const withoutB = catalogABC.filter((flavor) => flavor.flavor !== "Lotus")
   const message = buildFlavorListMessage(withoutB)
 
-  assert.match(message, /A: grande 35 €, cajita 12 €/)
-  assert.doesNotMatch(message, /\bB:/)
-  assert.match(message, /C: grande 37 €, cajita 14 €/)
+  assert.match(message, /^- Clásica$/m)
+  assert.doesNotMatch(message, /^- Lotus$/m)
+  assert.match(message, /^- Pistacho$/m)
 })
 
 test("si se añade un sabor nuevo, aparece desde el catálogo sin tocar el bot", () => {
   const withD: ChatbotAvailableCakeFlavor[] = [
     ...catalogABC,
     {
-      flavor: "D",
+      flavor: "Oreo",
       sizes: [
-        { format: "tarta", label: "grande", priceText: "38 €" },
-        { format: "cajita", label: "cajita", priceText: "15 €" },
+        { format: "tarta", label: "grande", priceText: "35 €" },
+        { format: "cajita", label: "cajita", priceText: "12 €" },
       ],
     },
   ]
   const message = buildFlavorListMessage(withD)
 
-  assert.match(message, /D: grande 38 €, cajita 15 €/)
+  assert.match(message, /^- Oreo$/m)
+  assert.doesNotMatch(message, /Oreo: grande/)
 })
 
 test("el mismo builder sirve para web y WhatsApp", () => {
   const webMessage = buildFlavorListMessage(catalogABC, { channel: "web" })
   const whatsappMessage = buildFlavorListMessage(catalogABC, { channel: "whatsapp" })
 
-  assert.match(webMessage, /A: grande 35 €, cajita 12 €/)
-  assert.match(whatsappMessage, /A: grande 35 €, cajita 12 €/)
+  assert.match(webMessage, /^- Clásica$/m)
+  assert.match(whatsappMessage, /^- Clásica$/m)
   assert.equal(webMessage.replace(/^🍰 /, ""), whatsappMessage.replace(/^🍰 /, ""))
+})
+
+test("no repite tamaños y precios por cada sabor", () => {
+  const message = buildFlavorListMessage(catalogABC)
+
+  assert.doesNotMatch(message, /Clásica: grande/)
+  assert.doesNotMatch(message, /Lotus: grande/)
+  assert.doesNotMatch(message, /: grande\s+35/)
 })
 
 test("si no hay sabores publicados, ofrece contacto humano", () => {

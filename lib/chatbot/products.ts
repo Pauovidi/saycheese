@@ -25,6 +25,11 @@ export type ChatbotAvailableCakeFlavor = {
   sizes: ChatbotFlavorSize[]
 }
 
+export type ChatbotCatalogForMessage = {
+  flavors: string[]
+  sizes: ChatbotFlavorSize[]
+}
+
 function normalize(value: string) {
   return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim()
 }
@@ -89,8 +94,34 @@ export async function getAvailableCakeFlavorsForChatbot() {
   return listFlavorsAndSizes()
 }
 
-function formatFlavorSize(size: ChatbotFlavorSize) {
-  return `${size.label} ${size.priceText}`.trim()
+function formatPriceTextList(priceTexts: string[]) {
+  return Array.from(new Set(priceTexts.filter(Boolean))).join(" / ")
+}
+
+export function buildCatalogForMessage(flavors: ChatbotAvailableCakeFlavor[]): ChatbotCatalogForMessage {
+  const sizesByFormat = new Map<ChatbotFlavorSize["format"], ChatbotFlavorSize>()
+
+  for (const flavor of flavors) {
+    for (const size of flavor.sizes) {
+      const current = sizesByFormat.get(size.format)
+      if (!current) {
+        sizesByFormat.set(size.format, { ...size })
+        continue
+      }
+
+      const priceText = formatPriceTextList([current.priceText, size.priceText])
+      sizesByFormat.set(size.format, { ...current, priceText })
+    }
+  }
+
+  return {
+    flavors: flavors.map((flavor) => flavor.flavor),
+    sizes: Array.from(sizesByFormat.values()).sort((a, b) => (a.format === "tarta" ? -1 : 1)),
+  }
+}
+
+function formatSizePriceLine(size: ChatbotFlavorSize) {
+  return `- ${size.label.charAt(0).toUpperCase()}${size.label.slice(1)}: ${size.priceText}`
 }
 
 export function buildFlavorListMessage(
@@ -109,15 +140,18 @@ export function buildFlavorListMessage(
     )}`
   }
 
-  const flavorLines = flavors.map((flavor) => {
-    const sizes = flavor.sizes.map(formatFlavorSize).join(", ")
-    return sizes ? `- ${flavor.flavor}: ${sizes}` : `- ${flavor.flavor}`
-  })
+  const catalog = buildCatalogForMessage(flavors)
+  const flavorLines = catalog.flavors.map((flavor) => `- ${flavor}`)
+  const sizeLines = catalog.sizes.map(formatSizePriceLine)
 
-  return `${intro}Estos son los sabores disponibles ahora mismo:
+  return `${intro}Tenemos estos sabores disponibles:
 ${flavorLines.join("\n")}
 
-${PICKUP_ONLY_COPY} Plazo mínimo ${leadDays} días.`
+Trabajamos con 2 tamaños:
+${sizeLines.join("\n")}
+
+${PICKUP_ONLY_COPY}
+Plazo mínimo: ${leadDays} días.`
 }
 
 export async function buildFlavorsAndSizesMessage(

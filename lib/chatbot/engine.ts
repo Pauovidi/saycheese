@@ -41,6 +41,7 @@ import {
   ORDER_LOW_CONFIDENCE_RECOVERY,
 } from "@/lib/chatbot/order-prompts"
 import {
+  buildCatalogForMessage,
   buildFlavorsAndSizesMessage,
   findFlavorFactsByQuery,
   findExplicitFlavorSelection,
@@ -812,7 +813,7 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
     {
       type: "function",
       name: "get_flavors_and_sizes",
-      description: "Lista sabores y los dos tamaños por sabor",
+      description: "Lista sabores disponibles y tamaños/precios en bloque separado",
       strict: true,
       parameters: { type: "object", properties: {}, additionalProperties: false },
     },
@@ -856,8 +857,11 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
 
     if (name === "get_store_hours") return { hours: STORE_HOURS_TEXT }
     if (name === "get_flavors_and_sizes") {
+      const flavorsAndSizes = await listFlavorsAndSizes()
+      const catalog = buildCatalogForMessage(flavorsAndSizes)
       return {
-        flavors: await listFlavorsAndSizes(),
+        flavors: catalog.flavors,
+        sizes: catalog.sizes,
         message: await buildFlavorsReply(false, channel),
       }
     }
