@@ -6,6 +6,8 @@ import { z } from "zod"
 import { requireAdminUser } from "@/lib/admin-auth"
 import {
   createCakeFlavorRecordInDb,
+  getArchivedCatalogFlavorRecords,
+  restoreCakeFlavorRecordInDb,
   softDeleteCakeFlavorRecordInDb,
   updateCakeFlavorRecordInDb,
 } from "@/src/data/products-store"
@@ -31,6 +33,10 @@ const deleteFlavorSchema = z.object({
   slug: z.string().min(1),
 })
 
+const restoreFlavorSchema = z.object({
+  slug: z.string().min(1),
+})
+
 type CakeFlavorFormPayload = Omit<z.input<typeof baseFlavorSchema>, "tartaPrice" | "cajitaPrice"> & {
   tartaPrice: string | number
   cajitaPrice: string | number
@@ -52,6 +58,7 @@ type CatalogActionResult =
   | {
       ok: true
       flavors: EditableFlavorRecord[]
+      archivedFlavors?: EditableFlavorRecord[]
       selectedSlug?: string
     }
   | {
@@ -59,12 +66,21 @@ type CatalogActionResult =
       error: string
     }
 
-function ok(flavors: EditableFlavorRecord[], selectedSlug?: string): CatalogActionResult {
+function ok(
+  flavors: EditableFlavorRecord[],
+  selectedSlug?: string,
+  archivedFlavors?: EditableFlavorRecord[]
+): CatalogActionResult {
   return {
     ok: true as const,
     flavors,
+    ...(archivedFlavors ? { archivedFlavors } : {}),
     ...(selectedSlug ? { selectedSlug } : {}),
   }
+}
+
+async function getArchivedForResponse() {
+  return getArchivedCatalogFlavorRecords()
 }
 
 function fail(error: unknown): CatalogActionResult {
@@ -125,8 +141,22 @@ export async function deleteCakeFlavor(payload: z.infer<typeof deleteFlavorSchem
     const { user } = await requireAdminUser()
     const parsed = deleteFlavorSchema.parse(payload)
     const saved = await softDeleteCakeFlavorRecordInDb(parsed.slug, user.email ?? user.id)
+    const archived = await getArchivedForResponse()
     revalidateCatalogRoutes(parsed.slug)
-    return ok(saved, saved[0]?.slug)
+    return ok(saved, saved[0]?.slug, archived)
+  } catch (error) {
+    return fail(error)
+  }
+}
+
+export async function restoreCakeFlavor(payload: z.infer<typeof restoreFlavorSchema>) {
+  try {
+    const { user } = await requireAdminUser()
+    const parsed = restoreFlavorSchema.parse(payload)
+    const saved = await restoreCakeFlavorRecordInDb(parsed.slug, user.email ?? user.id)
+    const archived = await getArchivedForResponse()
+    revalidateCatalogRoutes(parsed.slug)
+    return ok(saved, parsed.slug, archived)
   } catch (error) {
     return fail(error)
   }

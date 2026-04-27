@@ -6,6 +6,7 @@ import test from "node:test"
 import {
   createCakeFlavorRecordInDb,
   getCatalogFlavorRecordsFromPersistence,
+  restoreCakeFlavorRecordInDb,
   saveCatalogFlavorRecords,
   softDeleteCakeFlavorRecordInDb,
   updateCakeFlavorRecordInDb,
@@ -45,6 +46,12 @@ class MemoryCakeFlavorPersistence implements CakeFlavorPersistence {
     return this.rows
       .filter((candidate) => candidate.is_active && !candidate.deleted_at)
       .sort((a, b) => (a.display_order ?? 0) - (b.display_order ?? 0) || a.name.localeCompare(b.name, "es"))
+  }
+
+  async listArchivedRows() {
+    return this.rows
+      .filter((candidate) => !candidate.is_active && Boolean(candidate.deleted_at))
+      .sort((a, b) => (b.deleted_at ?? "").localeCompare(a.deleted_at ?? "") || a.name.localeCompare(b.name, "es"))
   }
 
   async findAnyRowBySlug(slug: string) {
@@ -186,10 +193,80 @@ test("borrar sabor hace soft-delete, no delete físico, y crea revisión", async
   assert.equal(persistence.revisions[0].action, "delete")
 })
 
+test("restaurar sabor archivado reactiva la fila y crea revisión", async () => {
+  const persistence = new MemoryCakeFlavorPersistence([
+    row({ id: "id-lotus", slug: "lotus", display_order: 0 }),
+    row({
+      id: "id-archivo",
+      slug: "archivo",
+      name: "Archivo",
+      display_order: 1,
+      is_active: false,
+      deleted_at: "2026-04-26T09:00:00.000Z",
+    }),
+  ])
+
+  const records = await restoreCakeFlavorRecordInDb("archivo", "admin@example.com", persistence)
+
+  const restored = persistence.rows.find((candidate) => candidate.slug === "archivo")
+  assert.equal(restored?.is_active, true)
+  assert.equal(restored?.deleted_at, null)
+  assert.ok(records.some((record) => record.slug === "archivo"))
+  assert.equal(persistence.revisions[0].action, "restore")
+  assert.equal(persistence.revisions[0].actor, "admin@example.com")
+})
+
+test("los sabores archivados no aparecen en la lectura activa normal", async () => {
+  const persistence = new MemoryCakeFlavorPersistence([
+    row({ slug: "lotus" }),
+    row({ slug: "archivado", name: "Archivado", is_active: false, deleted_at: "2026-04-26T09:00:00.000Z" }),
+  ])
+
+  const records = await getCatalogFlavorRecordsFromPersistence(persistence)
+
+  assert.deepEqual(
+    records.map((record) => record.slug),
+    ["lotus"]
+  )
+})
+
+test("crear con un slug archivado orienta a restaurar el sabor", async () => {
+  const persistence = new MemoryCakeFlavorPersistence([
+    row({
+      slug: "auditoria-temporal-codex",
+      name: "Auditoría Temporal Codex",
+      is_active: false,
+      deleted_at: "2026-04-26T09:00:00.000Z",
+    }),
+  ])
+
+  await assert.rejects(
+    () =>
+      createCakeFlavorRecordInDb(
+        {
+          slug: "auditoria-temporal-codex",
+          name: "Auditoría Temporal Codex",
+          description: "",
+          allergens: "",
+          tartaImage: "",
+          cajitaImage: "",
+          tartaPrice: 35,
+          cajitaPrice: 12,
+        },
+        "admin@example.com",
+        persistence
+      ),
+    /Restáuralo desde Sabores archivados/
+  )
+})
+
 test("ante error de DB no se persiste seed ni JSON legacy", async () => {
   const failingPersistence: CakeFlavorPersistence = {
     async listActiveRows() {
       throw new Error("db down")
+    },
+    async listArchivedRows() {
+      throw new Error("no esperado")
     },
     async findAnyRowBySlug() {
       throw new Error("no esperado")
@@ -224,4 +301,16 @@ test("el CRUD admin ya no importa la escritura JSON legacy", async () => {
   assert.doesNotMatch(source, /saveCatalogFlavorRecords/)
   assert.match(source, /createCakeFlavorRecordInDb/)
   assert.match(source, /softDeleteCakeFlavorRecordInDb/)
+  assert.match(source, /restoreCakeFlavorRecordInDb/)
+})
+
+test("la UI presenta el soft-delete como archivo y no como borrado irreversible", async () => {
+  const source = await readFile(resolve("src/components/admin/cake-catalog-editor.tsx"), "utf8")
+
+  assert.match(source, /Archivar sabor/)
+  assert.match(source, /Sabores archivados/)
+  assert.match(source, /Restaurar sabor/)
+  assert.match(source, /Descartar cambios/)
+  assert.doesNotMatch(source, /Borrar sabor/)
+  assert.doesNotMatch(source, /no se puede deshacer/)
 })

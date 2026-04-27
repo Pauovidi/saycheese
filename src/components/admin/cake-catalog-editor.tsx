@@ -3,7 +3,7 @@
 import { useState, useTransition, type FormEvent } from "react"
 import { toast } from "sonner"
 
-import { createCakeFlavor, deleteCakeFlavor, updateCakeFlavor } from "@/actions/cake-catalog"
+import { createCakeFlavor, deleteCakeFlavor, restoreCakeFlavor, updateCakeFlavor } from "@/actions/cake-catalog"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -23,6 +23,10 @@ import { Textarea } from "@/components/ui/textarea"
 import { NEW_FLAVOR_KEY, resolveEditorSelection } from "@/src/components/admin/cake-catalog-editor-state"
 import { CatalogImageUpload } from "@/src/components/admin/catalog-image-upload"
 import { slugifyFlavorName, type EditableFlavorRecord } from "@/src/data/products"
+
+type ArchivedFlavorRecord = EditableFlavorRecord & {
+  deletedAt?: string | null
+}
 
 type FlavorFormState = {
   name: string
@@ -72,6 +76,18 @@ function formatPricePreview(rawValue: string) {
   }).format(numeric).replace(/\u00A0/g, " ")
 }
 
+function formatArchivedDate(value?: string | null) {
+  if (!value) return "Fecha no disponible"
+
+  return new Intl.DateTimeFormat("es-ES", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value))
+}
+
 function FlavorPreviewCard({
   title,
   image,
@@ -117,9 +133,16 @@ function FlavorPreviewCard({
   )
 }
 
-export function CakeCatalogEditor({ initialFlavors }: { initialFlavors: EditableFlavorRecord[] }) {
+export function CakeCatalogEditor({
+  initialFlavors,
+  initialArchivedFlavors,
+}: {
+  initialFlavors: EditableFlavorRecord[]
+  initialArchivedFlavors: ArchivedFlavorRecord[]
+}) {
   const initialSelection = resolveEditorSelection(initialFlavors)
   const [flavors, setFlavors] = useState(initialFlavors)
+  const [archivedFlavors, setArchivedFlavors] = useState(initialArchivedFlavors)
   const [selectedSlug, setSelectedSlug] = useState(initialSelection.selectedSlug)
   const [form, setForm] = useState<FlavorFormState>(() =>
     initialSelection.selectedFlavor ? flavorToForm(initialSelection.selectedFlavor) : emptyForm()
@@ -170,6 +193,12 @@ export function CakeCatalogEditor({ initialFlavors }: { initialFlavors: Editable
     setForm(nextSelection.selectedFlavor ? flavorToForm(nextSelection.selectedFlavor) : emptyForm())
   }
 
+  function syncArchivedFlavors(nextArchivedFlavors?: EditableFlavorRecord[]) {
+    if (nextArchivedFlavors) {
+      setArchivedFlavors(nextArchivedFlavors)
+    }
+  }
+
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
 
@@ -196,6 +225,8 @@ export function CakeCatalogEditor({ initialFlavors }: { initialFlavors: Editable
         return
       }
 
+      syncArchivedFlavors(response.archivedFlavors)
+
       if (isCreating) {
         syncEditorState(response.flavors, response.selectedSlug)
         toast.success("Sabor creado")
@@ -207,7 +238,7 @@ export function CakeCatalogEditor({ initialFlavors }: { initialFlavors: Editable
     })
   }
 
-  function handleDelete() {
+  function handleArchive() {
     if (!selectedFlavor) return
 
     startTransition(async () => {
@@ -218,64 +249,120 @@ export function CakeCatalogEditor({ initialFlavors }: { initialFlavors: Editable
         return
       }
 
+      syncArchivedFlavors(response.archivedFlavors)
       syncEditorState(response.flavors, response.selectedSlug)
-      toast.success("Sabor borrado")
+      toast.success("Sabor archivado")
+    })
+  }
+
+  function handleRestoreArchived(slug: string) {
+    startTransition(async () => {
+      const response = await restoreCakeFlavor({ slug })
+
+      if (!response.ok) {
+        toast.error(response.error)
+        return
+      }
+
+      syncArchivedFlavors(response.archivedFlavors)
+      syncEditorState(response.flavors, response.selectedSlug)
+      toast.success("Sabor restaurado")
     })
   }
 
   return (
     <div className="grid gap-6 lg:grid-cols-[300px_minmax(0,1fr)]">
-      <Card className="h-fit">
-        <CardHeader className="space-y-3">
-          <div>
-            <CardTitle>Sabores actuales</CardTitle>
-            <CardDescription className="mt-2">
-              Esta lista alimenta la home, la tienda y las fichas de producto públicas.
-            </CardDescription>
-          </div>
-          <Button onClick={startCreatingFlavor}>Crear sabor</Button>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          {flavors.map((flavor) => {
-            const active = flavor.slug === selectedSlug
+      <div className="space-y-6">
+        <Card className="h-fit">
+          <CardHeader className="space-y-3">
+            <div>
+              <CardTitle>Sabores actuales</CardTitle>
+              <CardDescription className="mt-2">
+                Esta lista alimenta la home, la tienda y las fichas de producto públicas.
+              </CardDescription>
+            </div>
+            <Button onClick={startCreatingFlavor}>Crear sabor</Button>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {flavors.map((flavor) => {
+              const active = flavor.slug === selectedSlug
 
-            return (
-              <button
-                key={flavor.slug}
-                type="button"
-                onClick={() => selectFlavor(flavor.slug)}
-                className={`w-full rounded-xl border px-4 py-3 text-left transition-colors ${
-                  active
-                    ? "border-primary bg-primary/5"
-                    : "border-border bg-background hover:border-primary/40 hover:bg-muted/50"
-                }`}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div>
+              return (
+                <button
+                  key={flavor.slug}
+                  type="button"
+                  onClick={() => selectFlavor(flavor.slug)}
+                  className={`w-full rounded-xl border px-4 py-3 text-left transition-colors ${
+                    active
+                      ? "border-primary bg-primary/5"
+                      : "border-border bg-background hover:border-primary/40 hover:bg-muted/50"
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-foreground">{flavor.name}</p>
+                      <p className="mt-1 text-xs uppercase tracking-[0.16em] text-muted-foreground">
+                        /producto/tarta-{flavor.slug}
+                      </p>
+                    </div>
+                    <span className="rounded-full bg-secondary px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-secondary-foreground">
+                      {flavor.position + 1}
+                    </span>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                    <span>Grande: {formatPricePreview(String(flavor.tartaPrice))}</span>
+                    <span>Cajita: {formatPricePreview(String(flavor.cajitaPrice))}</span>
+                  </div>
+                </button>
+              )
+            })}
+
+            {flavors.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-border px-4 py-6 text-sm text-muted-foreground">
+                No hay sabores todavía. Crea el primero desde aquí.
+              </div>
+            ) : null}
+          </CardContent>
+        </Card>
+
+        <Card className="h-fit">
+          <CardHeader>
+            <CardTitle>Sabores archivados</CardTitle>
+            <CardDescription className="mt-2">
+              No aparecen en el catálogo ni en pedidos, pero conservan su histórico.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {archivedFlavors.length ? (
+              archivedFlavors.map((flavor) => (
+                <div key={flavor.slug} className="rounded-xl border border-border px-4 py-3">
+                  <div className="space-y-1">
                     <p className="text-sm font-semibold text-foreground">{flavor.name}</p>
-                    <p className="mt-1 text-xs uppercase tracking-[0.16em] text-muted-foreground">
-                      /producto/tarta-{flavor.slug}
+                    <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">{flavor.slug}</p>
+                    <p className="text-xs text-muted-foreground">
+                      Archivado: {formatArchivedDate(flavor.deletedAt)}
                     </p>
                   </div>
-                  <span className="rounded-full bg-secondary px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-secondary-foreground">
-                    {flavor.position + 1}
-                  </span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="mt-3"
+                    disabled={isPending}
+                    onClick={() => handleRestoreArchived(flavor.slug)}
+                  >
+                    Restaurar sabor
+                  </Button>
                 </div>
-                <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
-                  <span>Grande: {formatPricePreview(String(flavor.tartaPrice))}</span>
-                  <span>Cajita: {formatPricePreview(String(flavor.cajitaPrice))}</span>
-                </div>
-              </button>
-            )
-          })}
-
-          {flavors.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-border px-4 py-6 text-sm text-muted-foreground">
-              No hay sabores todavía. Crea el primero desde aquí.
-            </div>
-          ) : null}
-        </CardContent>
-      </Card>
+              ))
+            ) : (
+              <div className="rounded-xl border border-dashed border-border px-4 py-6 text-sm text-muted-foreground">
+                No hay sabores archivados.
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
 
       <div className="space-y-6">
         <Card>
@@ -383,25 +470,26 @@ export function CakeCatalogEditor({ initialFlavors }: { initialFlavors: Editable
                   {isPending ? "Guardando..." : isCreating ? "Crear sabor" : "Guardar cambios"}
                 </Button>
                 <Button type="button" variant="outline" onClick={resetForm} disabled={isPending}>
-                  Restaurar
+                  Descartar cambios
                 </Button>
                 {!isCreating && selectedFlavor ? (
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
                       <Button type="button" variant="destructive" disabled={isPending}>
-                        Borrar sabor
+                        Archivar sabor
                       </Button>
                     </AlertDialogTrigger>
                     <AlertDialogContent>
                       <AlertDialogHeader>
-                        <AlertDialogTitle>¿Borrar {selectedFlavor.name}?</AlertDialogTitle>
+                        <AlertDialogTitle>¿Archivar {selectedFlavor.name}?</AlertDialogTitle>
                         <AlertDialogDescription>
-                          Se eliminarán la tarta grande y la cajita de este sabor del catálogo público. Esta acción no se puede deshacer.
+                          Este sabor se archivará y dejará de estar disponible en el catálogo y en pedidos.
+                          Podrás restaurarlo más adelante desde sabores archivados.
                         </AlertDialogDescription>
                       </AlertDialogHeader>
                       <AlertDialogFooter>
                         <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                        <AlertDialogAction onClick={handleDelete}>Sí, borrar</AlertDialogAction>
+                        <AlertDialogAction onClick={handleArchive}>Sí, archivar</AlertDialogAction>
                       </AlertDialogFooter>
                     </AlertDialogContent>
                   </AlertDialog>

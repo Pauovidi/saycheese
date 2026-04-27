@@ -10,7 +10,7 @@ import {
   type EditableFlavorRecord,
 } from "@/src/data/products"
 
-export type CakeFlavorAction = "create" | "update" | "delete" | "import_legacy_json"
+export type CakeFlavorAction = "create" | "update" | "delete" | "restore" | "import_legacy_json"
 
 export type CakeFlavorRow = {
   id: string
@@ -57,6 +57,7 @@ export type CakeFlavorRevisionInsert = {
 
 export type CakeFlavorPersistence = {
   listActiveRows(): Promise<CakeFlavorRow[]>
+  listArchivedRows(): Promise<CakeFlavorRow[]>
   findAnyRowBySlug(slug: string): Promise<CakeFlavorRow | null>
   findActiveRowBySlug(slug: string): Promise<CakeFlavorRow | null>
   getMaxActiveDisplayOrder(): Promise<number>
@@ -121,6 +122,7 @@ export function mapCakeFlavorRowToEditableFlavorRecord(row: CakeFlavorRow): Edit
     position: row.display_order ?? 0,
     ...(row.created_at ? { createdAt: row.created_at } : {}),
     ...(row.updated_at ? { updatedAt: row.updated_at } : {}),
+    ...(row.deleted_at ? { deletedAt: row.deleted_at } : {}),
   }
 }
 
@@ -228,6 +230,19 @@ class SupabaseCakeFlavorPersistence implements CakeFlavorPersistence {
     return (data ?? []) as unknown as CakeFlavorRow[]
   }
 
+  async listArchivedRows() {
+    const { data, error } = await this.supabase
+      .from("cake_flavors")
+      .select(CAKE_FLAVOR_COLUMNS)
+      .eq("is_active", false)
+      .not("deleted_at", "is", null)
+      .order("deleted_at", { ascending: false })
+      .order("name", { ascending: true })
+
+    if (error) throw new Error(error.message)
+    return (data ?? []) as unknown as CakeFlavorRow[]
+  }
+
   async findAnyRowBySlug(slug: string) {
     const { data, error } = await this.supabase
       .from("cake_flavors")
@@ -314,6 +329,10 @@ export async function getCatalogFlavorRecordsFromPersistence(persistence: CakeFl
   return records
 }
 
+export async function getArchivedCatalogFlavorRecordsFromPersistence(persistence: CakeFlavorPersistence) {
+  return (await persistence.listArchivedRows()).map(mapCakeFlavorRowToEditableFlavorRecord)
+}
+
 export async function createCakeFlavorRecordInDb(
   record: Omit<EditableFlavorRecord, "position" | "createdAt" | "updatedAt">,
   actor?: string | null,
@@ -324,7 +343,7 @@ export async function createCakeFlavorRecordInDb(
   if (existing) {
     throw new Error(
       existing.deleted_at || !existing.is_active
-        ? "Ya existe un sabor archivado con ese identificador; revisa el histórico antes de recrearlo"
+        ? "Ese sabor ya existe archivado. Restáuralo desde Sabores archivados antes de crear uno nuevo con el mismo identificador."
         : "Ya existe un sabor con ese nombre"
     )
   }
@@ -383,6 +402,33 @@ export async function softDeleteCakeFlavorRecordInDb(
   return listNormalizedRecords(persistence)
 }
 
+export async function restoreCakeFlavorRecordInDb(
+  slug: string,
+  actor?: string | null,
+  persistence: CakeFlavorPersistence = createDefaultPersistence()
+) {
+  const current = await persistence.findAnyRowBySlug(slug)
+
+  if (!current) {
+    throw new Error("No se encontró el sabor archivado a restaurar")
+  }
+
+  if (current.is_active && !current.deleted_at) {
+    throw new Error("Ese sabor ya está activo")
+  }
+
+  const displayOrder = (await persistence.getMaxActiveDisplayOrder()) + 1
+  const restored = await persistence.updateRow(current.id, {
+    is_active: true,
+    deleted_at: null,
+    display_order: displayOrder,
+  })
+
+  await insertRevision(persistence, "restore", restored, actor)
+  await reindexActiveRows(persistence)
+  return listNormalizedRecords(persistence)
+}
+
 export async function getCatalogFlavorRecords(): Promise<EditableFlavorRecord[]> {
   try {
     const records = await getCatalogFlavorRecordsFromPersistence(createDefaultPersistence())
@@ -399,6 +445,14 @@ export async function getCatalogFlavorRecords(): Promise<EditableFlavorRecord[]>
     }
 
     throw new Error(`No se pudo leer el catálogo desde Postgres: ${messageFromError(error)}`)
+  }
+}
+
+export async function getArchivedCatalogFlavorRecords(): Promise<EditableFlavorRecord[]> {
+  try {
+    return await getArchivedCatalogFlavorRecordsFromPersistence(createDefaultPersistence())
+  } catch (error) {
+    throw new Error(`No se pudieron leer los sabores archivados desde Postgres: ${messageFromError(error)}`)
   }
 }
 

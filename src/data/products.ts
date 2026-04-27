@@ -397,6 +397,7 @@ export interface EditableFlavorRecord {
   position: number
   createdAt?: string
   updatedAt?: string
+  deletedAt?: string | null
 }
 
 export interface EditableCatalogDocument {
