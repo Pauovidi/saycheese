@@ -6,6 +6,7 @@ import test from "node:test"
 import {
   createCakeFlavorRecordInDb,
   getCatalogFlavorRecordsFromPersistence,
+  hardDeleteArchivedCakeFlavorRecordInDb,
   restoreCakeFlavorRecordInDb,
   saveCatalogFlavorRecords,
   softDeleteCakeFlavorRecordInDb,
@@ -40,7 +41,10 @@ class MemoryCakeFlavorPersistence implements CakeFlavorPersistence {
   revisions: CakeFlavorRevisionInsert[] = []
   displayOrderWrites: Array<{ id: string; displayOrder: number }> = []
 
-  constructor(public rows: CakeFlavorRow[]) {}
+  constructor(
+    public rows: CakeFlavorRow[],
+    private readonly orderItems: Array<{ flavor: string }> = []
+  ) {}
 
   async listActiveRows() {
     return this.rows
@@ -65,6 +69,11 @@ class MemoryCakeFlavorPersistence implements CakeFlavorPersistence {
   async getMaxActiveDisplayOrder() {
     const active = await this.listActiveRows()
     return Math.max(-1, ...active.map((candidate) => candidate.display_order ?? 0))
+  }
+
+  async hasHistoricalOrdersForFlavor(flavor: CakeFlavorRow) {
+    const references = new Set([flavor.slug, flavor.name])
+    return this.orderItems.some((item) => references.has(item.flavor))
   }
 
   async insertRow(input: Parameters<CakeFlavorPersistence["insertRow"]>[0]) {
@@ -107,6 +116,10 @@ class MemoryCakeFlavorPersistence implements CakeFlavorPersistence {
     this.displayOrderWrites.push({ id, displayOrder })
     const target = this.rows.find((candidate) => candidate.id === id)
     if (target) target.display_order = displayOrder
+  }
+
+  async deleteRow(id: string) {
+    this.rows = this.rows.filter((candidate) => candidate.id !== id)
   }
 }
 
@@ -216,6 +229,49 @@ test("restaurar sabor archivado reactiva la fila y crea revisión", async () => 
   assert.equal(persistence.revisions[0].actor, "admin@example.com")
 })
 
+test("no se puede eliminar definitivamente un sabor activo", async () => {
+  const persistence = new MemoryCakeFlavorPersistence([row({ slug: "lotus", is_active: true, deleted_at: null })])
+
+  await assert.rejects(
+    () => hardDeleteArchivedCakeFlavorRecordInDb("lotus", "admin@example.com", persistence),
+    /No se puede eliminar definitivamente un sabor activo/
+  )
+})
+
+test("no se puede eliminar definitivamente un sabor archivado con pedidos históricos", async () => {
+  const persistence = new MemoryCakeFlavorPersistence(
+    [row({ id: "id-archivo", slug: "archivo", name: "Archivo", is_active: false, deleted_at: "2026-04-26T09:00:00.000Z" })],
+    [{ flavor: "archivo" }]
+  )
+
+  await assert.rejects(
+    () => hardDeleteArchivedCakeFlavorRecordInDb("archivo", "admin@example.com", persistence),
+    /No se puede eliminar definitivamente porque este sabor aparece en pedidos históricos/
+  )
+  assert.equal(persistence.rows.length, 1)
+})
+
+test("se puede eliminar definitivamente un sabor archivado sin pedidos y mantiene revisiones consistentes", async () => {
+  const archived = row({
+    id: "id-archivo",
+    slug: "archivo",
+    name: "Archivo",
+    is_active: false,
+    deleted_at: "2026-04-26T09:00:00.000Z",
+  })
+  const active = row({ id: "id-lotus", slug: "lotus", name: "Lotus", is_active: true, deleted_at: null, display_order: 0 })
+  const persistence = new MemoryCakeFlavorPersistence([active, archived], [])
+
+  const result = await hardDeleteArchivedCakeFlavorRecordInDb("archivo", "admin@example.com", persistence)
+
+  assert.deepEqual(
+    result.flavors.map((record) => record.slug),
+    ["lotus"]
+  )
+  assert.equal(result.archivedFlavors.length, 0)
+  assert.equal(persistence.rows.some((candidate) => candidate.slug === "archivo"), false)
+})
+
 test("los sabores archivados no aparecen en la lectura activa normal", async () => {
   const persistence = new MemoryCakeFlavorPersistence([
     row({ slug: "lotus" }),
@@ -277,6 +333,9 @@ test("ante error de DB no se persiste seed ni JSON legacy", async () => {
     async getMaxActiveDisplayOrder() {
       throw new Error("no esperado")
     },
+    async hasHistoricalOrdersForFlavor() {
+      throw new Error("no esperado")
+    },
     async insertRow() {
       throw new Error("no esperado")
     },
@@ -287,6 +346,9 @@ test("ante error de DB no se persiste seed ni JSON legacy", async () => {
       throw new Error("no esperado")
     },
     async setDisplayOrder() {
+      throw new Error("no esperado")
+    },
+    async deleteRow() {
       throw new Error("no esperado")
     },
   }
@@ -302,6 +364,7 @@ test("el CRUD admin ya no importa la escritura JSON legacy", async () => {
   assert.match(source, /createCakeFlavorRecordInDb/)
   assert.match(source, /softDeleteCakeFlavorRecordInDb/)
   assert.match(source, /restoreCakeFlavorRecordInDb/)
+  assert.match(source, /hardDeleteArchivedCakeFlavorRecordInDb/)
 })
 
 test("la UI presenta el soft-delete como archivo y no como borrado irreversible", async () => {
@@ -310,6 +373,8 @@ test("la UI presenta el soft-delete como archivo y no como borrado irreversible"
   assert.match(source, /Archivar sabor/)
   assert.match(source, /Sabores archivados/)
   assert.match(source, /Restaurar sabor/)
+  assert.match(source, /Eliminar definitivamente/)
+  assert.match(source, /archivedFlavors\.map[\s\S]*Eliminar definitivamente/)
   assert.match(source, /Descartar cambios/)
   assert.doesNotMatch(source, /Borrar sabor/)
   assert.doesNotMatch(source, /no se puede deshacer/)

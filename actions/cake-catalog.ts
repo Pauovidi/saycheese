@@ -7,6 +7,7 @@ import { requireAdminUser } from "@/lib/admin-auth"
 import {
   createCakeFlavorRecordInDb,
   getArchivedCatalogFlavorRecords,
+  hardDeleteArchivedCakeFlavorRecordInDb,
   restoreCakeFlavorRecordInDb,
   softDeleteCakeFlavorRecordInDb,
   updateCakeFlavorRecordInDb,
@@ -34,6 +35,10 @@ const deleteFlavorSchema = z.object({
 })
 
 const restoreFlavorSchema = z.object({
+  slug: z.string().min(1),
+})
+
+const hardDeleteFlavorSchema = z.object({
   slug: z.string().min(1),
 })
 
@@ -157,6 +162,18 @@ export async function restoreCakeFlavor(payload: z.infer<typeof restoreFlavorSch
     const archived = await getArchivedForResponse()
     revalidateCatalogRoutes(parsed.slug)
     return ok(saved, parsed.slug, archived)
+  } catch (error) {
+    return fail(error)
+  }
+}
+
+export async function hardDeleteCakeFlavor(payload: z.infer<typeof hardDeleteFlavorSchema>) {
+  try {
+    const { user } = await requireAdminUser()
+    const parsed = hardDeleteFlavorSchema.parse(payload)
+    const result = await hardDeleteArchivedCakeFlavorRecordInDb(parsed.slug, user.email ?? user.id)
+    revalidateCatalogRoutes(parsed.slug)
+    return ok(result.flavors, result.flavors[0]?.slug, result.archivedFlavors)
   } catch (error) {
     return fail(error)
   }

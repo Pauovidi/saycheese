@@ -3,7 +3,13 @@
 import { useState, useTransition, type FormEvent } from "react"
 import { toast } from "sonner"
 
-import { createCakeFlavor, deleteCakeFlavor, restoreCakeFlavor, updateCakeFlavor } from "@/actions/cake-catalog"
+import {
+  createCakeFlavor,
+  deleteCakeFlavor,
+  hardDeleteCakeFlavor,
+  restoreCakeFlavor,
+  updateCakeFlavor,
+} from "@/actions/cake-catalog"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -270,6 +276,21 @@ export function CakeCatalogEditor({
     })
   }
 
+  function handleHardDeleteArchived(slug: string) {
+    startTransition(async () => {
+      const response = await hardDeleteCakeFlavor({ slug })
+
+      if (!response.ok) {
+        toast.error(response.error)
+        return
+      }
+
+      syncArchivedFlavors(response.archivedFlavors)
+      syncEditorState(response.flavors, response.selectedSlug)
+      toast.success("Sabor eliminado definitivamente")
+    })
+  }
+
   return (
     <div className="grid gap-6 lg:grid-cols-[300px_minmax(0,1fr)]">
       <div className="space-y-6">
@@ -329,7 +350,8 @@ export function CakeCatalogEditor({
           <CardHeader>
             <CardTitle>Sabores archivados</CardTitle>
             <CardDescription className="mt-2">
-              No aparecen en el catálogo ni en pedidos, pero conservan su histórico.
+              Los sabores archivados no aparecen en el catálogo ni en pedidos. Puedes restaurarlos o eliminarlos
+              definitivamente si fueron creados por error y no tienen pedidos asociados.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
@@ -343,16 +365,39 @@ export function CakeCatalogEditor({
                       Archivado: {formatArchivedDate(flavor.deletedAt)}
                     </p>
                   </div>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="mt-3"
-                    disabled={isPending}
-                    onClick={() => handleRestoreArchived(flavor.slug)}
-                  >
-                    Restaurar sabor
-                  </Button>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={isPending}
+                      onClick={() => handleRestoreArchived(flavor.slug)}
+                    >
+                      Restaurar sabor
+                    </Button>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button type="button" variant="destructive" size="sm" disabled={isPending}>
+                          Eliminar definitivamente
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>¿Eliminar definitivamente {flavor.name}?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            Esta acción eliminará el sabor y su histórico técnico si no aparece en pedidos. No se puede
+                            deshacer.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                          <AlertDialogAction onClick={() => handleHardDeleteArchived(flavor.slug)}>
+                            Sí, eliminar definitivamente
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  </div>
                 </div>
               ))
             ) : (

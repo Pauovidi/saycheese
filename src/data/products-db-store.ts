@@ -10,7 +10,7 @@ import {
   type EditableFlavorRecord,
 } from "@/src/data/products"
 
-export type CakeFlavorAction = "create" | "update" | "delete" | "restore" | "import_legacy_json"
+export type CakeFlavorAction = "create" | "update" | "delete" | "restore" | "hard_delete" | "import_legacy_json"
 
 export type CakeFlavorRow = {
   id: string
@@ -61,10 +61,12 @@ export type CakeFlavorPersistence = {
   findAnyRowBySlug(slug: string): Promise<CakeFlavorRow | null>
   findActiveRowBySlug(slug: string): Promise<CakeFlavorRow | null>
   getMaxActiveDisplayOrder(): Promise<number>
+  hasHistoricalOrdersForFlavor(flavor: CakeFlavorRow): Promise<boolean>
   insertRow(row: CakeFlavorInsert): Promise<CakeFlavorRow>
   updateRow(id: string, updates: CakeFlavorUpdate): Promise<CakeFlavorRow>
   insertRevision(row: CakeFlavorRevisionInsert): Promise<void>
   setDisplayOrder(id: string, displayOrder: number): Promise<void>
+  deleteRow(id: string): Promise<void>
 }
 
 const CAKE_FLAVOR_COLUMNS = [
@@ -281,6 +283,22 @@ class SupabaseCakeFlavorPersistence implements CakeFlavorPersistence {
     return typeof data?.display_order === "number" ? data.display_order : -1
   }
 
+  async hasHistoricalOrdersForFlavor(flavor: CakeFlavorRow) {
+    const candidates = Array.from(new Set([flavor.slug, flavor.name].map((value) => value.trim()).filter(Boolean)))
+
+    for (const candidate of candidates) {
+      const { count, error } = await this.supabase
+        .from("order_items")
+        .select("order_id", { count: "exact", head: true })
+        .eq("flavor", candidate)
+
+      if (error) throw new Error(error.message)
+      if ((count ?? 0) > 0) return true
+    }
+
+    return false
+  }
+
   async insertRow(row: CakeFlavorInsert) {
     const { data, error } = await this.supabase
       .from("cake_flavors")
@@ -311,6 +329,11 @@ class SupabaseCakeFlavorPersistence implements CakeFlavorPersistence {
 
   async setDisplayOrder(id: string, displayOrder: number) {
     const { error } = await this.supabase.from("cake_flavors").update({ display_order: displayOrder }).eq("id", id)
+    if (error) throw new Error(error.message)
+  }
+
+  async deleteRow(id: string) {
+    const { error } = await this.supabase.from("cake_flavors").delete().eq("id", id)
     if (error) throw new Error(error.message)
   }
 }
@@ -427,6 +450,37 @@ export async function restoreCakeFlavorRecordInDb(
   await insertRevision(persistence, "restore", restored, actor)
   await reindexActiveRows(persistence)
   return listNormalizedRecords(persistence)
+}
+
+export async function hardDeleteArchivedCakeFlavorRecordInDb(
+  slug: string,
+  _actor?: string | null,
+  persistence: CakeFlavorPersistence = createDefaultPersistence()
+) {
+  const current = await persistence.findAnyRowBySlug(slug)
+
+  if (!current) {
+    throw new Error("No se encontró el sabor archivado a eliminar definitivamente")
+  }
+
+  if (current.is_active && !current.deleted_at) {
+    throw new Error("No se puede eliminar definitivamente un sabor activo")
+  }
+
+  const hasHistoricalOrders = await persistence.hasHistoricalOrdersForFlavor(current)
+
+  if (hasHistoricalOrders) {
+    throw new Error(
+      "No se puede eliminar definitivamente porque este sabor aparece en pedidos históricos. Puedes mantenerlo archivado."
+    )
+  }
+
+  await persistence.deleteRow(current.id)
+
+  return {
+    flavors: await listNormalizedRecords(persistence),
+    archivedFlavors: await getArchivedCatalogFlavorRecordsFromPersistence(persistence),
+  }
 }
 
 export async function getCatalogFlavorRecords(): Promise<EditableFlavorRecord[]> {
