@@ -1,4 +1,8 @@
-import { getCustomerFacingFormatLabel } from "@/src/data/business"
+import {
+  buildHumanSupportMessage,
+  getCustomerFacingFormatLabel,
+  PICKUP_ONLY_COPY,
+} from "@/src/data/business"
 import type { Product } from "@/src/data/products"
 import {
   getCatalogFlavorFacts,
@@ -7,6 +11,19 @@ import {
   getCatalogProducts,
   getCatalogProductsByCategory,
 } from "@/src/data/products-store"
+
+type ChatbotChannel = "web" | "whatsapp"
+
+export type ChatbotFlavorSize = {
+  format: "tarta" | "cajita"
+  label: string
+  priceText: string
+}
+
+export type ChatbotAvailableCakeFlavor = {
+  flavor: string
+  sizes: ChatbotFlavorSize[]
+}
 
 function normalize(value: string) {
   return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim()
@@ -50,7 +67,7 @@ function scoreFlavorMatch(query: string, product: Product) {
 
 export async function listFlavorsAndSizes() {
   const products = await getCatalogProducts()
-  const grouped = new Map<string, { flavor: string; sizes: { format: "tarta" | "cajita"; label: string; priceText: string }[] }>()
+  const grouped = new Map<string, ChatbotAvailableCakeFlavor>()
 
   for (const product of products) {
     const current = grouped.get(product.category) ?? { flavor: product.name, sizes: [] }
@@ -66,6 +83,52 @@ export async function listFlavorsAndSizes() {
     flavor: entry.flavor,
     sizes: entry.sizes.sort((a, b) => (a.format === "tarta" ? -1 : 1)),
   }))
+}
+
+export async function getAvailableCakeFlavorsForChatbot() {
+  return listFlavorsAndSizes()
+}
+
+function formatFlavorSize(size: ChatbotFlavorSize) {
+  return `${size.label} ${size.priceText}`.trim()
+}
+
+export function buildFlavorListMessage(
+  flavors: ChatbotAvailableCakeFlavor[],
+  options: { includeGreeting?: boolean; channel?: ChatbotChannel; leadDays?: number } = {}
+) {
+  const includeGreeting = options.includeGreeting ?? false
+  const channel = options.channel ?? "web"
+  const leadDays = options.leadDays ?? 3
+  const intro = includeGreeting ? "¡Hola! 🍰 " : "🍰 "
+
+  if (!flavors.length) {
+    return `${intro}Ahora mismo no hay sabores publicados en el catálogo. ${buildHumanSupportMessage(
+      "Te atiende una persona del equipo para confirmarte disponibilidad aquí:",
+      channel
+    )}`
+  }
+
+  const flavorLines = flavors.map((flavor) => {
+    const sizes = flavor.sizes.map(formatFlavorSize).join(", ")
+    return sizes ? `- ${flavor.flavor}: ${sizes}` : `- ${flavor.flavor}`
+  })
+
+  return `${intro}Estos son los sabores disponibles ahora mismo:
+${flavorLines.join("\n")}
+
+${PICKUP_ONLY_COPY} Plazo mínimo ${leadDays} días.`
+}
+
+export async function buildFlavorsAndSizesMessage(
+  includeGreeting = false,
+  options: { channel?: ChatbotChannel; leadDays?: number } = {}
+) {
+  return buildFlavorListMessage(await getAvailableCakeFlavorsForChatbot(), {
+    includeGreeting,
+    channel: options.channel,
+    leadDays: options.leadDays,
+  })
 }
 
 export async function findProductBySlugOrFlavor(q: string) {

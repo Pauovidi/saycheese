@@ -41,13 +41,14 @@ import {
   ORDER_LOW_CONFIDENCE_RECOVERY,
 } from "@/lib/chatbot/order-prompts"
 import {
+  buildFlavorsAndSizesMessage,
   findFlavorFactsByQuery,
   findExplicitFlavorSelection,
   findProductBySlugOrFlavor,
   listFlavorsAndSizes,
 } from "@/lib/chatbot/products"
 import { CANCEL_ORDER_TOOL_PARAMETERS, CREATE_ORDER_TOOL_PARAMETERS, HANDOFF_TO_HUMAN_TOOL_PARAMETERS } from "@/lib/chatbot/tool-schemas"
-import { buildFlavorsAndSizesMessage, hasGreetingIntent, WELCOME_MESSAGE } from "@/lib/chatbot/welcome"
+import { hasGreetingIntent, WELCOME_MESSAGE } from "@/lib/chatbot/welcome"
 import {
   buildHumanSupportMessage,
   buildUnconfirmedProductInfoMessage,
@@ -247,8 +248,8 @@ function hasExistingOrderQueryIntent(text: string) {
   return patterns.some((pattern) => pattern.test(normalized))
 }
 
-async function buildFlavorsReply(includeGreeting: boolean) {
-  return buildFlavorsAndSizesMessage(includeGreeting)
+async function buildFlavorsReply(includeGreeting: boolean, channel: "web" | "whatsapp") {
+  return buildFlavorsAndSizesMessage(includeGreeting, { channel, leadDays: LEAD_DAYS })
 }
 
 function requestedProductFacts(message: string) {
@@ -589,7 +590,7 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
   }
 
   if (hasFlavorsIntent(message) && !hasOrderIntent(message) && !explicitFlavorSelection) {
-    return saveAndReply(userId, await buildFlavorsReply(isOpeningConversation))
+    return saveAndReply(userId, await buildFlavorsReply(isOpeningConversation, channel))
   }
 
   const orderFlow =
@@ -854,7 +855,12 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
     const args = (rawArgs ? JSON.parse(rawArgs) : {}) as Record<string, unknown>
 
     if (name === "get_store_hours") return { hours: STORE_HOURS_TEXT }
-    if (name === "get_flavors_and_sizes") return { flavors: await listFlavorsAndSizes() }
+    if (name === "get_flavors_and_sizes") {
+      return {
+        flavors: await listFlavorsAndSizes(),
+        message: await buildFlavorsReply(false, channel),
+      }
+    }
     if (name === "handoff_to_human") return activateHandoff(userId, channel, String(args.reason ?? "handoff"))
 
     if (name === "get_product_info") {
