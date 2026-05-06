@@ -1,0 +1,208 @@
+import test from "node:test"
+import assert from "node:assert/strict"
+
+import {
+  buildWebOrderWhatsappConfirmationMessage,
+  sendWebOrderWhatsappConfirmation,
+} from "../lib/chatbot/whatsapp-confirmation"
+import { normalizeSpanishWhatsappDestination } from "../lib/twilio/client"
+
+const enabledEnv = {
+  TWILIO_ACCOUNT_SID: "AC_test",
+  TWILIO_AUTH_TOKEN: "token",
+  TWILIO_WHATSAPP_FROM: "whatsapp:+14155238886",
+}
+
+function createLogger() {
+  const events: Array<{ level: "info" | "error"; args: unknown[] }> = []
+  return {
+    events,
+    logger: {
+      info: (...args: unknown[]) => events.push({ level: "info", args }),
+      error: (...args: unknown[]) => events.push({ level: "error", args }),
+    },
+  }
+}
+
+test("normaliza teléfonos españoles para destino Twilio WhatsApp", () => {
+  assert.equal(normalizeSpanishWhatsappDestination("600000000"), "whatsapp:+34600000000")
+  assert.equal(normalizeSpanishWhatsappDestination("+34600000000"), "whatsapp:+34600000000")
+  assert.equal(normalizeSpanishWhatsappDestination("34 600 000 000"), "whatsapp:+34600000000")
+  assert.equal(normalizeSpanishWhatsappDestination("123"), null)
+})
+
+test("pedido web confirmado con teléfono válido intenta enviar WhatsApp", async () => {
+  const sent: Array<{ to: string; body: string }> = []
+  const { events, logger } = createLogger()
+
+  const result = await sendWebOrderWhatsappConfirmation(
+    {
+      orderId: "order-1",
+      channel: "web",
+      phone: "600000000",
+      deliveryDate: "2026-05-12",
+      items: [{ type: "cake", flavor: "Lotus", qty: 1 }],
+    },
+    {
+      env: enabledEnv,
+      logger,
+      reserve: async () => ({ ok: true }),
+      markSent: async () => {},
+      send: async (input) => {
+        sent.push(input)
+        return { sid: "SM123" }
+      },
+    }
+  )
+
+  assert.equal(result.ok, true)
+  assert.equal(sent.length, 1)
+  assert.equal(sent[0]?.to, "whatsapp:+34600000000")
+  assert.match(sent[0]?.body ?? "", /Pedido confirmado/i)
+  assert.equal(events.some((event) => event.args[0] === "whatsapp_confirmation_sent"), true)
+})
+
+test("pedido web confirmado sin teléfono no envía y no rompe", async () => {
+  const { events, logger } = createLogger()
+  let called = false
+
+  const result = await sendWebOrderWhatsappConfirmation(
+    {
+      orderId: "order-2",
+      channel: "web",
+      phone: undefined,
+      deliveryDate: "2026-05-12",
+      items: [{ type: "box", flavor: "Pistacho", qty: 1 }],
+    },
+    {
+      env: enabledEnv,
+      logger,
+      send: async () => {
+        called = true
+        return {}
+      },
+    }
+  )
+
+  assert.deepEqual(result, { ok: true, skipped: "missing_phone" })
+  assert.equal(called, false)
+  assert.equal(events.some((event) => event.args[0] === "whatsapp_confirmation_skipped_missing_phone"), true)
+})
+
+test("pedido confirmado desde WhatsApp inbound no envía confirmación outbound extra", async () => {
+  let called = false
+
+  const result = await sendWebOrderWhatsappConfirmation(
+    {
+      orderId: "order-3",
+      channel: "whatsapp",
+      phone: "600000000",
+      deliveryDate: "2026-05-12",
+      items: [{ type: "cake", flavor: "Gofio", qty: 1 }],
+    },
+    {
+      env: enabledEnv,
+      send: async () => {
+        called = true
+        return {}
+      },
+    }
+  )
+
+  assert.deepEqual(result, { ok: true, skipped: "channel" })
+  assert.equal(called, false)
+})
+
+test("fallo de Twilio queda logueado y no lanza error", async () => {
+  const { events, logger } = createLogger()
+
+  const result = await sendWebOrderWhatsappConfirmation(
+    {
+      orderId: "order-4",
+      channel: "web",
+      phone: "600000000",
+      deliveryDate: "2026-05-12",
+      items: [{ type: "cake", flavor: "Lotus", qty: 1 }],
+    },
+    {
+      env: enabledEnv,
+      logger,
+      reserve: async () => ({ ok: true }),
+      markFailed: async () => {},
+      send: async () => {
+        throw new Error("twilio down")
+      },
+    }
+  )
+
+  assert.equal(result.ok, false)
+  assert.equal(events.some((event) => event.args[0] === "whatsapp_confirmation_failed"), true)
+})
+
+test("idempotencia evita enviar dos veces para el mismo pedido", async () => {
+  const { events, logger } = createLogger()
+  let called = false
+
+  const result = await sendWebOrderWhatsappConfirmation(
+    {
+      orderId: "order-5",
+      channel: "web",
+      phone: "600000000",
+      deliveryDate: "2026-05-12",
+      items: [{ type: "cake", flavor: "Lotus", qty: 1 }],
+    },
+    {
+      env: enabledEnv,
+      logger,
+      reserve: async () => ({ ok: false, reason: "duplicate" }),
+      send: async () => {
+        called = true
+        return {}
+      },
+    }
+  )
+
+  assert.deepEqual(result, { ok: true, skipped: "duplicate" })
+  assert.equal(called, false)
+  assert.equal(events.some((event) => event.args[0] === "whatsapp_confirmation_duplicate_skipped"), true)
+})
+
+test("mensaje incluye sabor, tamaño, fecha y recogida en tienda", () => {
+  const message = buildWebOrderWhatsappConfirmationMessage({
+    deliveryDate: "2026-05-12",
+    items: [{ type: "box", flavor: "Pistacho", qty: 1 }],
+  })
+
+  assert.match(message, /Pedido confirmado/i)
+  assert.match(message, /Pistacho/)
+  assert.match(message, /cajita/)
+  assert.match(message, /Recogida en tienda/)
+  assert.match(message, /12\/05\/2026/)
+})
+
+test("si faltan variables Twilio queda desactivado con log", async () => {
+  const { events, logger } = createLogger()
+  let called = false
+
+  const result = await sendWebOrderWhatsappConfirmation(
+    {
+      orderId: "order-6",
+      channel: "web",
+      phone: "600000000",
+      deliveryDate: "2026-05-12",
+      items: [{ type: "cake", flavor: "Lotus", qty: 1 }],
+    },
+    {
+      env: {},
+      logger,
+      send: async () => {
+        called = true
+        return {}
+      },
+    }
+  )
+
+  assert.deepEqual(result, { ok: true, skipped: "disabled" })
+  assert.equal(called, false)
+  assert.equal(events.some((event) => event.args[0] === "whatsapp_confirmation_skipped_disabled"), true)
+})

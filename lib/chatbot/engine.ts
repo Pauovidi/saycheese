@@ -32,6 +32,7 @@ import {
   type ChatOrderItem,
 } from "@/lib/chatbot/order-dedupe"
 import { cancelChatOrder, createChatOrder } from "@/lib/chatbot/orders"
+import { sendWebOrderWhatsappConfirmation } from "@/lib/chatbot/whatsapp-confirmation"
 import {
   ADD_ANOTHER_CAKE_PROMPT,
   buildContextualOrderReplyText,
@@ -495,6 +496,15 @@ async function finalizeOrderFromState(userId: string, state: OrderState, channel
     return saveAndReply(userId, created.error ?? "No pude crear el pedido ahora mismo.", state)
   }
 
+  await sendWebOrderWhatsappConfirmation({
+    orderId: created.orderId,
+    channel,
+    phone: state.phone,
+    deliveryDate: created.deliveryDate,
+    items: orderItems,
+    reusedExisting: created.reusedExisting,
+  })
+
   const nextState = resetOrderState(state, channel)
   nextState.lastCreatedOrderId = created.orderId
   nextState.lastCreatedOrderAt = new Date().toISOString()
@@ -896,6 +906,16 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
       const created = await createChatOrder({ ...args, phone: String(args.phone ?? fallbackPhone ?? "") })
       if (!created.ok && created.shouldHandoff) {
         safetyEscalate = true
+      }
+      if (created.ok) {
+        await sendWebOrderWhatsappConfirmation({
+          orderId: created.orderId,
+          channel,
+          phone: String(args.phone ?? fallbackPhone ?? ""),
+          deliveryDate: created.deliveryDate,
+          items: Array.isArray(args.items) ? (args.items as ChatOrderItem[]) : [],
+          reusedExisting: created.reusedExisting,
+        })
       }
       return created
     }

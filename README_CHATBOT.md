@@ -31,16 +31,22 @@ Chatbot web, webhook de WhatsApp, FAQ y CTAs reutilizan esa misma fuente.
 - `WHATSAPP_VERIFY_TOKEN`
 - `WHATSAPP_TEMPLATE_REMINDER_NAME` (ej: `order_reminder_24h`)
 - `WHATSAPP_TEMPLATE_LANG` (ej: `es_ES`)
+- `TWILIO_ACCOUNT_SID`
+- `TWILIO_AUTH_TOKEN`
+- `TWILIO_WHATSAPP_FROM` (ej: `whatsapp:+14155238886` en sandbox o el remitente WhatsApp aprobado en producción)
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `ADMIN_EMAIL`
+
+Para confirmaciones outbound de pedidos web por Twilio se acepta también `TWILIO_WHATSAPP_NUMBER` o `TWILIO_MONITOR_FROM` como fallback del remitente, pero `TWILIO_WHATSAPP_FROM` es la variable recomendada. Si falta cualquier variable Twilio, el pedido se confirma igual y se registra `whatsapp_confirmation_skipped_disabled`.
 
 ## Endpoints
 
 - `POST /api/chat`: chat web con motor único y memoria persistente.
 - `GET /api/whatsapp/webhook`: verificación Meta (`hub.verify_token` + `hub.challenge`).
 - `POST /api/whatsapp/webhook`: recibe mensaje, reutiliza `handleMessage`, responde por Graph API.
+- `GET/POST /api/twilio/whatsapp`: webhook inbound Twilio WhatsApp; mantiene el canal `whatsapp`.
 - `GET /api/cron/send-reminders`: envío de recordatorios por plantilla WhatsApp, protegido por `CRON_SECRET`.
 
 ## Memoria persistente
@@ -85,6 +91,8 @@ Cuando hay handoff, el bot se pausa 2h (`bot_paused_until`).
 - Dentro de 24h se puede responder con texto libre.
 - Fuera de 24h se requiere **template** de WhatsApp.
 - Los recordatorios usan template (`WHATSAPP_TEMPLATE_REMINDER_NAME`).
+- Cuando el chatbot web crea un pedido con teléfono, se envía una confirmación outbound por Twilio con sabor, formato, fecha/plazo y recogida en tienda.
+- La idempotencia se guarda en `whatsapp_confirmation_sends` por `order_id`, así un retry o refresco no manda duplicados.
 
 ## Vercel Cron
 
