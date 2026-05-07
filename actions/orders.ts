@@ -13,6 +13,7 @@ import {
   orderPhoneMatchesSearch,
 } from "@/lib/admin/order-search"
 import { getAdminClient } from "@/lib/supabase/admin"
+import { computeReminderAt } from "@/lib/chatbot/reminders"
 import { normalizePhoneOrNull } from "@/lib/phone"
 import { getOrderPickupDateErrorMessage, validateOrderPickupDate } from "@/lib/pickup-date-validation"
 import { createClient } from "@/lib/supabase/server"
@@ -91,10 +92,20 @@ export async function createOrder(payload: z.infer<typeof createOrderSchema>) {
   const user = await requireAdminUser()
   const supabase = getAdminClient()
   const effectiveLeadDays = parsed.skip_lead_days ? 0 : LEAD_DAYS
-  const deliveryDateValidation = validateOrderPickupDate(parsed.delivery_date, new Date(), effectiveLeadDays, SHOP_TZ)
+  const createdAt = new Date()
+  const deliveryDateValidation = validateOrderPickupDate(parsed.delivery_date, createdAt, effectiveLeadDays, SHOP_TZ)
   if (deliveryDateValidation.kind !== "valid") {
     throw new Error(getOrderPickupDateErrorMessage(deliveryDateValidation, effectiveLeadDays, SHOP_TZ))
   }
+
+  const phone = parsed.phone?.trim() || null
+  const reminderAt = phone
+    ? computeReminderAt({
+        createdAt,
+        deliveryDate: deliveryDateValidation.pickupDate,
+        usedDefaultDeliveryDate: false,
+      })
+    : null
 
   const { data: order, error: orderError } = await supabase
     .from("orders")
@@ -104,9 +115,11 @@ export async function createOrder(payload: z.infer<typeof createOrderSchema>) {
       status: parsed.status || "pending",
       customer_name: parsed.customer_name,
       customer_email: parsed.customer_email ?? null,
-      phone: parsed.phone?.trim() || null,
+      phone,
       phone_normalized: normalizePhoneOrNull(parsed.phone),
       notes: parsed.notes,
+      reminder_at: reminderAt,
+      reminder_status: reminderAt ? "pending" : null,
     })
     .select("id")
     .single()

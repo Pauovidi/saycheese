@@ -229,6 +229,20 @@ test("mensaje incluye sabor, tamaño, fecha y recogida en tienda", () => {
   assert.match(message, /12\/05\/2026/)
 })
 
+test("mensaje de confirmación resume todos los items de un pedido multi-tarta", () => {
+  const message = buildWebOrderWhatsappConfirmationMessage({
+    deliveryDate: "2026-05-12",
+    items: [
+      { type: "cake", flavor: "Lotus", qty: 2 },
+      { type: "box", flavor: "Pistacho", qty: 1 },
+    ],
+  })
+
+  assert.match(message, /tarta grande de Lotus x2/)
+  assert.match(message, /cajita de Pistacho/)
+  assert.match(message, /12\/05\/2026/)
+})
+
 test("si faltan variables Twilio queda desactivado con log", async () => {
   const { events, logger } = createLogger()
   let called = false

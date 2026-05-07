@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 
 import { cancelOrder, markOrderDone, reopenOrder } from "@/actions/orders"
-import { getProductionEntryLine, resolveCanonicalFlavorLabel, type ProductionCatalogFlavor } from "@/lib/admin/production-presentation"
+import { buildAdminOrderItemLines, type ProductionCatalogFlavor } from "@/lib/admin/production-presentation"
 import { Button } from "@/components/ui/button"
 import { CancelOrderDialog } from "@/src/components/admin/cancel-order-dialog"
 import { MarkDoneDialog } from "@/src/components/admin/mark-done-dialog"
@@ -115,14 +115,8 @@ export function LatestOrders({ initialOrders, flavorCatalog }: LatestOrdersProps
                 <StatusBadge status={order.status} />
               </div>
               <ul className="mt-2 list-disc pl-5 text-sm">
-                {(order.order_items ?? []).map((item, idx) => (
-                  <li key={`${order.id}-${idx}`}>
-                    {getProductionEntryLine({
-                      type: item.type,
-                      flavor: resolveCanonicalFlavorLabel(item.flavor, flavorCatalog),
-                      qty: item.qty,
-                    })}
-                  </li>
+                {buildAdminOrderItemLines(order.order_items, flavorCatalog).map((line, idx) => (
+                  <li key={`${order.id}-${idx}`}>{line}</li>
                 ))}
               </ul>
 

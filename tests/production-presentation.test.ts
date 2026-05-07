@@ -2,6 +2,7 @@ import test from "node:test"
 import assert from "node:assert/strict"
 
 import {
+  buildAdminOrderItemLines,
   buildGroupedProductionDetails,
   buildProductionCopyText,
   buildProductionFlavorSummary,
@@ -155,6 +156,29 @@ test("resume producción por tipo y sabor ordenando por cantidad y sabor", () =>
 
 test("muestra cajitas como Cajita en las líneas de producción", () => {
   assert.equal(getProductionEntryLine({ type: "box", flavor: "Gofio", qty: 2 }), "Cajita · Gofio 🌾 — 2")
+})
+
+test("el listado admin muestra todas las tartas de un pedido multi-item", () => {
+  const lines = buildAdminOrderItemLines(
+    [
+      { type: "cake", flavor: "clasica", qty: 1 },
+      { type: "box", flavor: "hippo", qty: 2 },
+      { type: "cake", flavor: "gofio", qty: 1 },
+    ],
+    catalogFlavors
+  )
+
+  assert.deepEqual(lines, [
+    "Tarta grande · Clásica 🍰 — 1",
+    "Cajita · Hippo 🦛 — 2",
+    "Tarta grande · Gofio 🌾 — 1",
+  ])
+})
+
+test("el listado admin mantiene pedidos legacy de una sola tarta", () => {
+  assert.deepEqual(buildAdminOrderItemLines([{ type: "cake", flavor: "gofio", qty: 1 }], catalogFlavors), [
+    "Tarta grande · Gofio 🌾 — 1",
+  ])
 })
 
 test("genera el texto copiado agrupado por teléfono y con formato unificado", () => {

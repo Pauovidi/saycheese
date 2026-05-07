@@ -18,6 +18,12 @@ export type ProductionDetailInput = {
   createdAt: string
 }
 
+export type ProductionPresentationItem = {
+  type: ProductionPresentationType
+  flavor: string
+  qty: number
+}
+
 export type ProductionGroupedEntry = {
   orderId: string
   type: ProductionPresentationType
@@ -132,6 +138,19 @@ export function getProductionEntryLine(entry: { type: ProductionPresentationType
   }
 
   return `${baseLine} — ${entry.qty}`
+}
+
+export function buildAdminOrderItemLines(
+  items: ProductionPresentationItem[] | null | undefined,
+  catalogFlavors: ProductionCatalogFlavor[]
+) {
+  return (items ?? []).map((item) =>
+    getProductionEntryLine({
+      type: item.type,
+      flavor: resolveCanonicalFlavorLabel(item.flavor, catalogFlavors),
+      qty: item.qty,
+    })
+  )
 }
 
 export function buildGroupedProductionDetails(details: ProductionDetailInput[], catalogFlavors: ProductionCatalogFlavor[]) {

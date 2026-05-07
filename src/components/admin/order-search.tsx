@@ -4,7 +4,7 @@ import { useState, useTransition } from "react"
 import { toast } from "sonner"
 
 import { cancelOrder, markOrderDone, reopenOrder, searchOrders } from "@/actions/orders"
-import { getProductionEntryLine, resolveCanonicalFlavorLabel, type ProductionCatalogFlavor } from "@/lib/admin/production-presentation"
+import { buildAdminOrderItemLines, type ProductionCatalogFlavor } from "@/lib/admin/production-presentation"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { CancelOrderDialog } from "@/src/components/admin/cancel-order-dialog"
@@ -139,14 +139,8 @@ export function AdminOrderSearch({ flavorCatalog }: { flavorCatalog: ProductionC
               </div>
 
               <ul className="mt-2 list-disc pl-5 text-sm">
-                {(order.order_items ?? []).map((item, idx) => (
-                  <li key={`${order.id}-${idx}`}>
-                    {getProductionEntryLine({
-                      type: item.type,
-                      flavor: resolveCanonicalFlavorLabel(item.flavor, flavorCatalog),
-                      qty: item.qty,
-                    })}
-                  </li>
+                {buildAdminOrderItemLines(order.order_items, flavorCatalog).map((line, idx) => (
+                  <li key={`${order.id}-${idx}`}>{line}</li>
                 ))}
               </ul>
 
