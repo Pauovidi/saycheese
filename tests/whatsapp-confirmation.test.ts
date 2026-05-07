@@ -6,8 +6,20 @@ import {
   sendWebOrderWhatsappConfirmation,
 } from "../lib/chatbot/whatsapp-confirmation"
 import { normalizeSpanishWhatsappDestination } from "../lib/twilio/client"
+import { normalizeSpanishMetaWhatsappRecipient } from "../lib/whatsapp/cloud-api"
 
-const enabledEnv = {
+const metaEnv = {
+  WHATSAPP_ACCESS_TOKEN: "meta-token",
+  WHATSAPP_PHONE_NUMBER_ID: "phone-number-id",
+  WHATSAPP_TEMPLATE_LANG: "es_ES",
+}
+
+const metaTemplateEnv = {
+  ...metaEnv,
+  WHATSAPP_TEMPLATE_ORDER_CONFIRMATION_NAME: "order_confirmation",
+}
+
+const twilioEnv = {
   TWILIO_ACCOUNT_SID: "AC_test",
   TWILIO_AUTH_TOKEN: "token",
   TWILIO_WHATSAPP_FROM: "whatsapp:+14155238886",
@@ -31,8 +43,15 @@ test("normaliza teléfonos españoles para destino Twilio WhatsApp", () => {
   assert.equal(normalizeSpanishWhatsappDestination("123"), null)
 })
 
-test("pedido web confirmado con teléfono válido intenta enviar WhatsApp", async () => {
-  const sent: Array<{ to: string; body: string }> = []
+test("normaliza teléfonos españoles para destino Meta WhatsApp", () => {
+  assert.equal(normalizeSpanishMetaWhatsappRecipient("600000000"), "34600000000")
+  assert.equal(normalizeSpanishMetaWhatsappRecipient("+34600000000"), "34600000000")
+  assert.equal(normalizeSpanishMetaWhatsappRecipient("34 600 000 000"), "34600000000")
+  assert.equal(normalizeSpanishMetaWhatsappRecipient("123"), null)
+})
+
+test("pedido web confirmado con teléfono válido intenta enviar WhatsApp por Meta en producción", async () => {
+  const sent: Array<{ to: string; body: string; provider: string }> = []
   const { events, logger } = createLogger()
 
   const result = await sendWebOrderWhatsappConfirmation(
@@ -44,7 +63,39 @@ test("pedido web confirmado con teléfono válido intenta enviar WhatsApp", asyn
       items: [{ type: "cake", flavor: "Lotus", qty: 1 }],
     },
     {
-      env: enabledEnv,
+      env: metaTemplateEnv,
+      logger,
+      reserve: async () => ({ ok: true }),
+      markSent: async () => {},
+      send: async (input) => {
+        sent.push(input)
+        return { id: "wamid.123" }
+      },
+    }
+  )
+
+  assert.equal(result.ok, true)
+  assert.equal(sent.length, 1)
+  assert.equal(sent[0]?.to, "34600000000")
+  assert.equal(sent[0]?.provider, "meta")
+  assert.match(sent[0]?.body ?? "", /Pedido confirmado/i)
+  assert.equal(events.some((event) => event.args[0] === "whatsapp_confirmation_sent"), true)
+})
+
+test("usa Twilio como fallback solo cuando Meta no está configurado", async () => {
+  const sent: Array<{ to: string; provider: string }> = []
+  const { logger } = createLogger()
+
+  const result = await sendWebOrderWhatsappConfirmation(
+    {
+      orderId: "order-twilio",
+      channel: "web",
+      phone: "600000000",
+      deliveryDate: "2026-05-12",
+      items: [{ type: "cake", flavor: "Lotus", qty: 1 }],
+    },
+    {
+      env: twilioEnv,
       logger,
       reserve: async () => ({ ok: true }),
       markSent: async () => {},
@@ -56,10 +107,8 @@ test("pedido web confirmado con teléfono válido intenta enviar WhatsApp", asyn
   )
 
   assert.equal(result.ok, true)
-  assert.equal(sent.length, 1)
   assert.equal(sent[0]?.to, "whatsapp:+34600000000")
-  assert.match(sent[0]?.body ?? "", /Pedido confirmado/i)
-  assert.equal(events.some((event) => event.args[0] === "whatsapp_confirmation_sent"), true)
+  assert.equal(sent[0]?.provider, "twilio")
 })
 
 test("pedido web confirmado sin teléfono no envía y no rompe", async () => {
@@ -75,7 +124,7 @@ test("pedido web confirmado sin teléfono no envía y no rompe", async () => {
       items: [{ type: "box", flavor: "Pistacho", qty: 1 }],
     },
     {
-      env: enabledEnv,
+      env: metaEnv,
       logger,
       send: async () => {
         called = true
@@ -101,7 +150,7 @@ test("pedido confirmado desde WhatsApp inbound no envía confirmación outbound 
       items: [{ type: "cake", flavor: "Gofio", qty: 1 }],
     },
     {
-      env: enabledEnv,
+      env: metaEnv,
       send: async () => {
         called = true
         return {}
@@ -113,7 +162,7 @@ test("pedido confirmado desde WhatsApp inbound no envía confirmación outbound 
   assert.equal(called, false)
 })
 
-test("fallo de Twilio queda logueado y no lanza error", async () => {
+test("fallo del proveedor WhatsApp queda logueado y no lanza error", async () => {
   const { events, logger } = createLogger()
 
   const result = await sendWebOrderWhatsappConfirmation(
@@ -125,7 +174,7 @@ test("fallo de Twilio queda logueado y no lanza error", async () => {
       items: [{ type: "cake", flavor: "Lotus", qty: 1 }],
     },
     {
-      env: enabledEnv,
+      env: metaTemplateEnv,
       logger,
       reserve: async () => ({ ok: true }),
       markFailed: async () => {},
@@ -152,7 +201,7 @@ test("idempotencia evita enviar dos veces para el mismo pedido", async () => {
       items: [{ type: "cake", flavor: "Lotus", qty: 1 }],
     },
     {
-      env: enabledEnv,
+      env: metaTemplateEnv,
       logger,
       reserve: async () => ({ ok: false, reason: "duplicate" }),
       send: async () => {
@@ -204,5 +253,40 @@ test("si faltan variables Twilio queda desactivado con log", async () => {
 
   assert.deepEqual(result, { ok: true, skipped: "disabled" })
   assert.equal(called, false)
+  assert.equal(events.some((event) => event.args[0] === "whatsapp_confirmation_skipped_disabled"), true)
+})
+
+test("si Meta no tiene template desactiva el envío sin reservar idempotencia", async () => {
+  const { events, logger } = createLogger()
+  let reserved = false
+  let sent = false
+
+  const result = await sendWebOrderWhatsappConfirmation(
+    {
+      orderId: "order-7",
+      channel: "web",
+      phone: "600000000",
+      deliveryDate: "2026-05-12",
+      items: [{ type: "cake", flavor: "Lotus", qty: 1 }],
+    },
+    {
+      env: metaEnv,
+      logger,
+      reserve: async () => {
+        reserved = true
+        return { ok: true }
+      },
+      markSent: async () => {},
+      send: async () => {
+        sent = true
+        return { id: "wamid.123" }
+      },
+    }
+  )
+
+  assert.deepEqual(result, { ok: true, skipped: "disabled" })
+  assert.equal(reserved, false)
+  assert.equal(sent, false)
+  assert.equal(events.some((event) => event.args[0] === "whatsapp_confirmation_meta_template_missing"), true)
   assert.equal(events.some((event) => event.args[0] === "whatsapp_confirmation_skipped_disabled"), true)
 })

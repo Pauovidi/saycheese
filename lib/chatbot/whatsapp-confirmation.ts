@@ -6,6 +6,13 @@ import {
   type TwilioWhatsAppEnv,
   type TwilioWhatsAppMessageResult,
 } from "@/lib/twilio/client"
+import {
+  getMetaWhatsAppConfig,
+  normalizeSpanishMetaWhatsappRecipient,
+  sendMetaWhatsAppText,
+  type MetaWhatsAppEnv,
+  type MetaWhatsAppMessageResult,
+} from "@/lib/whatsapp/cloud-api"
 import { getAdminClient } from "@/lib/supabase/admin"
 
 type Channel = "web" | "whatsapp"
@@ -15,6 +22,8 @@ type ConfirmationReservation =
   | { ok: false; reason: "duplicate" | "disabled"; error?: unknown }
 
 type ConfirmationLogger = Pick<typeof console, "info" | "error">
+
+type ConfirmationProvider = "meta" | "twilio"
 
 export type WebOrderWhatsappConfirmationInput = {
   orderId: string
@@ -26,12 +35,20 @@ export type WebOrderWhatsappConfirmationInput = {
 }
 
 export type SendWebOrderWhatsappConfirmationDeps = {
-  env?: TwilioWhatsAppEnv
+  env?: TwilioWhatsAppEnv & MetaWhatsAppEnv
   logger?: ConfirmationLogger
-  reserve?: (input: { orderId: string; to: string; body: string }) => Promise<ConfirmationReservation>
-  markSent?: (input: { orderId: string; sid?: string }) => Promise<void>
+  reserve?: (input: { orderId: string; to: string; body: string; provider: ConfirmationProvider }) => Promise<ConfirmationReservation>
+  markSent?: (input: { orderId: string; sid?: string; provider: ConfirmationProvider }) => Promise<void>
   markFailed?: (input: { orderId: string; error: unknown }) => Promise<void>
-  send?: (input: { to: string; body: string }) => Promise<TwilioWhatsAppMessageResult>
+  send?: (input: {
+    to: string
+    body: string
+    provider: ConfirmationProvider
+    template?: {
+      orderSummary: string
+      pickupSummary: string
+    }
+  }) => Promise<TwilioWhatsAppMessageResult | MetaWhatsAppMessageResult>
 }
 
 const LEAD_DAYS_RAW = Number.parseInt(process.env.CHATBOT_LEAD_DAYS ?? "3", 10)
@@ -52,6 +69,10 @@ function buildItemsText(items: ChatOrderItem[]) {
     .join(", ")
 }
 
+function buildPickupSummary(deliveryDate?: string | null) {
+  return deliveryDate ? `Recogida en tienda el ${formatIsoDateEs(deliveryDate)}` : `Recogida en tienda. Plazo mínimo: ${LEAD_DAYS} días`
+}
+
 function formatIsoDateEs(value: string) {
   const [year, month, day] = value.split("-")
   if (!year || !month || !day) return value
@@ -63,9 +84,7 @@ export function buildWebOrderWhatsappConfirmationMessage(input: {
   deliveryDate?: string | null
   items: ChatOrderItem[]
 }) {
-  const pickupText = input.deliveryDate
-    ? `Recogida en tienda el ${formatIsoDateEs(input.deliveryDate)}.`
-    : `Recogida en tienda. Plazo mínimo: ${LEAD_DAYS} días.`
+  const pickupText = `${buildPickupSummary(input.deliveryDate)}.`
 
   return `¡Pedido confirmado! ${buildItemsText(input.items)}. ${pickupText}`
 }
@@ -75,7 +94,12 @@ function isMissingPersistenceError(error: unknown) {
   return /relation .*whatsapp_confirmation_sends.* does not exist|schema cache|PGRST|42P01/i.test(message)
 }
 
-async function reserveOrderWhatsappConfirmation(input: { orderId: string; to: string; body: string }): Promise<ConfirmationReservation> {
+async function reserveOrderWhatsappConfirmation(input: {
+  orderId: string
+  to: string
+  body: string
+  provider: ConfirmationProvider
+}): Promise<ConfirmationReservation> {
   try {
     const supabase = getAdminClient()
     const { error } = await supabase.from("whatsapp_confirmation_sends").insert({
@@ -97,7 +121,7 @@ async function reserveOrderWhatsappConfirmation(input: { orderId: string; to: st
   }
 }
 
-async function markOrderWhatsappConfirmationSent(input: { orderId: string; sid?: string }) {
+async function markOrderWhatsappConfirmationSent(input: { orderId: string; sid?: string; provider: ConfirmationProvider }) {
   const supabase = getAdminClient()
   await supabase
     .from("whatsapp_confirmation_sends")
@@ -135,15 +159,33 @@ export async function sendWebOrderWhatsappConfirmation(
     return { ok: true as const, skipped: "duplicate" as const }
   }
 
-  const to = normalizeSpanishWhatsappDestination(input.phone)
+  const metaConfig = getMetaWhatsAppConfig(deps.env)
+  const twilioConfig = getTwilioWhatsAppConfig(deps.env)
+  const provider: ConfirmationProvider = metaConfig.missing.length ? "twilio" : "meta"
+  const missing = provider === "meta" ? metaConfig.missing : twilioConfig.missing
+  const to =
+    provider === "meta" ? normalizeSpanishMetaWhatsappRecipient(input.phone) : normalizeSpanishWhatsappDestination(input.phone)
+
   if (!to) {
     logger.info("whatsapp_confirmation_skipped_missing_phone", { orderId: input.orderId })
     return { ok: true as const, skipped: "missing_phone" as const }
   }
 
-  const config = getTwilioWhatsAppConfig(deps.env)
-  if (config.missing.length) {
-    logger.info("whatsapp_confirmation_skipped_disabled", { orderId: input.orderId, missing: config.missing })
+  if (missing.length) {
+    logger.info("whatsapp_confirmation_skipped_disabled", { orderId: input.orderId, provider, missing })
+    return { ok: true as const, skipped: "disabled" as const }
+  }
+
+  if (provider === "meta" && !metaConfig.templateName) {
+    logger.info("whatsapp_confirmation_meta_template_missing", {
+      orderId: input.orderId,
+      note: "Meta requires an approved template to initiate conversations outside the 24h customer service window.",
+    })
+    logger.info("whatsapp_confirmation_skipped_disabled", {
+      orderId: input.orderId,
+      provider,
+      missing: ["WHATSAPP_TEMPLATE_ORDER_CONFIRMATION_NAME"],
+    })
     return { ok: true as const, skipped: "disabled" as const }
   }
 
@@ -151,7 +193,9 @@ export async function sendWebOrderWhatsappConfirmation(
     deliveryDate: input.deliveryDate,
     items: input.items,
   })
-  const reserved = await (deps.reserve ?? reserveOrderWhatsappConfirmation)({ orderId: input.orderId, to, body })
+  const orderSummary = buildItemsText(input.items)
+  const pickupSummary = buildPickupSummary(input.deliveryDate)
+  const reserved = await (deps.reserve ?? reserveOrderWhatsappConfirmation)({ orderId: input.orderId, to, body, provider })
 
   if (!reserved.ok) {
     const event = reserved.reason === "duplicate" ? "whatsapp_confirmation_duplicate_skipped" : "whatsapp_confirmation_skipped_disabled"
@@ -160,9 +204,23 @@ export async function sendWebOrderWhatsappConfirmation(
   }
 
   try {
-    const result = await (deps.send ?? sendTwilioWhatsAppText)({ to, body })
-    await (deps.markSent ?? markOrderWhatsappConfirmationSent)({ orderId: input.orderId, sid: result.sid })
-    logger.info("whatsapp_confirmation_sent", { orderId: input.orderId, to, sid: result.sid })
+    const sender =
+      deps.send ??
+      ((sendInput: {
+        to: string
+        body: string
+        provider: ConfirmationProvider
+        template?: { orderSummary: string; pickupSummary: string }
+      }) => (sendInput.provider === "meta" ? sendMetaWhatsAppText(sendInput) : sendTwilioWhatsAppText(sendInput)))
+    const result = await sender({
+      to,
+      body,
+      provider,
+      template: { orderSummary, pickupSummary },
+    })
+    const sid = "sid" in result ? result.sid : "id" in result ? result.id : undefined
+    await (deps.markSent ?? markOrderWhatsappConfirmationSent)({ orderId: input.orderId, sid, provider })
+    logger.info("whatsapp_confirmation_sent", { orderId: input.orderId, to, provider, sid })
     return { ok: true as const, sent: true as const, to, body }
   } catch (error) {
     try {
