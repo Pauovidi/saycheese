@@ -5,6 +5,7 @@ import test from "node:test"
 
 import {
   createCakeFlavorRecordInDb,
+  getAdminCatalogFlavorRecordsFromPersistence,
   getCatalogFlavorRecordsFromPersistence,
   hardDeleteArchivedCakeFlavorRecordInDb,
   restoreCakeFlavorRecordInDb,
@@ -31,6 +32,8 @@ function row(overrides: Partial<CakeFlavorRow>): CakeFlavorRow {
     image_box_url: overrides.image_box_url ?? "/images/products/cajita-lotus.webp",
     display_order: overrides.display_order ?? 0,
     is_active: overrides.is_active ?? true,
+    is_monthly_special: overrides.is_monthly_special ?? false,
+    monthly_special_expires_at: overrides.monthly_special_expires_at ?? null,
     deleted_at: overrides.deleted_at ?? null,
     created_at: overrides.created_at ?? "2026-04-22T15:00:00.000Z",
     updated_at: overrides.updated_at ?? "2026-04-22T15:00:00.000Z",
@@ -89,6 +92,8 @@ class MemoryCakeFlavorPersistence implements CakeFlavorPersistence {
       image_box_url: input.image_box_url,
       display_order: input.display_order,
       is_active: input.is_active,
+      is_monthly_special: input.is_monthly_special,
+      monthly_special_expires_at: input.monthly_special_expires_at,
       deleted_at: input.deleted_at,
       created_at: "2026-04-26T10:00:00.000Z",
       updated_at: "2026-04-26T10:00:00.000Z",
@@ -165,6 +170,34 @@ test("crear sabor inserta en cake_flavors y crea revisión", async () => {
   assert.equal(persistence.revisions[0].actor, "admin@example.com")
 })
 
+test("admin puede crear una tarta nueva como tarta del mes con expiración", async () => {
+  const expiresAt = "2999-05-31T21:59:00.000Z"
+  const persistence = new MemoryCakeFlavorPersistence([row({ slug: "lotus", display_order: 0 })])
+
+  const records = await createCakeFlavorRecordInDb(
+    {
+      slug: "queso-azul-miel",
+      name: "Queso azul con miel",
+      description: "Intenso.",
+      allergens: "Leche",
+      tartaImage: "https://cdn.example.com/tarta.webp",
+      cajitaImage: "https://cdn.example.com/cajita.webp",
+      tartaPrice: 39,
+      cajitaPrice: 14,
+      isMonthlySpecial: true,
+      monthlySpecialExpiresAt: expiresAt,
+    },
+    "admin@example.com",
+    persistence
+  )
+
+  const created = persistence.rows.find((candidate) => candidate.slug === "queso-azul-miel")
+
+  assert.equal(created?.is_monthly_special, true)
+  assert.equal(created?.monthly_special_expires_at, expiresAt)
+  assert.equal(records[0]?.slug, "queso-azul-miel")
+})
+
 test("editar sabor actualiza cake_flavors y crea revisión", async () => {
   const persistence = new MemoryCakeFlavorPersistence([row({ slug: "lotus" })])
 
@@ -186,6 +219,42 @@ test("editar sabor actualiza cake_flavors y crea revisión", async () => {
   assert.equal(records.find((record) => record.slug === "lotus")?.name, "Lotus extra")
   assert.equal(records.find((record) => record.slug === "lotus")?.tartaPrice, 37)
   assert.equal(persistence.revisions[0].action, "update")
+})
+
+test("admin puede marcar una tarta existente como tarta del mes y deja una sola activa", async () => {
+  const expiresAt = "2999-05-31T21:59:00.000Z"
+  const persistence = new MemoryCakeFlavorPersistence([
+    row({ id: "id-lotus", slug: "lotus", name: "Lotus", display_order: 0 }),
+    row({
+      id: "id-pistacho",
+      slug: "pistacho",
+      name: "Pistacho",
+      display_order: 1,
+      is_monthly_special: true,
+      monthly_special_expires_at: "2999-04-30T21:59:00.000Z",
+    }),
+  ])
+
+  const records = await updateCakeFlavorRecordInDb(
+    "lotus",
+    {
+      name: "Lotus",
+      description: "Caramelizado.",
+      allergens: "Leche, gluten",
+      tartaImage: "/tarta.webp",
+      cajitaImage: "/cajita.webp",
+      tartaPrice: 37,
+      cajitaPrice: 13.5,
+      isMonthlySpecial: true,
+      monthlySpecialExpiresAt: expiresAt,
+    },
+    "admin@example.com",
+    persistence
+  )
+
+  assert.equal(persistence.rows.find((candidate) => candidate.slug === "lotus")?.is_monthly_special, true)
+  assert.equal(persistence.rows.find((candidate) => candidate.slug === "pistacho")?.is_monthly_special, false)
+  assert.equal(records[0]?.slug, "lotus")
 })
 
 test("borrar sabor hace soft-delete, no delete físico, y crea revisión", async () => {
@@ -286,6 +355,28 @@ test("los sabores archivados no aparecen en la lectura activa normal", async () 
   )
 })
 
+test("una tarta del mes expirada no aparece en lectura pública pero sigue en admin", async () => {
+  const persistence = new MemoryCakeFlavorPersistence([
+    row({ slug: "lotus", display_order: 0 }),
+    row({
+      slug: "mango",
+      name: "Mango",
+      display_order: 1,
+      is_monthly_special: true,
+      monthly_special_expires_at: "2020-01-31T21:59:00.000Z",
+    }),
+  ])
+
+  const publicRecords = await getCatalogFlavorRecordsFromPersistence(persistence)
+  const adminRecords = await getAdminCatalogFlavorRecordsFromPersistence(persistence)
+
+  assert.deepEqual(
+    publicRecords.map((record) => record.slug),
+    ["lotus"]
+  )
+  assert.ok(adminRecords.some((record) => record.slug === "mango" && record.isMonthlySpecial))
+})
+
 test("crear con un slug archivado orienta a restaurar el sabor", async () => {
   const persistence = new MemoryCakeFlavorPersistence([
     row({
@@ -378,4 +469,14 @@ test("la UI presenta el soft-delete como archivo y no como borrado irreversible"
   assert.match(source, /Descartar cambios/)
   assert.doesNotMatch(source, /Borrar sabor/)
   assert.doesNotMatch(source, /no se puede deshacer/)
+})
+
+test("la UI admin permite marcar tarta del mes y definir expiración", async () => {
+  const source = await readFile(resolve("src/components/admin/cake-catalog-editor.tsx"), "utf8")
+
+  assert.match(source, /Tarta del mes/)
+  assert.match(source, /monthlySpecialExpiresAt/)
+  assert.match(source, /type="datetime-local"/)
+  assert.match(source, /tarta del mes activa/)
+  assert.match(source, /tarta del mes expirada/)
 })

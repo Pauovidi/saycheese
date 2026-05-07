@@ -1,9 +1,19 @@
-export const HUMAN_SUPPORT_PHONE_RAW = "681147149"
-export const HUMAN_SUPPORT_PHONE_E164 = "+34681147149"
-export const HUMAN_SUPPORT_PHONE_DISPLAY = "+34 681 14 71 49"
-export const HUMAN_SUPPORT_WHATSAPP_LINK = "https://wa.me/34681147149"
+export const OFFICIAL_WHATSAPP_PHONE_RAW = "16414294476"
+export const OFFICIAL_WHATSAPP_PHONE_E164 = "+16414294476"
+export const OFFICIAL_WHATSAPP_PHONE_DISPLAY = "+1 641 429 4476"
+export const OFFICIAL_WHATSAPP_LINK = "https://wa.me/16414294476"
+export const HUMAN_SUPPORT_PHONE_RAW = OFFICIAL_WHATSAPP_PHONE_RAW
+export const HUMAN_SUPPORT_PHONE_E164 = OFFICIAL_WHATSAPP_PHONE_E164
+export const HUMAN_SUPPORT_PHONE_DISPLAY = OFFICIAL_WHATSAPP_PHONE_DISPLAY
+export const HUMAN_SUPPORT_WHATSAPP_LINK = OFFICIAL_WHATSAPP_LINK
 export const MOBILE_LAUNCHER_WHATSAPP_PHONE_E164 = "+16414294476"
-export const MOBILE_LAUNCHER_WHATSAPP_LINK = "https://wa.me/16414294476"
+export const MOBILE_LAUNCHER_WHATSAPP_LINK = OFFICIAL_WHATSAPP_LINK
+
+export const STORE_ADDRESS = "C. Abián, 4, 35212 Marpequeña, Las Palmas"
+export const STORE_ADDRESS_COPY = `Tienda física y obrador: ${STORE_ADDRESS}.`
+export const BUSINESS_LEGAL_NAME = "Saycheese By Nestor Perez"
+export const BUSINESS_NIF = "54269855K"
+export const BUSINESS_EMAIL = "Saycheesebynp@gmail.com"
 
 export const PICKUP_ONLY_COPY = "Solo recogida en tienda. No hacemos envíos."
 export const FORMAT_SIZE_COPY = "Siempre trabajamos con 2 tamaños: grande y cajita."
@@ -57,7 +67,7 @@ export function buildHumanSupportMessage(
     return `${prefix} ${HUMAN_SUPPORT_PHONE_DISPLAY}`
   }
 
-  return `${prefix} ${HUMAN_SUPPORT_WHATSAPP_LINK} o llama al ${HUMAN_SUPPORT_PHONE_E164}`
+  return `${prefix} ${HUMAN_SUPPORT_WHATSAPP_LINK}`
 }
 
 export function buildUnconfirmedProductInfoMessage(channel: "web" | "whatsapp" = "web") {

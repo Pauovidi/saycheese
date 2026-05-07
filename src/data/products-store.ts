@@ -1,5 +1,6 @@
 export {
   createCakeFlavorRecordInDb,
+  getAdminCatalogFlavorRecords,
   getArchivedCatalogFlavorRecords,
   hardDeleteArchivedCakeFlavorRecordInDb,
   getCatalogFlavorFacts,

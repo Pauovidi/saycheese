@@ -14,6 +14,8 @@ export const flavorRecordSchema = z.object({
   position: z.number().int().nonnegative(),
   createdAt: z.string().optional(),
   updatedAt: z.string().optional(),
+  isMonthlySpecial: z.boolean().optional(),
+  monthlySpecialExpiresAt: z.string().nullable().optional(),
 })
 
 const catalogDocumentSchema = z.object({

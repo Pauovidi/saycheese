@@ -25,9 +25,10 @@ export function ProductCard({ product, sibling, priority = false }: ProductCardP
   // The actual product to display depends on the selected format
   const displayProduct =
     selectedFormat === product.format ? product : sibling ?? product
+  const isMonthlySpecial = Boolean(displayProduct.isMonthlySpecialActive)
 
   return (
-    <article className="group flex flex-col">
+    <article className={`group flex flex-col ${isMonthlySpecial ? "border-2 border-accent p-2" : ""}`}>
       <Link
         href={`/producto/${displayProduct.slug}`}
         className="relative aspect-square overflow-hidden bg-secondary"
@@ -52,6 +53,11 @@ export function ProductCard({ product, sibling, priority = false }: ProductCardP
         <span className="absolute left-2 top-2 bg-accent px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-accent-foreground">
           {getCustomerFacingFormatLabel(displayProduct.format)}
         </span>
+        {isMonthlySpecial ? (
+          <span className="absolute right-2 top-2 bg-primary px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-primary-foreground">
+            Tarta del mes
+          </span>
+        ) : null}
       </Link>
       <div className="flex flex-1 flex-col pt-4">
         <Link href={`/producto/${displayProduct.slug}`}>

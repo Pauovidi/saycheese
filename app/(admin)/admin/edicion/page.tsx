@@ -2,10 +2,10 @@ export const dynamic = "force-dynamic"
 export const revalidate = 0
 
 import { CakeCatalogEditor } from "@/src/components/admin/cake-catalog-editor"
-import { getArchivedCatalogFlavorRecords, getCatalogFlavorRecords } from "@/src/data/products-store"
+import { getAdminCatalogFlavorRecords, getArchivedCatalogFlavorRecords } from "@/src/data/products-store"
 
 export default async function EdicionPage() {
-  const flavors = await getCatalogFlavorRecords()
+  const flavors = await getAdminCatalogFlavorRecords()
   const archivedFlavors = await getArchivedCatalogFlavorRecords()
 
   return (

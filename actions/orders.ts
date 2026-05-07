@@ -13,6 +13,7 @@ import {
   orderPhoneMatchesSearch,
 } from "@/lib/admin/order-search"
 import { getAdminClient } from "@/lib/supabase/admin"
+import { buildUnavailableFlavorMessage, resolveFlavorAvailability } from "@/lib/chatbot/products"
 import { computeReminderAt } from "@/lib/chatbot/reminders"
 import { normalizePhoneOrNull } from "@/lib/phone"
 import { getOrderPickupDateErrorMessage, validateOrderPickupDate } from "@/lib/pickup-date-validation"
@@ -96,6 +97,14 @@ export async function createOrder(payload: z.infer<typeof createOrderSchema>) {
   const deliveryDateValidation = validateOrderPickupDate(parsed.delivery_date, createdAt, effectiveLeadDays, SHOP_TZ)
   if (deliveryDateValidation.kind !== "valid") {
     throw new Error(getOrderPickupDateErrorMessage(deliveryDateValidation, effectiveLeadDays, SHOP_TZ))
+  }
+
+  const flavorChecks = await Promise.all(parsed.items.map((item) => resolveFlavorAvailability(item.flavor)))
+  const unavailableFlavor = flavorChecks.find((check) => !check.available)
+
+  if (unavailableFlavor) {
+    const flavorName = "flavor" in unavailableFlavor ? unavailableFlavor.flavor : "ese sabor"
+    throw new Error(await buildUnavailableFlavorMessage(flavorName, { channel: "web" }))
   }
 
   const phone = parsed.phone?.trim() || null

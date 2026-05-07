@@ -15,6 +15,9 @@ export interface Product {
   weightInfo?: string
   images: string[]
   featured: boolean
+  isMonthlySpecial?: boolean
+  isMonthlySpecialActive?: boolean
+  monthlySpecialExpiresAt?: string | null
 }
 
 /** A "flavor" groups both formats (tarta + cajita) under a shared category */
@@ -23,6 +26,40 @@ export type Flavor = {
   label: string
   tarta?: Product
   cajita?: Product
+  isMonthlySpecial?: boolean
+  isMonthlySpecialActive?: boolean
+  monthlySpecialExpiresAt?: string | null
+}
+
+export type MonthlySpecialFields = {
+  isMonthlySpecial?: boolean
+  monthlySpecialExpiresAt?: string | null
+}
+
+function timestampFromOptionalDate(value?: string | null) {
+  if (!value) return null
+  const timestamp = Date.parse(value)
+  return Number.isFinite(timestamp) ? timestamp : null
+}
+
+export function isMonthlySpecialActive(input: MonthlySpecialFields, at: Date = new Date()) {
+  if (!input.isMonthlySpecial) return false
+  const expiresAt = timestampFromOptionalDate(input.monthlySpecialExpiresAt)
+  if (expiresAt === null) return false
+  return expiresAt > at.getTime()
+}
+
+export function isCakeFlavorAvailable(input: MonthlySpecialFields & { deletedAt?: string | null }, at: Date = new Date()) {
+  if (input.deletedAt) return false
+  if (input.isMonthlySpecial && !isMonthlySpecialActive(input, at)) return false
+  return true
+}
+
+export function getCakeFlavorAdminStatus(input: MonthlySpecialFields & { deletedAt?: string | null }, at: Date = new Date()) {
+  if (input.deletedAt) return "despublicada"
+  if (isMonthlySpecialActive(input, at)) return "tarta del mes activa"
+  if (input.isMonthlySpecial) return "tarta del mes expirada"
+  return "publicada"
 }
 
 export const products: Product[] = [
@@ -398,6 +435,8 @@ export interface EditableFlavorRecord {
   createdAt?: string
   updatedAt?: string
   deletedAt?: string | null
+  isMonthlySpecial?: boolean
+  monthlySpecialExpiresAt?: string | null
 }
 
 export interface EditableCatalogDocument {
@@ -452,6 +491,12 @@ export const seedFlavorRecords = buildFlavorRecordsFromProducts(products)
 export function buildProductsFromFlavorRecords(records: EditableFlavorRecord[]): Product[] {
   return sortFlavorRecords(records).flatMap((record, index) => {
     const category = record.slug
+    const isSpecialActive = isMonthlySpecialActive(record)
+    const specialFields = {
+      isMonthlySpecial: Boolean(record.isMonthlySpecial),
+      isMonthlySpecialActive: isSpecialActive,
+      monthlySpecialExpiresAt: record.monthlySpecialExpiresAt ?? null,
+    }
     const tarta: Product = {
       id: `tarta-${category}`,
       name: record.name,
@@ -467,7 +512,8 @@ export function buildProductsFromFlavorRecords(records: EditableFlavorRecord[]):
       portionInfo: TARTA_PORTION_INFO,
       weightInfo: TARTA_WEIGHT_INFO,
       images: record.tartaImage ? [record.tartaImage] : [],
-      featured: index < 6,
+      featured: isSpecialActive || index < 6,
+      ...specialFields,
     }
 
     const cajita: Product = {
@@ -485,15 +531,27 @@ export function buildProductsFromFlavorRecords(records: EditableFlavorRecord[]):
       portionInfo: CAJITA_PORTION_INFO,
       weightInfo: CAJITA_WEIGHT_INFO,
       images: record.cajitaImage ? [record.cajitaImage] : [],
-      featured: index < 6,
+      featured: isSpecialActive || index < 6,
+      ...specialFields,
     }
 
     return [cajita, tarta]
   })
 }
 
-export function sortFlavorRecords(records: EditableFlavorRecord[]) {
-  return [...records].sort((a, b) => a.position - b.position || a.name.localeCompare(b.name, "es"))
+export function sortFlavorRecords(records: EditableFlavorRecord[], at: Date = new Date()) {
+  return [...records].sort((a, b) => {
+    const specialDelta = Number(isMonthlySpecialActive(b, at)) - Number(isMonthlySpecialActive(a, at))
+    if (specialDelta) return specialDelta
+    return a.position - b.position || a.name.localeCompare(b.name, "es")
+  })
+}
+
+export function filterAvailableFlavorRecords(records: EditableFlavorRecord[], at: Date = new Date()) {
+  return sortFlavorRecords(
+    records.filter((record) => isCakeFlavorAvailable(record, at)),
+    at
+  )
 }
 
 export function getFlavorsFromProducts(sourceProducts: Product[]): Flavor[] {
@@ -501,11 +559,21 @@ export function getFlavorsFromProducts(sourceProducts: Product[]): Flavor[] {
 
   for (const product of sourceProducts) {
     if (!map.has(product.category)) {
-      map.set(product.category, { category: product.category, label: product.name })
+      map.set(product.category, {
+        category: product.category,
+        label: product.name,
+        isMonthlySpecial: product.isMonthlySpecial,
+        isMonthlySpecialActive: product.isMonthlySpecialActive,
+        monthlySpecialExpiresAt: product.monthlySpecialExpiresAt,
+      })
     }
 
     const flavor = map.get(product.category)
     if (!flavor) continue
+
+    flavor.isMonthlySpecial = flavor.isMonthlySpecial || product.isMonthlySpecial
+    flavor.isMonthlySpecialActive = flavor.isMonthlySpecialActive || product.isMonthlySpecialActive
+    flavor.monthlySpecialExpiresAt = flavor.monthlySpecialExpiresAt ?? product.monthlySpecialExpiresAt
 
     if (product.format === "tarta") {
       flavor.tarta = product
