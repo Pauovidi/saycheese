@@ -85,6 +85,25 @@ test("si se añade un sabor nuevo, aparece desde el catálogo sin tocar el bot",
   assert.doesNotMatch(message, /Oreo: grande/)
 })
 
+test("lista la tarta del mes activa destacada arriba", () => {
+  const message = buildFlavorListMessage([
+    {
+      flavor: "Pistacho",
+      sizes: [
+        { format: "tarta", label: "grande", priceText: "35 €" },
+        { format: "cajita", label: "cajita", priceText: "12 €" },
+      ],
+      isMonthlySpecial: true,
+      isMonthlySpecialActive: true,
+      monthlySpecialExpiresAt: "2999-05-31T21:59:00.000Z",
+    },
+    ...catalogABC.filter((flavor) => flavor.flavor !== "Pistacho"),
+  ])
+
+  assert.match(message, /Tarta del mes: Pistacho/)
+  assert.match(message, /^- Pistacho \(Tarta del mes\)$/m)
+})
+
 test("el mismo builder sirve para web y WhatsApp", () => {
   const webMessage = buildFlavorListMessage(catalogABC, { channel: "web" })
   const whatsappMessage = buildFlavorListMessage(catalogABC, { channel: "whatsapp" })
@@ -106,7 +125,7 @@ test("si no hay sabores publicados, ofrece contacto humano", () => {
   const message = buildFlavorListMessage([], { channel: "whatsapp" })
 
   assert.match(message, /no hay sabores publicados/)
-  assert.match(message, /\+34 681 14 71 49/)
+  assert.match(message, /\+1 641 429 4476/)
 })
 
 test("puede responder sabores sin repetir hola en mitad del flujo", () => {

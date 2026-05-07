@@ -1,4 +1,5 @@
 import type { Metadata } from "next"
+import { BUSINESS_EMAIL, BUSINESS_LEGAL_NAME, BUSINESS_NIF, STORE_ADDRESS } from "@/src/data/business"
 
 export const metadata: Metadata = {
   title: "Aviso Legal | SayCheese",
@@ -18,10 +19,10 @@ export default function AvisoLegalPage() {
             se informa a los usuarios de los siguientes datos:
           </p>
           <ul className="list-inside list-disc space-y-1">
-            <li><strong>Titular:</strong> Saycheese By Nestor Perez</li>
-            <li><strong>NIF:</strong> 54269855K</li>
-            <li><strong>Direccion:</strong> Calle Abian 4</li>
-            <li><strong>Correo electronico:</strong> Saycheesebynp@gmail.com</li>
+            <li><strong>Titular:</strong> {BUSINESS_LEGAL_NAME}</li>
+            <li><strong>NIF:</strong> {BUSINESS_NIF}</li>
+            <li><strong>Direccion:</strong> {STORE_ADDRESS}</li>
+            <li><strong>Correo electronico:</strong> {BUSINESS_EMAIL}</li>
             <li><strong>Actividad:</strong> Venta de productos alimenticios y bebidas</li>
           </ul>
           <p>

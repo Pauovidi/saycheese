@@ -4,9 +4,9 @@
 
 La fuente de verdad operativa vive en `src/data/business.ts`.
 
-- `HUMAN_SUPPORT_PHONE_RAW = 681147149`
-- `HUMAN_SUPPORT_PHONE_E164 = +34681147149`
-- `HUMAN_SUPPORT_WHATSAPP_LINK = https://wa.me/34681147149`
+- `HUMAN_SUPPORT_PHONE_RAW = 16414294476`
+- `HUMAN_SUPPORT_PHONE_E164 = +16414294476`
+- `HUMAN_SUPPORT_WHATSAPP_LINK = https://wa.me/16414294476`
 - `PICKUP_ONLY_COPY = "Solo recogida en tienda. No hacemos envíos."`
 - labels customer-facing de tamaños:
   - `tarta` interna -> `grande`
@@ -68,8 +68,8 @@ Además se activa automáticamente si:
 - no hay respuesta segura (ej. alérgenos/ingredientes sin dato confirmado o pedido ambiguo)
 
 El handoff siempre devuelve:
-- WhatsApp: `https://wa.me/34681147149`
-- Teléfono visible: `+34681147149`
+- WhatsApp: `https://wa.me/16414294476`
+- Teléfono visible: `+1 641 429 4476`
 
 Cuando hay handoff, el bot se pausa 2h (`bot_paused_until`).
 

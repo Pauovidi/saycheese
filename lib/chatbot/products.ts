@@ -3,8 +3,10 @@ import {
   getCustomerFacingFormatLabel,
   PICKUP_ONLY_COPY,
 } from "@/src/data/business"
-import type { Product } from "@/src/data/products"
+import { buildProductsFromFlavorRecords, getCakeFlavorAdminStatus, type EditableFlavorRecord, type Product } from "@/src/data/products"
 import {
+  getAdminCatalogFlavorRecords,
+  getArchivedCatalogFlavorRecords,
   getCatalogFlavorFacts,
   getCatalogFlavors,
   getCatalogProductBySlug,
@@ -23,6 +25,9 @@ export type ChatbotFlavorSize = {
 export type ChatbotAvailableCakeFlavor = {
   flavor: string
   sizes: ChatbotFlavorSize[]
+  isMonthlySpecial?: boolean
+  isMonthlySpecialActive?: boolean
+  monthlySpecialExpiresAt?: string | null
 }
 
 export type ChatbotCatalogForMessage = {
@@ -75,18 +80,30 @@ export async function listFlavorsAndSizes() {
   const grouped = new Map<string, ChatbotAvailableCakeFlavor>()
 
   for (const product of products) {
-    const current = grouped.get(product.category) ?? { flavor: product.name, sizes: [] }
+    const current = grouped.get(product.category) ?? {
+      flavor: product.name,
+      sizes: [],
+      isMonthlySpecial: product.isMonthlySpecial,
+      isMonthlySpecialActive: product.isMonthlySpecialActive,
+      monthlySpecialExpiresAt: product.monthlySpecialExpiresAt,
+    }
     current.sizes.push({
       format: product.format,
       label: getCustomerFacingFormatLabel(product.format),
       priceText: product.priceText,
     })
+    current.isMonthlySpecial = current.isMonthlySpecial || product.isMonthlySpecial
+    current.isMonthlySpecialActive = current.isMonthlySpecialActive || product.isMonthlySpecialActive
+    current.monthlySpecialExpiresAt = current.monthlySpecialExpiresAt ?? product.monthlySpecialExpiresAt
     grouped.set(product.category, current)
   }
 
   return Array.from(grouped.values()).map((entry) => ({
     flavor: entry.flavor,
     sizes: entry.sizes.sort((a, b) => (a.format === "tarta" ? -1 : 1)),
+    isMonthlySpecial: entry.isMonthlySpecial,
+    isMonthlySpecialActive: entry.isMonthlySpecialActive,
+    monthlySpecialExpiresAt: entry.monthlySpecialExpiresAt,
   }))
 }
 
@@ -141,10 +158,15 @@ export function buildFlavorListMessage(
   }
 
   const catalog = buildCatalogForMessage(flavors)
-  const flavorLines = catalog.flavors.map((flavor) => `- ${flavor}`)
+  const monthlySpecial = flavors.find((flavor) => flavor.isMonthlySpecialActive)
+  const flavorLines = catalog.flavors.map((flavor) => {
+    const suffix = monthlySpecial?.flavor === flavor ? " (Tarta del mes)" : ""
+    return `- ${flavor}${suffix}`
+  })
   const sizeLines = catalog.sizes.map(formatSizePriceLine)
+  const monthlySpecialIntro = monthlySpecial ? `Tarta del mes: ${monthlySpecial.flavor}.\n\n` : ""
 
-  return `${intro}Tenemos estos sabores disponibles:
+  return `${intro}${monthlySpecialIntro}Tenemos estos sabores disponibles:
 ${flavorLines.join("\n")}
 
 Trabajamos con 2 tamaños:
@@ -215,4 +237,59 @@ export async function isKnownFlavor(flavor: string) {
   const normalized = normalize(flavor)
   const flavors = await getCatalogFlavors()
   return flavors.some((flavorEntry) => normalize(flavorEntry.category) === normalized || normalize(flavorEntry.label) === normalized)
+}
+
+function bestRecordMatch(query: string, records: EditableFlavorRecord[]) {
+  const products = buildProductsFromFlavorRecords(records)
+  const match = products
+    .map((product) => ({ product, score: scoreFlavorMatch(query, product) }))
+    .filter((entry) => entry.score > 0)
+    .sort((a, b) => b.score - a.score || Number(Boolean(b.product.allergens)) - Number(Boolean(a.product.allergens)))[0]
+
+  if (!match) return undefined
+  return records.find((record) => record.slug === match.product.category)
+}
+
+export async function findUnavailableFlavorByQuery(query: string) {
+  const availableFlavors = await getCatalogFlavors()
+  const availableCategories = new Set(availableFlavors.map((flavor) => flavor.category))
+  const [adminRecords, archivedRecords] = await Promise.all([
+    getAdminCatalogFlavorRecords(),
+    getArchivedCatalogFlavorRecords(),
+  ])
+  const unavailableRecords = [...adminRecords, ...archivedRecords].filter(
+    (record) => !availableCategories.has(record.slug)
+  )
+  const match = bestRecordMatch(query, unavailableRecords)
+
+  if (!match) return undefined
+
+  return {
+    flavor: match.name,
+    category: match.slug,
+    status: getCakeFlavorAdminStatus(match),
+  }
+}
+
+export async function resolveFlavorAvailability(flavor: string) {
+  if (await isKnownFlavor(flavor)) {
+    return { available: true as const }
+  }
+
+  const unavailable = await findUnavailableFlavorByQuery(flavor)
+
+  return {
+    available: false as const,
+    flavor: unavailable?.flavor ?? flavor,
+    status: unavailable?.status ?? "despublicada",
+  }
+}
+
+export async function buildUnavailableFlavorMessage(flavor: string, options: { channel?: ChatbotChannel } = {}) {
+  const alternatives = (await listFlavorsAndSizes()).slice(0, 5).map((entry) => entry.flavor)
+  const alternativeCopy = alternatives.length
+    ? `Ahora mismo puedes pedir: ${alternatives.join(", ")}.`
+    : buildHumanSupportMessage("Te atiende una persona del equipo para confirmarte alternativas aquí:", options.channel)
+
+  return `Ahora mismo ${flavor} no está disponible para nuevos pedidos. ${alternativeCopy}`
 }

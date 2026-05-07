@@ -1,11 +1,13 @@
 import { getAdminClient } from "@/lib/supabase/admin"
 import {
   buildProductsFromFlavorRecords,
+  filterAvailableFlavorRecords,
   getFlavorFactsFromProducts,
   getFlavorsFromProducts,
   getProductBySlugFromProducts,
   getProductsByCategoryFromProducts,
   seedFlavorRecords,
+  isMonthlySpecialActive,
   sortFlavorRecords,
   type EditableFlavorRecord,
 } from "@/src/data/products"
@@ -26,6 +28,8 @@ export type CakeFlavorRow = {
   image_box_url: string | null
   display_order: number | null
   is_active: boolean
+  is_monthly_special: boolean | null
+  monthly_special_expires_at: string | null
   deleted_at: string | null
   created_at: string | null
   updated_at: string | null
@@ -42,6 +46,8 @@ type CakeFlavorInsert = {
   image_box_url: string
   display_order: number
   is_active: boolean
+  is_monthly_special: boolean
+  monthly_special_expires_at: string | null
   deleted_at: string | null
 }
 
@@ -83,6 +89,8 @@ const CAKE_FLAVOR_COLUMNS = [
   "image_box_url",
   "display_order",
   "is_active",
+  "is_monthly_special",
+  "monthly_special_expires_at",
   "deleted_at",
   "created_at",
   "updated_at",
@@ -122,6 +130,8 @@ export function mapCakeFlavorRowToEditableFlavorRecord(row: CakeFlavorRow): Edit
     tartaPrice: numberFromDb(row.price_large, 35),
     cajitaPrice: numberFromDb(row.price_box, 12),
     position: row.display_order ?? 0,
+    isMonthlySpecial: Boolean(row.is_monthly_special),
+    monthlySpecialExpiresAt: row.monthly_special_expires_at,
     ...(row.created_at ? { createdAt: row.created_at } : {}),
     ...(row.updated_at ? { updatedAt: row.updated_at } : {}),
     ...(row.deleted_at ? { deletedAt: row.deleted_at } : {}),
@@ -142,6 +152,8 @@ export function buildFlavorRevisionSnapshot(
     tartaPrice: record.tartaPrice,
     cajitaPrice: record.cajitaPrice,
     position: record.position,
+    isMonthlySpecial: Boolean(record.isMonthlySpecial),
+    monthlySpecialExpiresAt: record.monthlySpecialExpiresAt ?? null,
     isActive: state.isActive ?? true,
     deletedAt: state.deletedAt ?? null,
     createdAt: record.createdAt ?? null,
@@ -161,6 +173,8 @@ function rowInsertFromRecord(record: EditableFlavorRecord, displayOrder: number)
     image_box_url: record.cajitaImage,
     display_order: displayOrder,
     is_active: true,
+    is_monthly_special: Boolean(record.isMonthlySpecial),
+    monthly_special_expires_at: record.monthlySpecialExpiresAt ?? null,
     deleted_at: null,
   }
 }
@@ -174,6 +188,8 @@ function rowUpdateFromRecord(record: EditableFlavorRecord): CakeFlavorUpdate {
     price_box: record.cajitaPrice,
     image_large_url: record.tartaImage,
     image_box_url: record.cajitaImage,
+    is_monthly_special: Boolean(record.isMonthlySpecial),
+    monthly_special_expires_at: record.monthlySpecialExpiresAt ?? null,
   }
 }
 
@@ -193,13 +209,17 @@ async function insertRevision(
   })
 }
 
-async function listNormalizedRecords(persistence: CakeFlavorPersistence) {
-  return sortFlavorRecords((await persistence.listActiveRows()).map(mapCakeFlavorRowToEditableFlavorRecord)).map(
-    (record, index) => ({
-      ...record,
-      position: index,
-    })
-  )
+function normalizeRecords(records: EditableFlavorRecord[], options: { publicOnly?: boolean } = {}) {
+  const sortedRecords = options.publicOnly ? filterAvailableFlavorRecords(records) : sortFlavorRecords(records)
+
+  return sortedRecords.map((record, index) => ({
+    ...record,
+    position: index,
+  }))
+}
+
+async function listNormalizedRecords(persistence: CakeFlavorPersistence, options: { publicOnly?: boolean } = {}) {
+  return normalizeRecords((await persistence.listActiveRows()).map(mapCakeFlavorRowToEditableFlavorRecord), options)
 }
 
 async function reindexActiveRows(persistence: CakeFlavorPersistence) {
@@ -213,6 +233,27 @@ async function reindexActiveRows(persistence: CakeFlavorPersistence) {
         await persistence.setDisplayOrder(row.id, index)
       }
     })
+  )
+}
+
+async function clearOtherActiveMonthlySpecials(
+  persistence: CakeFlavorPersistence,
+  selectedRowId: string,
+  actor?: string | null
+) {
+  const activeRows = await persistence.listActiveRows()
+
+  await Promise.all(
+    activeRows
+      .filter((row) => row.id !== selectedRowId)
+      .filter((row) => isMonthlySpecialActive(mapCakeFlavorRowToEditableFlavorRecord(row)))
+      .map(async (row) => {
+        const updated = await persistence.updateRow(row.id, {
+          is_monthly_special: false,
+          monthly_special_expires_at: null,
+        })
+        await insertRevision(persistence, "update", updated, actor)
+      })
   )
 }
 
@@ -343,6 +384,16 @@ function createDefaultPersistence() {
 }
 
 export async function getCatalogFlavorRecordsFromPersistence(persistence: CakeFlavorPersistence) {
+  const activeRows = await persistence.listActiveRows()
+
+  if (!activeRows.length) {
+    throw new Error("El catálogo de tartas en Postgres está vacío. Ejecuta la importación legacy antes de desplegar.")
+  }
+
+  return normalizeRecords(activeRows.map(mapCakeFlavorRowToEditableFlavorRecord), { publicOnly: true })
+}
+
+export async function getAdminCatalogFlavorRecordsFromPersistence(persistence: CakeFlavorPersistence) {
   const records = await listNormalizedRecords(persistence)
 
   if (!records.length) {
@@ -373,6 +424,9 @@ export async function createCakeFlavorRecordInDb(
 
   const displayOrder = (await persistence.getMaxActiveDisplayOrder()) + 1
   const inserted = await persistence.insertRow(rowInsertFromRecord({ ...record, position: displayOrder }, displayOrder))
+  if (isMonthlySpecialActive(mapCakeFlavorRowToEditableFlavorRecord(inserted))) {
+    await clearOtherActiveMonthlySpecials(persistence, inserted.id, actor)
+  }
   await insertRevision(persistence, "create", inserted, actor)
   await reindexActiveRows(persistence)
   return listNormalizedRecords(persistence)
@@ -399,6 +453,10 @@ export async function updateCakeFlavorRecordInDb(
       slug,
     })
   )
+
+  if (isMonthlySpecialActive(mapCakeFlavorRowToEditableFlavorRecord(updated))) {
+    await clearOtherActiveMonthlySpecials(persistence, updated.id, actor)
+  }
 
   await insertRevision(persistence, "update", updated, actor)
   return listNormalizedRecords(persistence)
@@ -499,6 +557,14 @@ export async function getCatalogFlavorRecords(): Promise<EditableFlavorRecord[]>
     }
 
     throw new Error(`No se pudo leer el catálogo desde Postgres: ${messageFromError(error)}`)
+  }
+}
+
+export async function getAdminCatalogFlavorRecords(): Promise<EditableFlavorRecord[]> {
+  try {
+    return await getAdminCatalogFlavorRecordsFromPersistence(createDefaultPersistence())
+  } catch (error) {
+    throw new Error(`No se pudo leer el catálogo admin desde Postgres: ${messageFromError(error)}`)
   }
 }
 

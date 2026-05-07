@@ -14,7 +14,12 @@ import {
 } from "@/src/data/products-store"
 import { slugifyFlavorName, type EditableFlavorRecord } from "@/src/data/products"
 
-const baseFlavorSchema = z.object({
+function isValidDateInput(value?: string | null) {
+  if (!value?.trim()) return false
+  return Number.isFinite(Date.parse(value))
+}
+
+const baseFlavorObjectSchema = z.object({
   name: z.string().trim().min(1, "El nombre es obligatorio").max(80, "Máximo 80 caracteres"),
   description: z.string().trim().max(500, "Máximo 500 caracteres").default(""),
   allergens: z.string().trim().max(250, "Máximo 250 caracteres").default(""),
@@ -22,13 +27,37 @@ const baseFlavorSchema = z.object({
   cajitaImage: z.string().trim().max(500, "Máximo 500 caracteres").default(""),
   tartaPrice: z.coerce.number().positive("El precio grande debe ser mayor que 0"),
   cajitaPrice: z.coerce.number().positive("El precio cajita debe ser mayor que 0"),
+  isMonthlySpecial: z.boolean().default(false),
+  monthlySpecialExpiresAt: z.string().trim().nullable().optional(),
 })
+
+function validateMonthlySpecial<T extends z.ZodRawShape>(schema: z.ZodObject<T>) {
+  return schema
+    .superRefine((value, ctx) => {
+      const monthlySpecial = value as { isMonthlySpecial?: boolean; monthlySpecialExpiresAt?: string | null }
+      if (monthlySpecial.isMonthlySpecial && !isValidDateInput(monthlySpecial.monthlySpecialExpiresAt)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["monthlySpecialExpiresAt"],
+          message: "La tarta del mes necesita una fecha de expiración válida",
+        })
+      }
+    })
+    .transform((value) => ({
+      ...value,
+      monthlySpecialExpiresAt: (value as { isMonthlySpecial?: boolean }).isMonthlySpecial
+        ? new Date((value as { monthlySpecialExpiresAt?: string | null }).monthlySpecialExpiresAt ?? "").toISOString()
+        : null,
+    }))
+}
+
+const baseFlavorSchema = validateMonthlySpecial(baseFlavorObjectSchema)
 
 const createFlavorSchema = baseFlavorSchema
 
-const updateFlavorSchema = baseFlavorSchema.extend({
+const updateFlavorSchema = validateMonthlySpecial(baseFlavorObjectSchema.extend({
   slug: z.string().min(1),
-})
+}))
 
 const deleteFlavorSchema = z.object({
   slug: z.string().min(1),
@@ -131,6 +160,8 @@ export async function updateCakeFlavor(payload: UpdateCakeFlavorFormPayload) {
         cajitaImage: parsed.cajitaImage,
         tartaPrice: parsed.tartaPrice,
         cajitaPrice: parsed.cajitaPrice,
+        isMonthlySpecial: parsed.isMonthlySpecial,
+        monthlySpecialExpiresAt: parsed.monthlySpecialExpiresAt,
       },
       user.email ?? user.id
     )

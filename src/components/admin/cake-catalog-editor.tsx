@@ -28,7 +28,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { NEW_FLAVOR_KEY, resolveEditorSelection } from "@/src/components/admin/cake-catalog-editor-state"
 import { CatalogImageUpload } from "@/src/components/admin/catalog-image-upload"
-import { slugifyFlavorName, type EditableFlavorRecord } from "@/src/data/products"
+import { getCakeFlavorAdminStatus, slugifyFlavorName, type EditableFlavorRecord } from "@/src/data/products"
 
 type ArchivedFlavorRecord = EditableFlavorRecord & {
   deletedAt?: string | null
@@ -42,6 +42,17 @@ type FlavorFormState = {
   cajitaImage: string
   tartaPrice: string
   cajitaPrice: string
+  isMonthlySpecial: boolean
+  monthlySpecialExpiresAt: string
+}
+
+function toDateTimeLocal(value?: string | null) {
+  if (!value) return ""
+  const date = new Date(value)
+  if (!Number.isFinite(date.getTime())) return ""
+
+  const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
+  return localDate.toISOString().slice(0, 16)
 }
 
 function flavorToForm(flavor: EditableFlavorRecord): FlavorFormState {
@@ -53,6 +64,8 @@ function flavorToForm(flavor: EditableFlavorRecord): FlavorFormState {
     cajitaImage: flavor.cajitaImage,
     tartaPrice: String(flavor.tartaPrice),
     cajitaPrice: String(flavor.cajitaPrice),
+    isMonthlySpecial: Boolean(flavor.isMonthlySpecial),
+    monthlySpecialExpiresAt: toDateTimeLocal(flavor.monthlySpecialExpiresAt),
   }
 }
 
@@ -65,6 +78,8 @@ function emptyForm(): FlavorFormState {
     cajitaImage: "",
     tartaPrice: "35",
     cajitaPrice: "12",
+    isMonthlySpecial: false,
+    monthlySpecialExpiresAt: "",
   }
 }
 
@@ -92,6 +107,24 @@ function formatArchivedDate(value?: string | null) {
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date(value))
+}
+
+function FlavorStatusBadge({ flavor }: { flavor: EditableFlavorRecord }) {
+  const status = getCakeFlavorAdminStatus(flavor)
+  const tone =
+    status === "tarta del mes activa"
+      ? "border-accent bg-accent text-accent-foreground"
+      : status === "tarta del mes expirada"
+        ? "border-destructive/40 bg-destructive/10 text-destructive"
+        : status === "despublicada"
+          ? "border-muted bg-muted text-muted-foreground"
+          : "border-border bg-secondary text-secondary-foreground"
+
+  return (
+    <span className={`rounded-full border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] ${tone}`}>
+      {status}
+    </span>
+  )
 }
 
 function FlavorPreviewCard({
@@ -217,6 +250,8 @@ export function CakeCatalogEditor({
         cajitaImage: form.cajitaImage,
         tartaPrice: form.tartaPrice,
         cajitaPrice: form.cajitaPrice,
+        isMonthlySpecial: form.isMonthlySpecial,
+        monthlySpecialExpiresAt: form.monthlySpecialExpiresAt,
       }
 
       const response = isCreating
@@ -326,9 +361,12 @@ export function CakeCatalogEditor({
                         /producto/tarta-{flavor.slug}
                       </p>
                     </div>
-                    <span className="rounded-full bg-secondary px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-secondary-foreground">
-                      {flavor.position + 1}
-                    </span>
+                    <div className="flex flex-col items-end gap-2">
+                      <span className="rounded-full bg-secondary px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-secondary-foreground">
+                        {flavor.position + 1}
+                      </span>
+                      <FlavorStatusBadge flavor={flavor} />
+                    </div>
                   </div>
                   <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
                     <span>Grande: {formatPricePreview(String(flavor.tartaPrice))}</span>
@@ -364,6 +402,7 @@ export function CakeCatalogEditor({
                     <p className="text-xs text-muted-foreground">
                       Archivado: {formatArchivedDate(flavor.deletedAt)}
                     </p>
+                    <FlavorStatusBadge flavor={flavor} />
                   </div>
                   <div className="mt-3 flex flex-wrap gap-2">
                     <Button
@@ -482,6 +521,47 @@ export function CakeCatalogEditor({
                     onChange={(nextValue) => updateField("cajitaImage", nextValue)}
                     disabled={isPending}
                   />
+                </div>
+
+                <div className="space-y-2 md:col-span-2">
+                  <div className="rounded-xl border border-border bg-secondary/30 p-4">
+                    <div className="flex items-start gap-3">
+                      <input
+                        id="monthly-special"
+                        type="checkbox"
+                        checked={form.isMonthlySpecial}
+                        onChange={(event) => {
+                          updateField("isMonthlySpecial", event.target.checked)
+                          if (!event.target.checked) {
+                            updateField("monthlySpecialExpiresAt", "")
+                          }
+                        }}
+                        className="mt-1 h-4 w-4 accent-primary"
+                      />
+                      <div className="flex-1 space-y-3">
+                        <div>
+                          <Label htmlFor="monthly-special">Tarta del mes</Label>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            Si la activas con una fecha futura, se destacará primero en home, catálogo y chatbot.
+                          </p>
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="monthly-special-expires-at">Expira el</Label>
+                          <Input
+                            id="monthly-special-expires-at"
+                            type="datetime-local"
+                            value={form.monthlySpecialExpiresAt}
+                            onChange={(event) => updateField("monthlySpecialExpiresAt", event.target.value)}
+                            required={form.isMonthlySpecial}
+                            disabled={!form.isMonthlySpecial}
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            Cuando expire, no aparecerá como disponible ni admitirá pedidos nuevos, pero seguirá visible aquí.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
                 <div className="space-y-2 md:col-span-2">

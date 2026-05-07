@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 
 import { computeReminderAt } from "@/lib/chatbot/reminders"
+import { buildUnavailableFlavorMessage, resolveFlavorAvailability } from "@/lib/chatbot/products"
 import { normalizePhoneOrNull } from "@/lib/phone"
 import { getOrderPickupDateErrorMessage, validateOrderPickupDate } from "@/lib/pickup-date-validation"
 import { getAdminClient, getAdminUid } from "@/lib/supabase/admin"
@@ -40,6 +41,20 @@ export async function POST(request: Request) {
         {
           ok: false,
           error: getOrderPickupDateErrorMessage(deliveryDateValidation, LEAD_DAYS, SHOP_TZ),
+        },
+        { status: 400 }
+      )
+    }
+
+    const flavorChecks = await Promise.all(payload.items.map((item) => resolveFlavorAvailability(item.flavor)))
+    const unavailableFlavor = flavorChecks.find((check) => !check.available)
+
+    if (unavailableFlavor) {
+      const flavorName = "flavor" in unavailableFlavor ? unavailableFlavor.flavor : "ese sabor"
+      return NextResponse.json(
+        {
+          ok: false,
+          error: await buildUnavailableFlavorMessage(flavorName, { channel: "web" }),
         },
         { status: 400 }
       )

@@ -3,7 +3,7 @@ import "server-only"
 import { areEquivalentOrderItems, buildChatOrderFingerprint, type ChatOrderItem } from "@/lib/chatbot/order-dedupe"
 import { createOrderInputSchema } from "@/lib/chatbot/order-schema"
 import { normalizePhone, normalizePhoneOrNull } from "@/lib/phone"
-import { isKnownFlavor } from "@/lib/chatbot/products"
+import { buildUnavailableFlavorMessage, resolveFlavorAvailability } from "@/lib/chatbot/products"
 import { computeReminderAt } from "@/lib/chatbot/reminders"
 import { getOrderPickupDateErrorMessage, validateOrderPickupDate } from "@/lib/pickup-date-validation"
 import { getAdminClient, getAdminUid } from "@/lib/supabase/admin"
@@ -80,13 +80,15 @@ export async function createChatOrder(input: unknown) {
   const payload = parsed.data
   const createdAt = new Date()
 
-  const flavorChecks = await Promise.all(payload.items.map((item) => isKnownFlavor(item.flavor)))
+  const flavorChecks = await Promise.all(payload.items.map((item) => resolveFlavorAvailability(item.flavor)))
+  const unavailableFlavor = flavorChecks.find((check) => !check.available)
 
-  if (flavorChecks.some((isKnown) => !isKnown)) {
+  if (unavailableFlavor) {
+    const flavorName = "flavor" in unavailableFlavor ? unavailableFlavor.flavor : "ese sabor"
     return {
       ok: false as const,
-      error: "Pedido ambiguo: no identifiqué uno o más sabores.",
-      shouldHandoff: true,
+      error: await buildUnavailableFlavorMessage(flavorName),
+      shouldHandoff: false,
     }
   }
 

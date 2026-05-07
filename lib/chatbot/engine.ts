@@ -44,8 +44,10 @@ import {
 import {
   buildCatalogForMessage,
   buildFlavorsAndSizesMessage,
+  buildUnavailableFlavorMessage,
   findFlavorFactsByQuery,
   findExplicitFlavorSelection,
+  findUnavailableFlavorByQuery,
   findProductBySlugOrFlavor,
   listFlavorsAndSizes,
 } from "@/lib/chatbot/products"
@@ -645,6 +647,10 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
     }
 
     const product = explicitFlavorSelection ?? await detectProductMention(message)
+    const unavailableFlavor = product ? undefined : await findUnavailableFlavorByQuery(message)
+    if (unavailableFlavor) {
+      return saveAndReply(userId, await buildUnavailableFlavorMessage(unavailableFlavor.flavor, { channel }), state)
+    }
     const format = parseOrderFormat(message)
     const parsedDate = parseSpanishDesiredDate(message, now, SHOP_TZ)
     const genericMessage = isGenericNonOperationalMessage(message)

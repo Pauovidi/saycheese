@@ -1,4 +1,5 @@
 import type { Metadata } from "next"
+import { BUSINESS_EMAIL, BUSINESS_LEGAL_NAME, BUSINESS_NIF, STORE_ADDRESS } from "@/src/data/business"
 
 export const metadata: Metadata = {
   title: "Politica de Privacidad | SayCheese",
@@ -20,17 +21,17 @@ export default function PrivacidadPage() {
 
           <h2 className="text-base font-bold uppercase tracking-wider text-foreground">Responsable del tratamiento</h2>
           <ul className="list-inside list-disc space-y-1">
-            <li><strong>Titular:</strong> Saycheese By Nestor Perez</li>
-            <li><strong>NIF:</strong> 54269855K</li>
-            <li><strong>Direccion:</strong> Calle Abian 4</li>
-            <li><strong>Correo electronico:</strong> Saycheesebynp@gmail.com</li>
+            <li><strong>Titular:</strong> {BUSINESS_LEGAL_NAME}</li>
+            <li><strong>NIF:</strong> {BUSINESS_NIF}</li>
+            <li><strong>Direccion:</strong> {STORE_ADDRESS}</li>
+            <li><strong>Correo electronico:</strong> {BUSINESS_EMAIL}</li>
           </ul>
 
           <h2 className="text-base font-bold uppercase tracking-wider text-foreground">Datos que se tratan</h2>
           <p>
             Los datos personales que se tratan son los facilitados voluntariamente
-            por el usuario al contactar por telefono o WhatsApp, como el numero
-            de telefono y los datos necesarios para la gestion del pedido.
+            por el usuario al realizar un pedido desde la web o el chatbot, como
+            el numero de telefono y los datos necesarios para la gestion del pedido.
           </p>
 
           <h2 className="text-base font-bold uppercase tracking-wider text-foreground">Finalidad del tratamiento</h2>
@@ -42,7 +43,7 @@ export default function PrivacidadPage() {
           <h2 className="text-base font-bold uppercase tracking-wider text-foreground">Base legal</h2>
           <p>
             El tratamiento de los datos se basa en el consentimiento del usuario
-            al contactar por telefono o WhatsApp.
+            al realizar el pedido desde la web o el chatbot.
           </p>
 
           <h2 className="text-base font-bold uppercase tracking-wider text-foreground">Conservacion de los datos</h2>

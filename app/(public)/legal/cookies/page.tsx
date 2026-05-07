@@ -1,4 +1,5 @@
 import type { Metadata } from "next"
+import { BUSINESS_EMAIL } from "@/src/data/business"
 
 export const metadata: Metadata = {
   title: "Política de Cookies | SayCheese",
@@ -30,7 +31,7 @@ export default function CookiesPage() {
           </p>
           <p>
             Para más información, puede consultar la guía de la AEPD sobre el
-            uso de cookies o contactarnos en hola@saycheese.es.
+            uso de cookies o contactarnos en {BUSINESS_EMAIL}.
           </p>
         </div>
       </div>

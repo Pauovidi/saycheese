@@ -1,7 +1,7 @@
 import {
-  buildHumanSupportMessage,
   FORMAT_SIZE_COPY,
   PICKUP_ONLY_COPY,
+  STORE_ADDRESS,
   STORE_HOURS_TEXT,
 } from "@/src/data/business"
 
@@ -14,7 +14,7 @@ export const faqs: FAQ[] = [
   {
     question: "\u00bfC\u00f3mo puedo hacer un pedido?",
     answer:
-      `Puedes hacer tu pedido desde la web o escribirnos directamente. ${buildHumanSupportMessage("Te atendemos también aquí:")}`,
+      "Puedes hacer tu pedido desde la web o a través del chatbot. No recogemos pedidos por WhatsApp directo fuera del bot.",
   },
   {
     question: "\u00bfCu\u00e1les son los tama\u00f1os disponibles?",
@@ -48,7 +48,7 @@ export const faqs: FAQ[] = [
   {
     question: "\u00bfPuedo hacer un pedido personalizado?",
     answer:
-      "S\u00ed, aceptamos pedidos personalizados para eventos, celebraciones y regalos corporativos. Cont\u00e1ctanos con los detalles de tu petici\u00f3n y te informaremos sobre disponibilidad y plazos.",
+      "Sí, aceptamos pedidos personalizados para eventos, celebraciones y regalos corporativos. Cuéntanos los detalles desde la web o el chatbot y te confirmaremos disponibilidad y plazos.",
   },
   {
     question: "\u00bfQu\u00e9 m\u00e9todos de pago acept\u00e1is?",
@@ -63,6 +63,6 @@ export const faqs: FAQ[] = [
   {
     question: "\u00bfTen\u00e9is tienda f\u00edsica?",
     answer:
-      "Actualmente somos un obrador artesanal y trabajamos bajo pedido. Puedes realizar tu pedido a trav\u00e9s de la web o contact\u00e1ndonos directamente. S\u00edguenos en redes sociales para estar al tanto de posibles eventos y puntos de venta temporales.",
+      `Sí. Tenemos tienda física y obrador en ${STORE_ADDRESS}. Además de pedidos por web o chatbot, suele haber stock diario limitado de tamaños mini y medianas hasta agotar existencias.`,
   },
 ]
