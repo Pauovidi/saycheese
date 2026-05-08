@@ -28,3 +28,16 @@ test("checkout público y pedido manual validan disponibilidad antes de insertar
   assert.match(adminOrderSource, /resolveFlavorAvailability/)
   assert.equal(adminOrderSource.indexOf("resolveFlavorAvailability") < adminOrderSource.indexOf(".from(\"orders\")"), true)
 })
+
+test("checkout público reserva confirmación WhatsApp después de guardar el pedido", async () => {
+  const apiSource = await readFile(resolve("app/api/orders/route.ts"), "utf8")
+  const itemsInsertIndex = apiSource.indexOf(".from(\"order_items\")")
+  const confirmationIndex = apiSource.indexOf("await sendWebOrderWhatsappConfirmation")
+  const responseIndex = apiSource.lastIndexOf("return NextResponse.json({")
+
+  assert.match(apiSource, /sendWebOrderWhatsappConfirmation/)
+  assert.notEqual(itemsInsertIndex, -1)
+  assert.notEqual(confirmationIndex, -1)
+  assert.equal(itemsInsertIndex < confirmationIndex, true)
+  assert.equal(confirmationIndex < responseIndex, true)
+})

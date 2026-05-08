@@ -82,6 +82,36 @@ test("pedido web confirmado con teléfono válido intenta enviar WhatsApp por Me
   assert.equal(events.some((event) => event.args[0] === "whatsapp_confirmation_sent"), true)
 })
 
+test("loguea diagnóstico seguro antes de reservar confirmación", async () => {
+  const { events, logger } = createLogger()
+
+  await sendWebOrderWhatsappConfirmation(
+    {
+      orderId: "order-diagnostics",
+      channel: "web",
+      phone: "600000000",
+      deliveryDate: "2026-05-12",
+      items: [{ type: "cake", flavor: "Lotus", qty: 1 }],
+    },
+    {
+      env: metaTemplateEnv,
+      logger,
+      reserve: async () => ({ ok: false, reason: "duplicate" }),
+    }
+  )
+
+  const attempt = events.find((event) => event.args[0] === "whatsapp_confirmation_attempt")
+  assert.ok(attempt)
+  assert.deepEqual(attempt.args[1], {
+    orderId: "order-diagnostics",
+    channel: "web",
+    hasPhone: true,
+    hasMetaToken: true,
+    hasPhoneNumberId: true,
+    hasOrderConfirmationTemplate: true,
+  })
+})
+
 test("usa Twilio como fallback solo cuando Meta no está configurado", async () => {
   const sent: Array<{ to: string; provider: string }> = []
   const { logger } = createLogger()
@@ -139,6 +169,7 @@ test("pedido web confirmado sin teléfono no envía y no rompe", async () => {
 })
 
 test("pedido confirmado desde WhatsApp inbound no envía confirmación outbound extra", async () => {
+  const { events, logger } = createLogger()
   let called = false
 
   const result = await sendWebOrderWhatsappConfirmation(
@@ -150,7 +181,8 @@ test("pedido confirmado desde WhatsApp inbound no envía confirmación outbound 
       items: [{ type: "cake", flavor: "Gofio", qty: 1 }],
     },
     {
-      env: metaEnv,
+      env: metaTemplateEnv,
+      logger,
       send: async () => {
         called = true
         return {}
@@ -160,6 +192,8 @@ test("pedido confirmado desde WhatsApp inbound no envía confirmación outbound 
 
   assert.deepEqual(result, { ok: true, skipped: "channel" })
   assert.equal(called, false)
+  assert.equal(events.some((event) => event.args[0] === "whatsapp_confirmation_attempt"), true)
+  assert.equal(events.some((event) => event.args[0] === "whatsapp_confirmation_skipped_channel"), true)
 })
 
 test("fallo del proveedor WhatsApp queda logueado y no lanza error", async () => {

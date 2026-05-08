@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 
 import { computeReminderAt } from "@/lib/chatbot/reminders"
+import { sendWebOrderWhatsappConfirmation } from "@/lib/chatbot/whatsapp-confirmation"
 import { buildUnavailableFlavorMessage, resolveFlavorAvailability } from "@/lib/chatbot/products"
 import { normalizePhoneOrNull } from "@/lib/phone"
 import { getOrderPickupDateErrorMessage, validateOrderPickupDate } from "@/lib/pickup-date-validation"
@@ -96,6 +97,14 @@ export async function POST(request: Request) {
       await supabase.from("orders").delete().eq("id", order.id)
       throw new Error(itemError.message)
     }
+
+    await sendWebOrderWhatsappConfirmation({
+      orderId: order.id,
+      channel: "web",
+      phone: payload.phone,
+      deliveryDate: deliveryDateFinal,
+      items: payload.items,
+    })
 
     return NextResponse.json({
       ok: true,

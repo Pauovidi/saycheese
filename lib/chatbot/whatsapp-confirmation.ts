@@ -150,7 +150,19 @@ export async function sendWebOrderWhatsappConfirmation(
   deps: SendWebOrderWhatsappConfirmationDeps = {}
 ) {
   const logger = deps.logger ?? console
+  const metaConfig = getMetaWhatsAppConfig(deps.env)
+  const twilioConfig = getTwilioWhatsAppConfig(deps.env)
+  logger.info("whatsapp_confirmation_attempt", {
+    orderId: input.orderId,
+    channel: input.channel,
+    hasPhone: Boolean(input.phone?.trim()),
+    hasMetaToken: Boolean(metaConfig.token),
+    hasPhoneNumberId: Boolean(metaConfig.phoneNumberId),
+    hasOrderConfirmationTemplate: Boolean(metaConfig.templateName),
+  })
+
   if (input.channel !== "web") {
+    logger.info("whatsapp_confirmation_skipped_channel", { orderId: input.orderId, channel: input.channel })
     return { ok: true as const, skipped: "channel" as const }
   }
 
@@ -159,8 +171,6 @@ export async function sendWebOrderWhatsappConfirmation(
     return { ok: true as const, skipped: "duplicate" as const }
   }
 
-  const metaConfig = getMetaWhatsAppConfig(deps.env)
-  const twilioConfig = getTwilioWhatsAppConfig(deps.env)
   const provider: ConfirmationProvider = metaConfig.missing.length ? "twilio" : "meta"
   const missing = provider === "meta" ? metaConfig.missing : twilioConfig.missing
   const to =
