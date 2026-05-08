@@ -3,7 +3,7 @@ import "server-only"
 import OpenAI from "openai"
 
 import { resolveConversationCommand } from "@/lib/chatbot/commands"
-import { formatDateEs, parseSpanishDesiredDate, resolveRequestedPickupDate } from "@/lib/chatbot/dates"
+import { formatDateEs } from "@/lib/chatbot/dates"
 import {
   clearConversationState,
   getOrCreateUser,
@@ -16,38 +16,25 @@ import {
   updateSummary,
 } from "@/lib/chatbot/memory"
 import {
-  extractCustomerName,
-  getAdditionalCakeDecisionIntent,
   extractPhoneFromText,
-  hasExplicitNewOrderIntent,
-  hasMultipleCakeOrderIntent,
-  hasRecentOrderGuard,
   normalizeChatText,
-  parseOrderFormat,
 } from "@/lib/chatbot/order-intake"
 import {
-  appendOrderItem,
   buildChatOrderFingerprint,
   isRecentDuplicateFingerprint,
   type ChatOrderItem,
 } from "@/lib/chatbot/order-dedupe"
+import {
+  buildPendingOrderItems,
+  processOrderConversationTurn,
+  type OrderState,
+} from "@/lib/chatbot/order-flow"
 import { cancelChatOrder, createChatOrder } from "@/lib/chatbot/orders"
 import { sendWebOrderWhatsappConfirmation } from "@/lib/chatbot/whatsapp-confirmation"
 import {
-  ADD_ANOTHER_CAKE_PROMPT,
-  buildContextualOrderReplyText,
-  buildMissingFieldsPrompt,
-  MULTIPLE_CAKES_INTRO,
-  NEXT_CAKE_PROMPT,
-  ORDER_LOW_CONFIDENCE_RECOVERY,
-} from "@/lib/chatbot/order-prompts"
-import {
   buildCatalogForMessage,
   buildFlavorsAndSizesMessage,
-  buildUnavailableFlavorMessage,
   findFlavorFactsByQuery,
-  findExplicitFlavorSelection,
-  findUnavailableFlavorByQuery,
   findProductBySlugOrFlavor,
   listFlavorsAndSizes,
 } from "@/lib/chatbot/products"
@@ -56,7 +43,6 @@ import { hasGreetingIntent, WELCOME_MESSAGE } from "@/lib/chatbot/welcome"
 import {
   buildHumanSupportMessage,
   buildUnconfirmedProductInfoMessage,
-  CLOSED_PICKUP_DAYS_COPY,
   getCustomerFacingFormatLabel,
   HUMAN_SUPPORT_PHONE_E164,
   HUMAN_SUPPORT_PHONE_DISPLAY,
@@ -70,27 +56,6 @@ type HandleMessageInput = {
   message: string
   phone?: string
   channel: "web" | "whatsapp"
-}
-
-type OrderState = {
-  inOrderFlow?: boolean
-  flavor?: string
-  format?: "tarta" | "cajita"
-  pendingItems?: ChatOrderItem[]
-  phone?: string
-  customerName?: string
-  customerEmail?: string
-  desiredDate?: string
-  suggestedDate?: string
-  finalDate?: string
-  awaitingConfirm?: boolean
-  awaitingName?: boolean
-  awaitingAdditionalCakeDecision?: boolean
-  expectsMultipleCakes?: boolean
-  forceNewOrder?: boolean
-  lastCreatedOrderId?: string
-  lastCreatedOrderAt?: string
-  lastCreatedOrderFingerprint?: string
 }
 
 const LEAD_DAYS_RAW = Number.parseInt(process.env.CHATBOT_LEAD_DAYS ?? "3", 10)
@@ -135,6 +100,7 @@ function getHandoffText(channel: "web" | "whatsapp") {
 
 function sanitizeAssistantText(text: string) {
   return text
+    .replace(/\bAuditor[ií]a Temporal\s+[\p{L}-]+\b/giu, "ese sabor")
     .replace(/\brecogerte\b/gi, "recogerla")
     .replace(/\brecibir\b/gi, "recoger")
 }
@@ -158,44 +124,9 @@ async function persistOrderState(userId: string, state: OrderState) {
   await saveMessage(userId, "system", `${ORDER_STATE_PREFIX}${JSON.stringify(state)}`)
 }
 
-function isAffirmative(text: string) {
-  const normalized = normalize(text)
-  return /\b(si|perfecto|me va bien|de acuerdo|confirmo)\b/.test(normalized)
-}
-
-function isNegative(text: string) {
-  const normalized = normalize(text)
-  return /\b(no|prefiero otro dia|otro dia|otra fecha|no me va bien)\b/.test(normalized)
-}
-
-function hasNonEmptyValue(value?: string) {
-  return typeof value === "string" && value.trim().length > 0
-}
-
-function extractEmailFromText(text: string) {
-  const match = text.match(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i)
-  return match?.[0]?.toLowerCase()
-}
-
 function hasResetOrderIntent(text: string) {
   const normalized = normalize(text)
   return [/\breiniciar\b/, /\bempezar\s+de\s+nuevo\b/, /\breset\b/].some((pattern) => pattern.test(normalized))
-}
-
-function isGenericNonOperationalMessage(text: string) {
-  const normalized = normalize(text).replace(/[!?.,;:]/g, " ").replace(/\s+/g, " ").trim()
-  if (!normalized) return false
-
-  const exactMessages = new Set([
-    "hola",
-    "buenos dias",
-    "buenas",
-    "ok",
-    "vale",
-    "gracias",
-  ])
-
-  return exactMessages.has(normalized)
 }
 
 async function detectProductMention(text: string) {
@@ -223,16 +154,8 @@ function hasScheduleIntent(text: string) {
   return /horario|abris|abierto|cerrais/i.test(normalize(text))
 }
 
-function hasFlavorsIntent(text: string) {
-  return /sabor|tamano|tamaño|formato|tarta|grande|cajita|precio/i.test(normalize(text))
-}
-
 function hasAllergensIntent(text: string) {
   return /alergen|ingrediente|contiene|lleva/i.test(normalize(text))
-}
-
-function hasOrderIntent(text: string) {
-  return /quiero|pedido|encargar|tarta|grande|cajita|para\s/i.test(normalize(text))
 }
 
 function hasExistingOrderQueryIntent(text: string) {
@@ -310,33 +233,6 @@ async function buildProductFactsReply(message: string, channel: "web" | "whatsap
   return `Para ${facts.label}: ${sections.join(" ")} No tengo confirmado ${missingSections.join(" ni ")} ahora mismo. ${buildHumanSupportMessage("Te atiende un humano aquí:", channel)}`
 }
 
-async function buildOrderItemLabel(state: OrderState) {
-  if (!state.flavor) return state.format === "cajita" ? "una cajita" : state.format === "tarta" ? "una grande" : "el pedido"
-
-  const flavorFacts = await findFlavorFactsByQuery(state.flavor)
-  const product = await findProductBySlugOrFlavor(state.flavor)
-  const flavorLabel = flavorFacts?.label ?? product?.name ?? state.flavor.replace(/-/g, " ")
-  if (state.format === "cajita") return `una cajita de ${flavorLabel}`
-  if (state.format === "tarta") return `una grande de ${flavorLabel}`
-  return `el pedido de ${flavorLabel}`
-}
-
-function buildCurrentCakeItem(state: OrderState): ChatOrderItem | null {
-  if (!state.flavor || !state.format) {
-    return null
-  }
-
-  return {
-    type: state.format === "cajita" ? "box" : "cake",
-    flavor: state.flavor,
-    qty: 1,
-  }
-}
-
-function buildPendingOrderItems(state: OrderState) {
-  return state.pendingItems ?? []
-}
-
 function buildCurrentOrderFingerprint(state: OrderState) {
   const items = buildPendingOrderItems(state)
   if (!state.phone || !state.finalDate || !items.length) {
@@ -347,19 +243,6 @@ function buildCurrentOrderFingerprint(state: OrderState) {
     phone: state.phone,
     deliveryDate: state.finalDate,
     items,
-  })
-}
-
-async function buildContextualOrderReply(state: OrderState, channel: "web" | "whatsapp", tz: string) {
-  const itemLabel = await buildOrderItemLabel(state)
-  const dateLabel = state.finalDate ? formatDateEs(state.finalDate, tz) : null
-  const missing = buildMissingFieldsPrompt(state, channel, { preferContinuationTone: Boolean(state.finalDate || state.flavor || state.format) })
-
-  return buildContextualOrderReplyText({
-    customerName: state.customerName,
-    itemLabel,
-    dateLabel,
-    missingPrompt: missing,
   })
 }
 
@@ -384,28 +267,6 @@ function resetOrderState(state: OrderState, channel: "web" | "whatsapp"): OrderS
     lastCreatedOrderAt: state.lastCreatedOrderAt,
     lastCreatedOrderFingerprint: state.lastCreatedOrderFingerprint,
   }
-}
-
-function resetCurrentCakeSelection(state: OrderState) {
-  state.flavor = undefined
-  state.format = undefined
-  state.awaitingName = false
-}
-
-function hasMeaningfulOrderProgress(state: OrderState) {
-  return Boolean(
-    state.finalDate ||
-      state.flavor ||
-      state.format ||
-      state.awaitingConfirm ||
-      state.awaitingName ||
-      state.awaitingAdditionalCakeDecision ||
-      buildPendingOrderItems(state).length
-  )
-}
-
-function mergeIntroReply(intro: string | null, reply: string) {
-  return intro ? `${intro} ${reply}` : reply
 }
 
 function getCancelOrderHandoffText(channel: "web" | "whatsapp") {
@@ -562,17 +423,6 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
   const nonSystemMessages = context.messagesLastN.filter((item) => item.role !== "system")
   const isOpeningConversation = nonSystemMessages.length <= 1
 
-  if (messagePhone) {
-    state.phone = messagePhone
-  }
-
-  const email = extractEmailFromText(message)
-  if (email) {
-    state.customerEmail = email
-  }
-
-  const explicitFlavorSelection = await findExplicitFlavorSelection(message)
-
   if (hasGreetingIntent(message) && !state.inOrderFlow && !state.awaitingConfirm && !state.awaitingName) {
     return saveAndReply(userId, WELCOME_MESSAGE)
   }
@@ -602,217 +452,24 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
     return saveAndReply(userId, await buildProductFactsReply(message, channel))
   }
 
-  if (hasFlavorsIntent(message) && !hasOrderIntent(message) && !explicitFlavorSelection) {
-    return saveAndReply(userId, await buildFlavorsReply(isOpeningConversation, channel))
+  const orderTurn = await processOrderConversationTurn({
+    message,
+    channel,
+    state,
+    now,
+    isOpeningConversation,
+    leadDays: LEAD_DAYS,
+    shopTz: SHOP_TZ,
+    phone: messagePhone,
+    deps: { buildFlavorsReply },
+  })
+
+  if (orderTurn.kind === "reply") {
+    return saveAndReply(userId, orderTurn.text, orderTurn.state)
   }
 
-  const orderFlow =
-    hasOrderIntent(message) ||
-    state.inOrderFlow ||
-    state.awaitingConfirm ||
-    state.awaitingName ||
-    state.awaitingAdditionalCakeDecision ||
-    Boolean(explicitFlavorSelection)
-  if (orderFlow) {
-    const explicitNewOrderIntent = hasExplicitNewOrderIntent(message)
-    if (explicitNewOrderIntent) {
-      state.flavor = undefined
-      state.format = undefined
-      state.pendingItems = undefined
-      state.customerName = undefined
-      state.customerEmail = undefined
-      state.desiredDate = undefined
-      state.suggestedDate = undefined
-      state.finalDate = undefined
-      state.awaitingConfirm = false
-      state.awaitingName = false
-      state.awaitingAdditionalCakeDecision = false
-      state.expectsMultipleCakes = false
-      state.forceNewOrder = true
-    } else if (hasRecentOrderGuard(state.lastCreatedOrderAt, now) && !state.inOrderFlow) {
-      return saveAndReply(
-        userId,
-        'Tu último pedido ya quedó creado. Si quieres iniciar otro, escribe "nuevo pedido" y dime sabor, tamaño y fecha.',
-        state
-      )
-    }
-
-    state.inOrderFlow = true
-    const multipleCakeIntro =
-      hasMultipleCakeOrderIntent(message) && !state.expectsMultipleCakes && !buildPendingOrderItems(state).length
-        ? MULTIPLE_CAKES_INTRO
-        : null
-    if (multipleCakeIntro) {
-      state.expectsMultipleCakes = true
-    }
-
-    const product = explicitFlavorSelection ?? await detectProductMention(message)
-    const unavailableFlavor = product ? undefined : await findUnavailableFlavorByQuery(message)
-    if (unavailableFlavor) {
-      return saveAndReply(userId, await buildUnavailableFlavorMessage(unavailableFlavor.flavor, { channel }), state)
-    }
-    const format = parseOrderFormat(message)
-    const parsedDate = parseSpanishDesiredDate(message, now, SHOP_TZ)
-    const genericMessage = isGenericNonOperationalMessage(message)
-    const additionalCakeDecisionIntent = state.awaitingAdditionalCakeDecision ? getAdditionalCakeDecisionIntent(message) : "unknown"
-    const customerName =
-      additionalCakeDecisionIntent === "close"
-        ? undefined
-        : extractCustomerName(message, {
-            blockedNormalizedTerms: product ? [product.name, product.category] : [],
-            allowSegmentExtraction: Boolean(product || format || parsedDate || email || messagePhone),
-          })
-    const hasStructuredContribution = Boolean(product || format || parsedDate || customerName || email || messagePhone)
-
-    if (state.awaitingAdditionalCakeDecision) {
-      const wantsCloseOrder =
-        additionalCakeDecisionIntent === "close" || (isNegative(message) && !hasStructuredContribution)
-      const wantsAddAnotherCake =
-        additionalCakeDecisionIntent === "add" || Boolean(product || format || parsedDate)
-
-      if (wantsCloseOrder) {
-        state.awaitingAdditionalCakeDecision = false
-        return finalizeOrderFromState(userId, state, channel)
-      }
-
-      if (wantsAddAnotherCake) {
-        state.awaitingAdditionalCakeDecision = false
-        state.expectsMultipleCakes = true
-        resetCurrentCakeSelection(state)
-
-        if (!product && !format && !parsedDate) {
-          return saveAndReply(userId, NEXT_CAKE_PROMPT, state)
-        }
-      } else if (!hasStructuredContribution) {
-        return saveAndReply(userId, ORDER_LOW_CONFIDENCE_RECOVERY, state)
-      }
-    }
-
-    if (product) {
-      state.flavor = product.category
-    }
-
-    if (format) {
-      state.format = format
-    }
-
-    if (state.awaitingConfirm && isAffirmative(message) && state.suggestedDate && !parsedDate && !genericMessage) {
-      state.finalDate = state.suggestedDate
-      state.awaitingConfirm = false
-    }
-
-    if (state.awaitingConfirm && isNegative(message) && !parsedDate) {
-      state.awaitingConfirm = false
-      state.suggestedDate = undefined
-      state.finalDate = undefined
-      return saveAndReply(userId, "Perfecto, dime para qué día la necesitas.", state)
-    }
-
-    if (parsedDate?.kind === "ambiguous") {
-      return saveAndReply(userId, mergeIntroReply(multipleCakeIntro, parsedDate.question), state)
-    }
-
-    if (parsedDate?.kind === "date") {
-      const resolution = resolveRequestedPickupDate(parsedDate.iso, now, LEAD_DAYS, SHOP_TZ)
-      state.desiredDate = parsedDate.iso
-
-      if (resolution.kind === "too_soon") {
-        state.suggestedDate = resolution.earliestDate
-        state.finalDate = undefined
-        state.awaitingConfirm = true
-
-        return saveAndReply(
-          userId,
-          mergeIntroReply(
-            multipleCakeIntro,
-            `Aún no llegamos a ${formatDateEs(resolution.requestedDate, SHOP_TZ)} porque trabajamos con un mínimo de ${LEAD_DAYS} días. La primera fecha disponible sería ${formatDateEs(resolution.earliestDate, SHOP_TZ)}. ¿Te va bien?\n${STORE_HOURS_TEXT}`
-          ),
-          state
-        )
-      }
-
-      if (resolution.kind === "closed") {
-        state.suggestedDate = resolution.nextAvailableDate
-        state.finalDate = undefined
-        state.awaitingConfirm = true
-
-        return saveAndReply(
-          userId,
-          mergeIntroReply(
-            multipleCakeIntro,
-            `No, el ${formatDateEs(resolution.requestedDate, SHOP_TZ)} no hacemos recogidas porque ${CLOSED_PICKUP_DAYS_COPY}. La siguiente fecha disponible sería ${formatDateEs(resolution.nextAvailableDate, SHOP_TZ)}. Si te va bien, te lo apunto para ese día.`
-          ),
-          state
-        )
-      }
-
-      if (resolution.kind === "invalid") {
-        state.finalDate = undefined
-
-        return saveAndReply(
-          userId,
-          mergeIntroReply(multipleCakeIntro, "No pude validar esa fecha. Dímela como 30/04, 30 de abril o jueves."),
-          state
-        )
-      }
-
-      state.finalDate = resolution.pickupDate
-      state.suggestedDate = undefined
-      state.awaitingConfirm = false
-    }
-
-    if (customerName) {
-      state.customerName = customerName
-      state.awaitingName = false
-    }
-
-    if (!hasNonEmptyValue(state.customerName)) {
-      state.customerName = undefined
-    }
-
-    if (!hasStructuredContribution && hasMeaningfulOrderProgress(state)) {
-      return saveAndReply(userId, ORDER_LOW_CONFIDENCE_RECOVERY, state)
-    }
-
-    if (!state.finalDate) {
-      return saveAndReply(
-        userId,
-        mergeIntroReply(
-          multipleCakeIntro,
-          "¿Para qué día la necesitas? Puedes decirme una fecha como 16/03, el 18 o un día de la semana."
-        ),
-        state
-      )
-    }
-
-    if (!hasNonEmptyValue(state.customerName) && state.flavor && state.format) {
-      state.awaitingName = true
-      return saveAndReply(userId, mergeIntroReply(multipleCakeIntro, await buildContextualOrderReply(state, channel, SHOP_TZ)), state)
-    }
-
-    const missing = buildMissingFieldsPrompt(state, channel, { preferContinuationTone: true })
-    if (missing) {
-      return saveAndReply(userId, mergeIntroReply(multipleCakeIntro, await buildContextualOrderReply(state, channel, SHOP_TZ)), state)
-    }
-
-    if (!hasNonEmptyValue(state.customerName)) {
-      state.awaitingName = true
-      return saveAndReply(userId, mergeIntroReply(multipleCakeIntro, await buildContextualOrderReply(state, channel, SHOP_TZ)), state)
-    }
-
-    const currentCakeItem = buildCurrentCakeItem(state)
-    if (currentCakeItem) {
-      const completedCakeReply = await buildContextualOrderReply(state, channel, SHOP_TZ)
-      state.pendingItems = appendOrderItem(buildPendingOrderItems(state), currentCakeItem)
-      resetCurrentCakeSelection(state)
-      state.awaitingAdditionalCakeDecision = true
-
-      return saveAndReply(userId, mergeIntroReply(multipleCakeIntro, `${completedCakeReply} ${ADD_ANOTHER_CAKE_PROMPT}`), state)
-    }
-
-    if (state.awaitingAdditionalCakeDecision && buildPendingOrderItems(state).length) {
-      return saveAndReply(userId, mergeIntroReply(multipleCakeIntro, ADD_ANOTHER_CAKE_PROMPT), state)
-    }
+  if (orderTurn.kind === "finalize") {
+    return finalizeOrderFromState(userId, orderTurn.state, channel)
   }
 
   const openai = getOpenAIClient()

@@ -7,13 +7,15 @@ test("chatbot no ofrece ni acepta sabores expirados o despublicados", async () =
   const productsSource = await readFile(resolve("lib/chatbot/products.ts"), "utf8")
   const ordersSource = await readFile(resolve("lib/chatbot/orders.ts"), "utf8")
   const engineSource = await readFile(resolve("lib/chatbot/engine.ts"), "utf8")
+  const orderFlowSource = await readFile(resolve("lib/chatbot/order-flow.ts"), "utf8")
 
   assert.match(productsSource, /getCatalogProducts\(\)/)
   assert.match(productsSource, /findUnavailableFlavorByQuery/)
   assert.match(productsSource, /buildUnavailableFlavorMessage/)
   assert.match(ordersSource, /resolveFlavorAvailability/)
   assert.match(ordersSource, /buildUnavailableFlavorMessage/)
-  assert.match(engineSource, /findUnavailableFlavorByQuery/)
+  assert.match(engineSource, /processOrderConversationTurn/)
+  assert.match(orderFlowSource, /findUnavailableFlavorByQuery/)
 })
 
 test("checkout público y pedido manual validan disponibilidad antes de insertar", async () => {
