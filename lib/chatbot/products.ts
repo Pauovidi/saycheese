@@ -3,15 +3,18 @@ import {
   getCustomerFacingFormatLabel,
   PICKUP_ONLY_COPY,
 } from "@/src/data/business"
-import { buildProductsFromFlavorRecords, getCakeFlavorAdminStatus, type EditableFlavorRecord, type Product } from "@/src/data/products"
+import {
+  buildProductsFromFlavorRecords,
+  getCakeFlavorAdminStatus,
+  getFlavorsFromProducts,
+  type EditableFlavorRecord,
+  type Product,
+} from "@/src/data/products"
 import {
   getAdminCatalogFlavorRecords,
   getArchivedCatalogFlavorRecords,
   getCatalogFlavorFacts,
-  getCatalogFlavors,
-  getCatalogProductBySlug,
   getCatalogProducts,
-  getCatalogProductsByCategory,
 } from "@/src/data/products-store"
 
 type ChatbotChannel = "web" | "whatsapp"
@@ -35,8 +38,46 @@ export type ChatbotCatalogForMessage = {
   sizes: ChatbotFlavorSize[]
 }
 
+export type FlavorSelectionResult =
+  | { kind: "none" }
+  | { kind: "matched"; product: Product }
+  | { kind: "ambiguous"; query: string; choices: { category: string; label: string }[] }
+
 function normalize(value: string) {
   return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim()
+}
+
+function includesUnsafeCatalogTerm(...values: Array<string | null | undefined>) {
+  const normalized = values
+    .filter((value): value is string => typeof value === "string")
+    .map((value) => normalize(value).replace(/[-_]+/g, " "))
+    .join(" ")
+
+  return /\bauditoria\s+temporal\b/.test(normalized) || /\b(codex|fixture|test|debug)\b/.test(normalized)
+}
+
+export function isUnsafeChatbotCatalogName(value?: string | null) {
+  return includesUnsafeCatalogTerm(value)
+}
+
+function isSafeChatbotProduct(product: Product) {
+  return !includesUnsafeCatalogTerm(product.name, product.slug, product.category)
+}
+
+function isSafeChatbotRecord(record: EditableFlavorRecord) {
+  return !includesUnsafeCatalogTerm(record.name, record.slug)
+}
+
+function filterSafeChatbotProducts(products: Product[]) {
+  return products.filter(isSafeChatbotProduct)
+}
+
+async function getSafeCatalogProducts() {
+  return filterSafeChatbotProducts(await getCatalogProducts())
+}
+
+function safeFlavorLabelForReply(flavor: string) {
+  return isUnsafeChatbotCatalogName(flavor) ? "ese sabor" : flavor
 }
 
 function stripNonFlavorTerms(query: string) {
@@ -75,8 +116,93 @@ function scoreFlavorMatch(query: string, product: Product) {
   return 0
 }
 
+function labelForProduct(product: Product) {
+  return product.name
+}
+
+function uniqueFlavorChoices(entries: Array<{ product: Product; score: number }>) {
+  const choices = new Map<string, { category: string; label: string; score: number }>()
+
+  for (const entry of entries) {
+    const existing = choices.get(entry.product.category)
+    if (!existing || entry.score > existing.score) {
+      choices.set(entry.product.category, {
+        category: entry.product.category,
+        label: labelForProduct(entry.product),
+        score: entry.score,
+      })
+    }
+  }
+
+  return Array.from(choices.values()).sort((a, b) => b.score - a.score || a.label.localeCompare(b.label, "es"))
+}
+
+function selectProductForCategory(products: Product[], category: string, requestedFormat?: Product["format"]) {
+  const categoryProducts = products.filter((product) => product.category === category)
+  if (!categoryProducts.length) return undefined
+
+  if (requestedFormat) {
+    return categoryProducts.find((product) => product.format === requestedFormat) ?? categoryProducts[0]
+  }
+
+  return categoryProducts.find((product) => Boolean(product.allergens)) ?? categoryProducts[0]
+}
+
+export function resolveFlavorSelectionFromProducts(query: string, sourceProducts: Product[]): FlavorSelectionResult {
+  const products = filterSafeChatbotProducts(sourceProducts)
+  const normalizedRawQuery = normalize(query)
+  const requestedFormat = detectRequestedFormat(query)
+  const exactSlug = products.find((product) => normalize(product.slug) === normalizedRawQuery)
+
+  if (exactSlug) {
+    return {
+      kind: "matched",
+      product: selectProductForCategory(products, exactSlug.category, requestedFormat) ?? exactSlug,
+    }
+  }
+
+  const searchableQuery = stripNonFlavorTerms(query)
+  if (!searchableQuery) return { kind: "none" }
+
+  const matches = products
+    .map((product) => ({ product, score: scoreFlavorMatch(searchableQuery, product) }))
+    .filter((entry) => entry.score > 0)
+    .sort((a, b) => b.score - a.score || Number(Boolean(b.product.allergens)) - Number(Boolean(a.product.allergens)))
+
+  if (!matches.length) return { kind: "none" }
+
+  const choices = uniqueFlavorChoices(matches)
+  const strongPartialChoices = choices.filter((choice) => choice.score >= 70)
+
+  if (strongPartialChoices.length > 1 && strongPartialChoices[1]?.score === strongPartialChoices[0]?.score) {
+    return {
+      kind: "ambiguous",
+      query: searchableQuery,
+      choices: strongPartialChoices.slice(0, 5).map(({ category, label }) => ({ category, label })),
+    }
+  }
+
+  const best = matches[0]
+  if (!best) return { kind: "none" }
+
+  return {
+    kind: "matched",
+    product: selectProductForCategory(products, best.product.category, requestedFormat) ?? best.product,
+  }
+}
+
+export function buildAmbiguousFlavorMessage(choices: { label: string }[]) {
+  const labels = Array.from(new Set(choices.map((choice) => choice.label).filter((label) => !isUnsafeChatbotCatalogName(label))))
+
+  if (!labels.length) {
+    return "Tengo más de un sabor parecido. Dime el nombre completo del sabor, por favor."
+  }
+
+  return `Tengo más de un sabor parecido. ¿Te refieres a ${labels.join(" o ")}?`
+}
+
 export async function listFlavorsAndSizes() {
-  const products = await getCatalogProducts()
+  const products = await getSafeCatalogProducts()
   const grouped = new Map<string, ChatbotAvailableCakeFlavor>()
 
   for (const product of products) {
@@ -188,43 +314,17 @@ export async function buildFlavorsAndSizesMessage(
 }
 
 export async function findProductBySlugOrFlavor(q: string) {
-  const exactSlug = await getCatalogProductBySlug(q)
-  if (exactSlug) return exactSlug
-
-  const searchableQuery = stripNonFlavorTerms(q)
-  if (!searchableQuery) return undefined
-
-  const products = await getCatalogProducts()
-  const requestedFormat = detectRequestedFormat(q)
-  const bestProduct = products
-    .map((product) => ({ product, score: scoreFlavorMatch(searchableQuery, product) }))
-    .filter((entry) => entry.score > 0)
-    .sort((a, b) => b.score - a.score || Number(Boolean(b.product.allergens)) - Number(Boolean(a.product.allergens)))[0]?.product
-
-  if (!bestProduct) return undefined
-  if (requestedFormat) {
-    return (await getCatalogProductsByCategory(bestProduct.category)).find((product) => product.format === requestedFormat) ?? bestProduct
-  }
-
-  return (await getCatalogProductsByCategory(bestProduct.category)).find((product) => Boolean(product.allergens)) ?? bestProduct
+  const selection = resolveFlavorSelectionFromProducts(q, await getSafeCatalogProducts())
+  return selection.kind === "matched" ? selection.product : undefined
 }
 
 export async function findExplicitFlavorSelection(query: string) {
-  const searchableQuery = stripNonFlavorTerms(query)
-  if (!searchableQuery) return undefined
+  const selection = resolveFlavorSelectionFromProducts(query, await getSafeCatalogProducts())
+  return selection.kind === "matched" ? selection.product : undefined
+}
 
-  const normalizedQuery = normalize(searchableQuery)
-  const flavors = await getCatalogFlavors()
-  const exactFlavor = flavors.find(
-    (flavor) =>
-      normalize(flavor.category) === normalizedQuery ||
-      normalize(flavor.label) === normalizedQuery
-  )
-
-  if (!exactFlavor) return undefined
-
-  const flavorProducts = await getCatalogProductsByCategory(exactFlavor.category)
-  return flavorProducts.find((product) => Boolean(product.allergens)) ?? flavorProducts[0]
+export async function resolveAvailableFlavorSelection(query: string) {
+  return resolveFlavorSelectionFromProducts(query, await getSafeCatalogProducts())
 }
 
 export async function findFlavorFactsByQuery(q: string) {
@@ -235,7 +335,7 @@ export async function findFlavorFactsByQuery(q: string) {
 
 export async function isKnownFlavor(flavor: string) {
   const normalized = normalize(flavor)
-  const flavors = await getCatalogFlavors()
+  const flavors = getFlavorsFromProducts(await getSafeCatalogProducts())
   return flavors.some((flavorEntry) => normalize(flavorEntry.category) === normalized || normalize(flavorEntry.label) === normalized)
 }
 
@@ -251,14 +351,16 @@ function bestRecordMatch(query: string, records: EditableFlavorRecord[]) {
 }
 
 export async function findUnavailableFlavorByQuery(query: string) {
-  const availableFlavors = await getCatalogFlavors()
+  if (!stripNonFlavorTerms(query)) return undefined
+
+  const availableFlavors = getFlavorsFromProducts(await getSafeCatalogProducts())
   const availableCategories = new Set(availableFlavors.map((flavor) => flavor.category))
   const [adminRecords, archivedRecords] = await Promise.all([
     getAdminCatalogFlavorRecords(),
     getArchivedCatalogFlavorRecords(),
   ])
   const unavailableRecords = [...adminRecords, ...archivedRecords].filter(
-    (record) => !availableCategories.has(record.slug)
+    (record) => !availableCategories.has(record.slug) && isSafeChatbotRecord(record)
   )
   const match = bestRecordMatch(query, unavailableRecords)
 
@@ -291,5 +393,5 @@ export async function buildUnavailableFlavorMessage(flavor: string, options: { c
     ? `Ahora mismo puedes pedir: ${alternatives.join(", ")}.`
     : buildHumanSupportMessage("Te atiende una persona del equipo para confirmarte alternativas aquí:", options.channel)
 
-  return `Ahora mismo ${flavor} no está disponible para nuevos pedidos. ${alternativeCopy}`
+  return `Ahora mismo ${safeFlavorLabelForReply(flavor)} no está disponible para nuevos pedidos. ${alternativeCopy}`
 }
