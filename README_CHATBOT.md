@@ -40,7 +40,7 @@ Chatbot web, webhook de WhatsApp, FAQ y CTAs reutilizan esa misma fuente.
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `ADMIN_EMAIL`
 
-Las confirmaciones outbound de pedidos web usan primero Meta Cloud API con `WHATSAPP_ACCESS_TOKEN` y `WHATSAPP_PHONE_NUMBER_ID`, el mismo proveedor que el webhook de WhatsApp y los recordatorios de producción. Twilio queda solo como fallback si Meta no está configurado; para ese caso se acepta `TWILIO_WHATSAPP_FROM`, `TWILIO_WHATSAPP_NUMBER` o `TWILIO_MONITOR_FROM` como remitente.
+Las confirmaciones outbound de pedidos web usan Twilio como proveedor principal cuando existen `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN` y `TWILIO_WHATSAPP_FROM` (por ejemplo `whatsapp:+16414294476`). Meta Cloud API queda como fallback opcional para confirmaciones si Twilio no está completo. Los recordatorios de producción siguen usando Meta Cloud API con `WHATSAPP_TEMPLATE_REMINDER_NAME`.
 
 ## Endpoints
 
@@ -92,9 +92,9 @@ Cuando hay handoff, el bot se pausa 2h (`bot_paused_until`).
 - Dentro de 24h se puede responder con texto libre.
 - Fuera de 24h se requiere **template** de WhatsApp.
 - Los recordatorios usan template (`WHATSAPP_TEMPLATE_REMINDER_NAME`).
-- Cuando el chatbot web crea un pedido con teléfono, se envía una confirmación outbound por Meta Cloud API con sabor, formato, fecha/plazo y recogida en tienda.
+- Cuando el chatbot web crea un pedido con teléfono, se envía una confirmación outbound por Twilio si está configurado; si falta Twilio, se intenta Meta Cloud API como fallback. El mensaje incluye sabor, formato, fecha/plazo y recogida en tienda.
 - La idempotencia se guarda en `whatsapp_confirmation_sends` por `order_id`, así un retry o refresco no manda duplicados.
-- Si el cliente no ha abierto una ventana de atención de 24h escribiendo antes por WhatsApp, Meta exige una plantilla aprobada para iniciar la conversación. Configura `WHATSAPP_TEMPLATE_ORDER_CONFIRMATION_NAME` con una plantilla de idioma `WHATSAPP_TEMPLATE_LANG` cuyo cuerpo tenga dos variables: `{{1}}` para el resumen del pedido y `{{2}}` para la recogida/plazo. Sin esa plantilla el sistema no reserva idempotencia ni envía; deja logs `whatsapp_confirmation_meta_template_missing` y `whatsapp_confirmation_skipped_disabled` sin romper el pedido web.
+- Si el fallback Meta necesita iniciar conversación fuera de la ventana de atención de 24h, Meta exige una plantilla aprobada. Configura `WHATSAPP_TEMPLATE_ORDER_CONFIRMATION_NAME` con una plantilla de idioma `WHATSAPP_TEMPLATE_LANG` cuyo cuerpo tenga dos variables: `{{1}}` para el resumen del pedido y `{{2}}` para la recogida/plazo. Sin esa plantilla el sistema reserva idempotencia, marca el intento como `failed` y deja logs `whatsapp_confirmation_meta_template_missing` y `whatsapp_confirmation_skipped_disabled` sin romper el pedido web.
 
 ## Vercel Cron
 

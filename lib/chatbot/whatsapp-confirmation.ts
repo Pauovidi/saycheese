@@ -23,7 +23,8 @@ type ConfirmationReservation =
 
 type ConfirmationLogger = Pick<typeof console, "info" | "error">
 
-type ConfirmationProvider = "meta" | "twilio"
+type ActiveConfirmationProvider = "meta" | "twilio"
+type ConfirmationProvider = ActiveConfirmationProvider | "disabled"
 
 export type WebOrderWhatsappConfirmationInput = {
   orderId: string
@@ -38,12 +39,12 @@ export type SendWebOrderWhatsappConfirmationDeps = {
   env?: TwilioWhatsAppEnv & MetaWhatsAppEnv
   logger?: ConfirmationLogger
   reserve?: (input: { orderId: string; to: string; body: string; provider: ConfirmationProvider }) => Promise<ConfirmationReservation>
-  markSent?: (input: { orderId: string; sid?: string; provider: ConfirmationProvider }) => Promise<void>
+  markSent?: (input: { orderId: string; sid?: string; provider: ActiveConfirmationProvider }) => Promise<void>
   markFailed?: (input: { orderId: string; error: unknown }) => Promise<void>
   send?: (input: {
     to: string
     body: string
-    provider: ConfirmationProvider
+    provider: ActiveConfirmationProvider
     template?: {
       orderSummary: string
       pickupSummary: string
@@ -95,11 +96,17 @@ function isMissingPersistenceError(error: unknown) {
 }
 
 function buildDisabledError(provider: ConfirmationProvider, missing: string[]) {
-  return new Error(`WhatsApp confirmation disabled for ${provider}: missing ${missing.join(", ")}`)
+  const providerText = provider === "disabled" ? "WhatsApp confirmation disabled" : `WhatsApp confirmation disabled for ${provider}`
+  return new Error(`${providerText}: missing ${missing.join(", ")}`)
 }
 
-function getConfirmationProvider(metaConfig: ReturnType<typeof getMetaWhatsAppConfig>): ConfirmationProvider {
-  return metaConfig.templateName || metaConfig.token || metaConfig.phoneNumberId ? "meta" : "twilio"
+function getConfirmationProvider(input: {
+  metaConfig: ReturnType<typeof getMetaWhatsAppConfig>
+  twilioConfig: ReturnType<typeof getTwilioWhatsAppConfig>
+}): ConfirmationProvider {
+  if (input.twilioConfig.missing.length === 0) return "twilio"
+  if (input.metaConfig.templateName || input.metaConfig.token || input.metaConfig.phoneNumberId) return "meta"
+  return "disabled"
 }
 
 async function reserveOrderWhatsappConfirmation(input: {
@@ -129,7 +136,7 @@ async function reserveOrderWhatsappConfirmation(input: {
   }
 }
 
-async function markOrderWhatsappConfirmationSent(input: { orderId: string; sid?: string; provider: ConfirmationProvider }) {
+async function markOrderWhatsappConfirmationSent(input: { orderId: string; sid?: string; provider: ActiveConfirmationProvider }) {
   const supabase = getAdminClient()
   await supabase
     .from("whatsapp_confirmation_sends")
@@ -160,10 +167,15 @@ export async function sendWebOrderWhatsappConfirmation(
   const logger = deps.logger ?? console
   const metaConfig = getMetaWhatsAppConfig(deps.env)
   const twilioConfig = getTwilioWhatsAppConfig(deps.env)
+  const provider = getConfirmationProvider({ metaConfig, twilioConfig })
   logger.info("whatsapp_confirmation_attempt", {
     orderId: input.orderId,
     channel: input.channel,
     hasPhone: Boolean(input.phone?.trim()),
+    provider,
+    hasTwilioSid: Boolean(twilioConfig.accountSid),
+    hasTwilioToken: Boolean(twilioConfig.authToken),
+    hasTwilioFrom: Boolean(twilioConfig.from),
     hasMetaToken: Boolean(metaConfig.token),
     hasPhoneNumberId: Boolean(metaConfig.phoneNumberId),
     hasOrderConfirmationTemplate: Boolean(metaConfig.templateName),
@@ -179,8 +191,7 @@ export async function sendWebOrderWhatsappConfirmation(
     return { ok: true as const, skipped: "duplicate" as const }
   }
 
-  const provider = getConfirmationProvider(metaConfig)
-  const missing = provider === "meta" ? metaConfig.missing : twilioConfig.missing
+  const missing = provider === "meta" ? metaConfig.missing : provider === "twilio" ? twilioConfig.missing : twilioConfig.missing
   const to =
     provider === "meta" ? normalizeSpanishMetaWhatsappRecipient(input.phone) : normalizeSpanishWhatsappDestination(input.phone)
 
@@ -203,7 +214,7 @@ export async function sendWebOrderWhatsappConfirmation(
     return { ok: true as const, skipped: reserved.reason }
   }
 
-  if (missing.length) {
+  if (provider === "disabled" || missing.length) {
     logger.info("whatsapp_confirmation_skipped_disabled", { orderId: input.orderId, provider, missing })
     try {
       await (deps.markFailed ?? markOrderWhatsappConfirmationFailed)({ orderId: input.orderId, error: buildDisabledError(provider, missing) })
@@ -240,7 +251,7 @@ export async function sendWebOrderWhatsappConfirmation(
       ((sendInput: {
         to: string
         body: string
-        provider: ConfirmationProvider
+        provider: ActiveConfirmationProvider
         template?: { orderSummary: string; pickupSummary: string }
       }) => (sendInput.provider === "meta" ? sendMetaWhatsAppText(sendInput) : sendTwilioWhatsAppText(sendInput)))
     const result = await sender({

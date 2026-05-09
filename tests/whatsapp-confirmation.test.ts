@@ -55,7 +55,7 @@ test("normaliza teléfonos españoles para destino Meta WhatsApp", () => {
   assert.equal(normalizeSpanishMetaWhatsappRecipient("123"), null)
 })
 
-test("pedido web confirmado con teléfono válido intenta enviar WhatsApp por Meta en producción", async () => {
+test("con Twilio faltante y Meta presente usa Meta", async () => {
   const sent: Array<{ to: string; body: string; provider: string }> = []
   const { events, logger } = createLogger()
 
@@ -111,13 +111,17 @@ test("loguea diagnóstico seguro antes de reservar confirmación", async () => {
     orderId: "order-diagnostics",
     channel: "web",
     hasPhone: true,
+    provider: "meta",
+    hasTwilioSid: false,
+    hasTwilioToken: false,
+    hasTwilioFrom: false,
     hasMetaToken: true,
     hasPhoneNumberId: true,
     hasOrderConfirmationTemplate: true,
   })
 })
 
-test("usa Twilio como fallback solo cuando Meta no está configurado", async () => {
+test("con Twilio env presente usa Twilio aunque falte Meta", async () => {
   const sent: Array<{ to: string; provider: string }> = []
   const { logger } = createLogger()
 
@@ -144,6 +148,39 @@ test("usa Twilio como fallback solo cuando Meta no está configurado", async () 
   assert.equal(result.ok, true)
   assert.equal(sent[0]?.to, "whatsapp:+34600000000")
   assert.equal(sent[0]?.provider, "twilio")
+})
+
+test("con Twilio y Meta presentes usa Twilio como proveedor principal", async () => {
+  const sent: Array<{ to: string; provider: string }> = []
+  const { events, logger } = createLogger()
+
+  const result = await sendWebOrderWhatsappConfirmation(
+    {
+      orderId: "order-twilio-primary",
+      channel: "web",
+      phone: "600000000",
+      deliveryDate: "2026-05-12",
+      items: [{ type: "cake", flavor: "Lotus", qty: 1 }],
+    },
+    {
+      env: { ...metaTemplateEnv, ...twilioEnv },
+      logger,
+      reserve: async () => ({ ok: true }),
+      markSent: async () => {},
+      send: async (input) => {
+        sent.push(input)
+        return { sid: "SM123" }
+      },
+    }
+  )
+
+  assert.equal(result.ok, true)
+  assert.equal(sent[0]?.to, "whatsapp:+34600000000")
+  assert.equal(sent[0]?.provider, "twilio")
+
+  const attempt = events.find((event) => event.args[0] === "whatsapp_confirmation_attempt")
+  assert.ok(attempt)
+  assert.equal((attempt.args[1] as { provider?: string }).provider, "twilio")
 })
 
 test("pedido web confirmado sin teléfono no envía y no rompe", async () => {
@@ -207,8 +244,9 @@ test("pedido confirmado desde WhatsApp inbound no envía confirmación outbound 
   assert.equal(events.some((event) => event.args[0] === "whatsapp_confirmation_skipped_channel"), true)
 })
 
-test("fallo del proveedor WhatsApp queda logueado y no lanza error", async () => {
+test("fallo de Twilio marca failed y queda logueado sin lanzar error", async () => {
   const { events, logger } = createLogger()
+  let failed = false
 
   const result = await sendWebOrderWhatsappConfirmation(
     {
@@ -219,17 +257,20 @@ test("fallo del proveedor WhatsApp queda logueado y no lanza error", async () =>
       items: [{ type: "cake", flavor: "Lotus", qty: 1 }],
     },
     {
-      env: metaTemplateEnv,
+      env: twilioEnv,
       logger,
       reserve: async () => ({ ok: true }),
-      markFailed: async () => {},
+      markFailed: async () => {
+        failed = true
+      },
       send: async () => {
-        throw new Error("twilio down")
+        throw new Error("Twilio WhatsApp error 400: invalid To")
       },
     }
   )
 
   assert.equal(result.ok, false)
+  assert.equal(failed, true)
   assert.equal(events.some((event) => event.args[0] === "whatsapp_confirmation_failed"), true)
 })
 
@@ -288,11 +329,13 @@ test("mensaje de confirmación resume todos los items de un pedido multi-tarta",
   assert.match(message, /12\/05\/2026/)
 })
 
-test("si faltan variables Twilio queda desactivado con log", async () => {
+test("sin proveedores reserva fila y marca failed", async () => {
   const { events, logger } = createLogger()
   let called = false
   let reserved = false
   let failed = false
+  let reservationTo = ""
+  let reservationProvider = ""
 
   const result = await sendWebOrderWhatsappConfirmation(
     {
@@ -305,8 +348,10 @@ test("si faltan variables Twilio queda desactivado con log", async () => {
     {
       env: {},
       logger,
-      reserve: async () => {
+      reserve: async (input) => {
         reserved = true
+        reservationTo = input.to
+        reservationProvider = input.provider
         return { ok: true }
       },
       markFailed: async () => {
@@ -323,7 +368,59 @@ test("si faltan variables Twilio queda desactivado con log", async () => {
   assert.equal(called, false)
   assert.equal(reserved, true)
   assert.equal(failed, true)
+  assert.equal(reservationTo, "whatsapp:+34600000000")
+  assert.equal(reservationProvider, "disabled")
   assert.equal(events.some((event) => event.args[0] === "whatsapp_confirmation_skipped_disabled"), true)
+
+  const attempt = events.find((event) => event.args[0] === "whatsapp_confirmation_attempt")
+  assert.ok(attempt)
+  assert.equal((attempt.args[1] as { provider?: string }).provider, "disabled")
+})
+
+test("pedido web/chatbot crea fila sent vía Twilio mock", async () => {
+  const rows = new Map<string, { status: "pending" | "sent" | "failed"; to: string; provider: string; sid?: string }>()
+  const { logger } = createLogger()
+
+  const result = await sendWebOrderWhatsappConfirmation(
+    {
+      orderId: "order-web-chatbot-twilio",
+      channel: "web",
+      phone: "600000000",
+      deliveryDate: "2026-05-12",
+      items: [{ type: "cake", flavor: "Lotus", qty: 1 }],
+    },
+    {
+      env: twilioEnv,
+      logger,
+      reserve: async (input) => {
+        rows.set(input.orderId, { status: "pending", to: input.to, provider: input.provider })
+        return { ok: true }
+      },
+      markSent: async (input) => {
+        const row = rows.get(input.orderId)
+        if (!row) throw new Error("missing reserved confirmation row")
+        row.status = "sent"
+        row.sid = input.sid
+        row.provider = input.provider
+      },
+      markFailed: async (input) => {
+        const row = rows.get(input.orderId)
+        if (!row) throw new Error("missing reserved confirmation row")
+        row.status = "failed"
+      },
+      send: async (input) => {
+        assert.equal(input.provider, "twilio")
+        return { sid: "SM_web_chatbot" }
+      },
+    }
+  )
+
+  const row = rows.get("order-web-chatbot-twilio")
+  assert.equal(result.ok, true)
+  assert.equal(row?.status, "sent")
+  assert.equal(row?.to, "whatsapp:+34600000000")
+  assert.equal(row?.provider, "twilio")
+  assert.equal(row?.sid, "SM_web_chatbot")
 })
 
 test("si Meta no tiene template reserva idempotencia y marca el intento como fallido", async () => {

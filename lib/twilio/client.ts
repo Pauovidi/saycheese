@@ -21,7 +21,7 @@ export type TwilioWhatsAppEnv = Record<string, string | undefined>
 export function getTwilioWhatsAppConfig(env: TwilioWhatsAppEnv = process.env): TwilioWhatsAppConfig {
   const accountSid = env.TWILIO_ACCOUNT_SID
   const authToken = env.TWILIO_AUTH_TOKEN
-  const from = env.TWILIO_WHATSAPP_FROM ?? env.TWILIO_WHATSAPP_NUMBER ?? env.TWILIO_MONITOR_FROM
+  const from = env.TWILIO_WHATSAPP_FROM
   const required: Array<[string, string | undefined]> = [
     ["TWILIO_ACCOUNT_SID", accountSid],
     ["TWILIO_AUTH_TOKEN", authToken],
