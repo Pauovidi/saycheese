@@ -94,6 +94,14 @@ function isMissingPersistenceError(error: unknown) {
   return /relation .*whatsapp_confirmation_sends.* does not exist|schema cache|PGRST|42P01/i.test(message)
 }
 
+function buildDisabledError(provider: ConfirmationProvider, missing: string[]) {
+  return new Error(`WhatsApp confirmation disabled for ${provider}: missing ${missing.join(", ")}`)
+}
+
+function getConfirmationProvider(metaConfig: ReturnType<typeof getMetaWhatsAppConfig>): ConfirmationProvider {
+  return metaConfig.templateName || metaConfig.token || metaConfig.phoneNumberId ? "meta" : "twilio"
+}
+
 async function reserveOrderWhatsappConfirmation(input: {
   orderId: string
   to: string
@@ -171,7 +179,7 @@ export async function sendWebOrderWhatsappConfirmation(
     return { ok: true as const, skipped: "duplicate" as const }
   }
 
-  const provider: ConfirmationProvider = metaConfig.missing.length ? "twilio" : "meta"
+  const provider = getConfirmationProvider(metaConfig)
   const missing = provider === "meta" ? metaConfig.missing : twilioConfig.missing
   const to =
     provider === "meta" ? normalizeSpanishMetaWhatsappRecipient(input.phone) : normalizeSpanishWhatsappDestination(input.phone)
@@ -179,24 +187,6 @@ export async function sendWebOrderWhatsappConfirmation(
   if (!to) {
     logger.info("whatsapp_confirmation_skipped_missing_phone", { orderId: input.orderId })
     return { ok: true as const, skipped: "missing_phone" as const }
-  }
-
-  if (missing.length) {
-    logger.info("whatsapp_confirmation_skipped_disabled", { orderId: input.orderId, provider, missing })
-    return { ok: true as const, skipped: "disabled" as const }
-  }
-
-  if (provider === "meta" && !metaConfig.templateName) {
-    logger.info("whatsapp_confirmation_meta_template_missing", {
-      orderId: input.orderId,
-      note: "Meta requires an approved template to initiate conversations outside the 24h customer service window.",
-    })
-    logger.info("whatsapp_confirmation_skipped_disabled", {
-      orderId: input.orderId,
-      provider,
-      missing: ["WHATSAPP_TEMPLATE_ORDER_CONFIRMATION_NAME"],
-    })
-    return { ok: true as const, skipped: "disabled" as const }
   }
 
   const body = buildWebOrderWhatsappConfirmationMessage({
@@ -211,6 +201,37 @@ export async function sendWebOrderWhatsappConfirmation(
     const event = reserved.reason === "duplicate" ? "whatsapp_confirmation_duplicate_skipped" : "whatsapp_confirmation_skipped_disabled"
     logger.info(event, { orderId: input.orderId, error: reserved.error })
     return { ok: true as const, skipped: reserved.reason }
+  }
+
+  if (missing.length) {
+    logger.info("whatsapp_confirmation_skipped_disabled", { orderId: input.orderId, provider, missing })
+    try {
+      await (deps.markFailed ?? markOrderWhatsappConfirmationFailed)({ orderId: input.orderId, error: buildDisabledError(provider, missing) })
+    } catch (error) {
+      logger.error("whatsapp_confirmation_failed", { orderId: input.orderId, error })
+    }
+    return { ok: true as const, skipped: "disabled" as const }
+  }
+
+  if (provider === "meta" && !metaConfig.templateName) {
+    logger.info("whatsapp_confirmation_meta_template_missing", {
+      orderId: input.orderId,
+      note: "Meta requires an approved template to initiate conversations outside the 24h customer service window.",
+    })
+    logger.info("whatsapp_confirmation_skipped_disabled", {
+      orderId: input.orderId,
+      provider,
+      missing: ["WHATSAPP_TEMPLATE_ORDER_CONFIRMATION_NAME"],
+    })
+    try {
+      await (deps.markFailed ?? markOrderWhatsappConfirmationFailed)({
+        orderId: input.orderId,
+        error: buildDisabledError(provider, ["WHATSAPP_TEMPLATE_ORDER_CONFIRMATION_NAME"]),
+      })
+    } catch (error) {
+      logger.error("whatsapp_confirmation_failed", { orderId: input.orderId, error })
+    }
+    return { ok: true as const, skipped: "disabled" as const }
   }
 
   try {

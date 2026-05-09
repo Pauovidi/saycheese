@@ -324,6 +324,24 @@ async function saveAndReply(userId: string, text: string, state?: OrderState) {
   return { text: safeText }
 }
 
+function logChatOrderCreated(input: {
+  path: "finalizeOrderFromState" | "toolRunner.create_order"
+  channel: "web" | "whatsapp"
+  orderId: string
+  phone?: string | null
+  reusedExisting?: boolean
+  items: ChatOrderItem[]
+}) {
+  console.info("chat_order_created", {
+    path: input.path,
+    channel: input.channel,
+    orderId: input.orderId,
+    hasPhone: Boolean(input.phone?.trim()),
+    reusedExisting: Boolean(input.reusedExisting),
+    itemCount: input.items.length,
+  })
+}
+
 async function finalizeOrderFromState(userId: string, state: OrderState, channel: "web" | "whatsapp") {
   const orderItems = buildPendingOrderItems(state)
   const orderFingerprint = buildCurrentOrderFingerprint(state)
@@ -358,6 +376,15 @@ async function finalizeOrderFromState(userId: string, state: OrderState, channel
   if (!created.ok) {
     return saveAndReply(userId, created.error ?? "No pude crear el pedido ahora mismo.", state)
   }
+
+  logChatOrderCreated({
+    path: "finalizeOrderFromState",
+    channel,
+    orderId: created.orderId,
+    phone: state.phone,
+    reusedExisting: created.reusedExisting,
+    items: orderItems,
+  })
 
   await sendWebOrderWhatsappConfirmation({
     orderId: created.orderId,
@@ -571,12 +598,22 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
         safetyEscalate = true
       }
       if (created.ok) {
+        const toolItems = Array.isArray(args.items) ? (args.items as ChatOrderItem[]) : []
+        const toolPhone = String(args.phone ?? fallbackPhone ?? "")
+        logChatOrderCreated({
+          path: "toolRunner.create_order",
+          channel,
+          orderId: created.orderId,
+          phone: toolPhone,
+          reusedExisting: created.reusedExisting,
+          items: toolItems,
+        })
         await sendWebOrderWhatsappConfirmation({
           orderId: created.orderId,
           channel,
-          phone: String(args.phone ?? fallbackPhone ?? ""),
+          phone: toolPhone,
           deliveryDate: created.deliveryDate,
-          items: Array.isArray(args.items) ? (args.items as ChatOrderItem[]) : [],
+          items: toolItems,
           reusedExisting: created.reusedExisting,
         })
       }

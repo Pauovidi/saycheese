@@ -19,6 +19,11 @@ const metaTemplateEnv = {
   WHATSAPP_TEMPLATE_ORDER_CONFIRMATION_NAME: "order_confirmation",
 }
 
+const metaTemplateOnlyEnv = {
+  WHATSAPP_TEMPLATE_LANG: "es_ES",
+  WHATSAPP_TEMPLATE_ORDER_CONFIRMATION_NAME: "order_confirmation",
+}
+
 const twilioEnv = {
   TWILIO_ACCOUNT_SID: "AC_test",
   TWILIO_AUTH_TOKEN: "token",
@@ -171,6 +176,7 @@ test("pedido web confirmado sin teléfono no envía y no rompe", async () => {
 test("pedido confirmado desde WhatsApp inbound no envía confirmación outbound extra", async () => {
   const { events, logger } = createLogger()
   let called = false
+  let reserved = false
 
   const result = await sendWebOrderWhatsappConfirmation(
     {
@@ -183,6 +189,10 @@ test("pedido confirmado desde WhatsApp inbound no envía confirmación outbound 
     {
       env: metaTemplateEnv,
       logger,
+      reserve: async () => {
+        reserved = true
+        return { ok: true }
+      },
       send: async () => {
         called = true
         return {}
@@ -192,6 +202,7 @@ test("pedido confirmado desde WhatsApp inbound no envía confirmación outbound 
 
   assert.deepEqual(result, { ok: true, skipped: "channel" })
   assert.equal(called, false)
+  assert.equal(reserved, false)
   assert.equal(events.some((event) => event.args[0] === "whatsapp_confirmation_attempt"), true)
   assert.equal(events.some((event) => event.args[0] === "whatsapp_confirmation_skipped_channel"), true)
 })
@@ -280,6 +291,8 @@ test("mensaje de confirmación resume todos los items de un pedido multi-tarta",
 test("si faltan variables Twilio queda desactivado con log", async () => {
   const { events, logger } = createLogger()
   let called = false
+  let reserved = false
+  let failed = false
 
   const result = await sendWebOrderWhatsappConfirmation(
     {
@@ -292,6 +305,13 @@ test("si faltan variables Twilio queda desactivado con log", async () => {
     {
       env: {},
       logger,
+      reserve: async () => {
+        reserved = true
+        return { ok: true }
+      },
+      markFailed: async () => {
+        failed = true
+      },
       send: async () => {
         called = true
         return {}
@@ -301,12 +321,15 @@ test("si faltan variables Twilio queda desactivado con log", async () => {
 
   assert.deepEqual(result, { ok: true, skipped: "disabled" })
   assert.equal(called, false)
+  assert.equal(reserved, true)
+  assert.equal(failed, true)
   assert.equal(events.some((event) => event.args[0] === "whatsapp_confirmation_skipped_disabled"), true)
 })
 
-test("si Meta no tiene template desactiva el envío sin reservar idempotencia", async () => {
+test("si Meta no tiene template reserva idempotencia y marca el intento como fallido", async () => {
   const { events, logger } = createLogger()
   let reserved = false
+  let failed = false
   let sent = false
 
   const result = await sendWebOrderWhatsappConfirmation(
@@ -324,7 +347,9 @@ test("si Meta no tiene template desactiva el envío sin reservar idempotencia", 
         reserved = true
         return { ok: true }
       },
-      markSent: async () => {},
+      markFailed: async () => {
+        failed = true
+      },
       send: async () => {
         sent = true
         return { id: "wamid.123" }
@@ -333,8 +358,48 @@ test("si Meta no tiene template desactiva el envío sin reservar idempotencia", 
   )
 
   assert.deepEqual(result, { ok: true, skipped: "disabled" })
-  assert.equal(reserved, false)
+  assert.equal(reserved, true)
+  assert.equal(failed, true)
   assert.equal(sent, false)
   assert.equal(events.some((event) => event.args[0] === "whatsapp_confirmation_meta_template_missing"), true)
+  assert.equal(events.some((event) => event.args[0] === "whatsapp_confirmation_skipped_disabled"), true)
+})
+
+test("si Meta tiene template pero faltan token o phone number reserva antes de desactivar", async () => {
+  const { events, logger } = createLogger()
+  let reservationProvider = ""
+  let failed = false
+  let sent = false
+
+  const result = await sendWebOrderWhatsappConfirmation(
+    {
+      orderId: "order-meta-template-missing-credentials",
+      channel: "web",
+      phone: "600000000",
+      deliveryDate: "2026-05-12",
+      items: [{ type: "cake", flavor: "Lotus", qty: 1 }],
+    },
+    {
+      env: metaTemplateOnlyEnv,
+      logger,
+      reserve: async (input) => {
+        reservationProvider = input.provider
+        return { ok: true }
+      },
+      markFailed: async () => {
+        failed = true
+      },
+      send: async () => {
+        sent = true
+        return { id: "wamid.123" }
+      },
+    }
+  )
+
+  assert.deepEqual(result, { ok: true, skipped: "disabled" })
+  assert.equal(reservationProvider, "meta")
+  assert.equal(failed, true)
+  assert.equal(sent, false)
+  assert.equal(events.some((event) => event.args[0] === "whatsapp_confirmation_meta_template_missing"), false)
   assert.equal(events.some((event) => event.args[0] === "whatsapp_confirmation_skipped_disabled"), true)
 })
