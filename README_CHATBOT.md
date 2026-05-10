@@ -35,12 +35,13 @@ Chatbot web, webhook de WhatsApp, FAQ y CTAs reutilizan esa misma fuente.
 - `TWILIO_ACCOUNT_SID`
 - `TWILIO_AUTH_TOKEN`
 - `TWILIO_WHATSAPP_FROM` (ej: `whatsapp:+14155238886` en sandbox o el remitente WhatsApp aprobado en producción)
+- `TWILIO_ORDER_CONFIRMATION_CONTENT_SID` (Content SID `HX...` de la plantilla Twilio aprobada para confirmaciones)
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `ADMIN_EMAIL`
 
-Las confirmaciones outbound de pedidos web usan Twilio como proveedor principal cuando existen `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN` y `TWILIO_WHATSAPP_FROM` (por ejemplo `whatsapp:+16414294476`). Meta Cloud API queda como fallback opcional para confirmaciones si Twilio no está completo. Los recordatorios de producción siguen usando Meta Cloud API con `WHATSAPP_TEMPLATE_REMINDER_NAME`.
+Las confirmaciones outbound de pedidos web usan Twilio como proveedor principal cuando existen `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN` y `TWILIO_WHATSAPP_FROM` (por ejemplo `whatsapp:+16414294476`). Para Twilio no se envía texto libre: se usa Content Template con `TWILIO_ORDER_CONFIRMATION_CONTENT_SID` y variables `{{1}}` resumen del pedido y `{{2}}` recogida/plazo. `WHATSAPP_TEMPLATE_ORDER_CONFIRMATION_NAME` es el nombre de plantilla para el fallback Meta; Twilio necesita el Content SID `HX...`. Meta Cloud API queda como fallback opcional si Twilio no está completo. Los recordatorios de producción siguen usando Meta Cloud API con `WHATSAPP_TEMPLATE_REMINDER_NAME`.
 
 ## Endpoints
 
@@ -92,8 +93,9 @@ Cuando hay handoff, el bot se pausa 2h (`bot_paused_until`).
 - Dentro de 24h se puede responder con texto libre.
 - Fuera de 24h se requiere **template** de WhatsApp.
 - Los recordatorios usan template (`WHATSAPP_TEMPLATE_REMINDER_NAME`).
-- Cuando el chatbot web crea un pedido con teléfono, se envía una confirmación outbound por Twilio si está configurado; si falta Twilio, se intenta Meta Cloud API como fallback. El mensaje incluye sabor, formato, fecha/plazo y recogida en tienda.
+- Cuando el chatbot web crea un pedido con teléfono, se envía una confirmación outbound por Twilio Content Template si está configurado; si falta Twilio, se intenta Meta Cloud API como fallback. Las variables de plantilla incluyen sabor, formato, fecha/plazo y recogida en tienda.
 - La idempotencia se guarda en `whatsapp_confirmation_sends` por `order_id`, así un retry o refresco no manda duplicados.
+- Si Twilio está configurado pero falta `TWILIO_ORDER_CONFIRMATION_CONTENT_SID`, el sistema reserva idempotencia, marca el intento como `failed` y no envía texto libre.
 - Si el fallback Meta necesita iniciar conversación fuera de la ventana de atención de 24h, Meta exige una plantilla aprobada. Configura `WHATSAPP_TEMPLATE_ORDER_CONFIRMATION_NAME` con una plantilla de idioma `WHATSAPP_TEMPLATE_LANG` cuyo cuerpo tenga dos variables: `{{1}}` para el resumen del pedido y `{{2}}` para la recogida/plazo. Sin esa plantilla el sistema reserva idempotencia, marca el intento como `failed` y deja logs `whatsapp_confirmation_meta_template_missing` y `whatsapp_confirmation_skipped_disabled` sin romper el pedido web.
 
 ## Vercel Cron

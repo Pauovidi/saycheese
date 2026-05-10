@@ -4,8 +4,9 @@ import assert from "node:assert/strict"
 import {
   buildWebOrderWhatsappConfirmationMessage,
   sendWebOrderWhatsappConfirmation,
+  type SendWebOrderWhatsappConfirmationDeps,
 } from "../lib/chatbot/whatsapp-confirmation"
-import { normalizeSpanishWhatsappDestination } from "../lib/twilio/client"
+import { normalizeSpanishWhatsappDestination, sendTwilioWhatsAppTemplate } from "../lib/twilio/client"
 import { normalizeSpanishMetaWhatsappRecipient } from "../lib/whatsapp/cloud-api"
 
 const metaEnv = {
@@ -29,6 +30,13 @@ const twilioEnv = {
   TWILIO_AUTH_TOKEN: "token",
   TWILIO_WHATSAPP_FROM: "whatsapp:+14155238886",
 }
+
+const twilioTemplateEnv = {
+  ...twilioEnv,
+  TWILIO_ORDER_CONFIRMATION_CONTENT_SID: "HX_order_confirmation",
+}
+
+type SentInput = Parameters<NonNullable<SendWebOrderWhatsappConfirmationDeps["send"]>>[0]
 
 function createLogger() {
   const events: Array<{ level: "info" | "error"; args: unknown[] }> = []
@@ -55,8 +63,59 @@ test("normaliza teléfonos españoles para destino Meta WhatsApp", () => {
   assert.equal(normalizeSpanishMetaWhatsappRecipient("123"), null)
 })
 
+test("cliente Twilio envía Content Template con ContentSid y ContentVariables sin Body", async () => {
+  const previousEnv = {
+    TWILIO_ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID,
+    TWILIO_AUTH_TOKEN: process.env.TWILIO_AUTH_TOKEN,
+    TWILIO_WHATSAPP_FROM: process.env.TWILIO_WHATSAPP_FROM,
+    TWILIO_ORDER_CONFIRMATION_CONTENT_SID: process.env.TWILIO_ORDER_CONFIRMATION_CONTENT_SID,
+  }
+  const originalFetch = globalThis.fetch
+  let postedBody: URLSearchParams | undefined
+
+  try {
+    process.env.TWILIO_ACCOUNT_SID = "AC_test"
+    process.env.TWILIO_AUTH_TOKEN = "token"
+    process.env.TWILIO_WHATSAPP_FROM = "whatsapp:+14155238886"
+    process.env.TWILIO_ORDER_CONFIRMATION_CONTENT_SID = "HX_order_confirmation"
+    globalThis.fetch = (async (_url, init) => {
+      postedBody = init?.body as URLSearchParams
+      return new Response(JSON.stringify({ sid: "SM_template" }), { status: 201 })
+    }) as typeof fetch
+
+    const result = await sendTwilioWhatsAppTemplate({
+      to: "whatsapp:+34600000000",
+      contentSid: "HX_order_confirmation",
+      contentVariables: {
+        "1": "tarta grande de Lotus",
+        "2": "Recogida en tienda el 12/05/2026",
+      },
+    })
+
+    assert.equal(result.sid, "SM_template")
+    assert.ok(postedBody)
+    assert.equal(postedBody.get("From"), "whatsapp:+14155238886")
+    assert.equal(postedBody.get("To"), "whatsapp:+34600000000")
+    assert.equal(postedBody.get("ContentSid"), "HX_order_confirmation")
+    assert.deepEqual(JSON.parse(postedBody.get("ContentVariables") ?? "{}"), {
+      "1": "tarta grande de Lotus",
+      "2": "Recogida en tienda el 12/05/2026",
+    })
+    assert.equal(postedBody.has("Body"), false)
+  } finally {
+    globalThis.fetch = originalFetch
+    for (const [key, value] of Object.entries(previousEnv)) {
+      if (value === undefined) {
+        delete process.env[key]
+      } else {
+        process.env[key] = value
+      }
+    }
+  }
+})
+
 test("con Twilio faltante y Meta presente usa Meta", async () => {
-  const sent: Array<{ to: string; body: string; provider: string }> = []
+  const sent: SentInput[] = []
   const { events, logger } = createLogger()
 
   const result = await sendWebOrderWhatsappConfirmation(
@@ -81,9 +140,11 @@ test("con Twilio faltante y Meta presente usa Meta", async () => {
 
   assert.equal(result.ok, true)
   assert.equal(sent.length, 1)
-  assert.equal(sent[0]?.to, "34600000000")
-  assert.equal(sent[0]?.provider, "meta")
-  assert.match(sent[0]?.body ?? "", /Pedido confirmado/i)
+  const first = sent[0]
+  assert.equal(first?.provider, "meta")
+  if (first?.provider !== "meta") assert.fail("expected Meta send")
+  assert.equal(first.to, "34600000000")
+  assert.match(first.body, /Pedido confirmado/i)
   assert.equal(events.some((event) => event.args[0] === "whatsapp_confirmation_sent"), true)
 })
 
@@ -115,14 +176,15 @@ test("loguea diagnóstico seguro antes de reservar confirmación", async () => {
     hasTwilioSid: false,
     hasTwilioToken: false,
     hasTwilioFrom: false,
+    hasTwilioContentSid: false,
     hasMetaToken: true,
     hasPhoneNumberId: true,
     hasOrderConfirmationTemplate: true,
   })
 })
 
-test("con Twilio env presente usa Twilio aunque falte Meta", async () => {
-  const sent: Array<{ to: string; provider: string }> = []
+test("con Twilio configurado y Content SID usa template aunque falte Meta", async () => {
+  const sent: SentInput[] = []
   const { logger } = createLogger()
 
   const result = await sendWebOrderWhatsappConfirmation(
@@ -134,7 +196,7 @@ test("con Twilio env presente usa Twilio aunque falte Meta", async () => {
       items: [{ type: "cake", flavor: "Lotus", qty: 1 }],
     },
     {
-      env: twilioEnv,
+      env: twilioTemplateEnv,
       logger,
       reserve: async () => ({ ok: true }),
       markSent: async () => {},
@@ -146,12 +208,20 @@ test("con Twilio env presente usa Twilio aunque falte Meta", async () => {
   )
 
   assert.equal(result.ok, true)
-  assert.equal(sent[0]?.to, "whatsapp:+34600000000")
-  assert.equal(sent[0]?.provider, "twilio")
+  const first = sent[0]
+  assert.equal(first?.provider, "twilio")
+  if (first?.provider !== "twilio") assert.fail("expected Twilio send")
+  assert.equal(first.to, "whatsapp:+34600000000")
+  assert.equal("body" in first, false)
+  assert.equal(first.template.contentSid, "HX_order_confirmation")
+  assert.deepEqual(first.template.contentVariables, {
+    "1": "tarta grande de Lotus",
+    "2": "Recogida en tienda el 12/05/2026",
+  })
 })
 
 test("con Twilio y Meta presentes usa Twilio como proveedor principal", async () => {
-  const sent: Array<{ to: string; provider: string }> = []
+  const sent: SentInput[] = []
   const { events, logger } = createLogger()
 
   const result = await sendWebOrderWhatsappConfirmation(
@@ -163,7 +233,7 @@ test("con Twilio y Meta presentes usa Twilio como proveedor principal", async ()
       items: [{ type: "cake", flavor: "Lotus", qty: 1 }],
     },
     {
-      env: { ...metaTemplateEnv, ...twilioEnv },
+      env: { ...metaTemplateEnv, ...twilioTemplateEnv },
       logger,
       reserve: async () => ({ ok: true }),
       markSent: async () => {},
@@ -175,8 +245,11 @@ test("con Twilio y Meta presentes usa Twilio como proveedor principal", async ()
   )
 
   assert.equal(result.ok, true)
-  assert.equal(sent[0]?.to, "whatsapp:+34600000000")
-  assert.equal(sent[0]?.provider, "twilio")
+  const first = sent[0]
+  assert.equal(first?.provider, "twilio")
+  if (first?.provider !== "twilio") assert.fail("expected Twilio send")
+  assert.equal(first.to, "whatsapp:+34600000000")
+  assert.equal("body" in first, false)
 
   const attempt = events.find((event) => event.args[0] === "whatsapp_confirmation_attempt")
   assert.ok(attempt)
@@ -247,6 +320,7 @@ test("pedido confirmado desde WhatsApp inbound no envía confirmación outbound 
 test("fallo de Twilio marca failed y queda logueado sin lanzar error", async () => {
   const { events, logger } = createLogger()
   let failed = false
+  let savedError = ""
 
   const result = await sendWebOrderWhatsappConfirmation(
     {
@@ -257,20 +331,22 @@ test("fallo de Twilio marca failed y queda logueado sin lanzar error", async () 
       items: [{ type: "cake", flavor: "Lotus", qty: 1 }],
     },
     {
-      env: twilioEnv,
+      env: twilioTemplateEnv,
       logger,
       reserve: async () => ({ ok: true }),
-      markFailed: async () => {
+      markFailed: async (input) => {
         failed = true
+        savedError = input.error instanceof Error ? input.error.message : String(input.error)
       },
       send: async () => {
-        throw new Error("Twilio WhatsApp error 400: invalid To")
+        throw new Error("Twilio WhatsApp error 400 code=63016: Outside messaging window")
       },
     }
   )
 
   assert.equal(result.ok, false)
   assert.equal(failed, true)
+  assert.match(savedError, /63016/)
   assert.equal(events.some((event) => event.args[0] === "whatsapp_confirmation_failed"), true)
 })
 
@@ -329,6 +405,45 @@ test("mensaje de confirmación resume todos los items de un pedido multi-tarta",
   assert.match(message, /12\/05\/2026/)
 })
 
+test("si Twilio está configurado pero falta Content SID marca failed y no envía body libre", async () => {
+  const { events, logger } = createLogger()
+  let reservationProvider = ""
+  let failedError = ""
+  let sent = false
+
+  const result = await sendWebOrderWhatsappConfirmation(
+    {
+      orderId: "order-twilio-missing-content-sid",
+      channel: "web",
+      phone: "600000000",
+      deliveryDate: "2026-05-12",
+      items: [{ type: "cake", flavor: "Lotus", qty: 1 }],
+    },
+    {
+      env: { ...twilioEnv, WHATSAPP_TEMPLATE_ORDER_CONFIRMATION_NAME: "order_confirmation" },
+      logger,
+      reserve: async (input) => {
+        reservationProvider = input.provider
+        return { ok: true }
+      },
+      markFailed: async (input) => {
+        failedError = input.error instanceof Error ? input.error.message : String(input.error)
+      },
+      send: async () => {
+        sent = true
+        return { sid: "SM_should_not_send" }
+      },
+    }
+  )
+
+  assert.deepEqual(result, { ok: true, skipped: "disabled" })
+  assert.equal(reservationProvider, "twilio")
+  assert.equal(sent, false)
+  assert.match(failedError, /TWILIO_ORDER_CONFIRMATION_CONTENT_SID/)
+  assert.match(failedError, /Content SID|Content Template/i)
+  assert.equal(events.some((event) => event.args[0] === "whatsapp_confirmation_skipped_disabled"), true)
+})
+
 test("sin proveedores reserva fila y marca failed", async () => {
   const { events, logger } = createLogger()
   let called = false
@@ -377,7 +492,7 @@ test("sin proveedores reserva fila y marca failed", async () => {
   assert.equal((attempt.args[1] as { provider?: string }).provider, "disabled")
 })
 
-test("pedido web/chatbot crea fila sent vía Twilio mock", async () => {
+test("pedido chatbot web crea intento sent vía Twilio template mock", async () => {
   const rows = new Map<string, { status: "pending" | "sent" | "failed"; to: string; provider: string; sid?: string }>()
   const { logger } = createLogger()
 
@@ -390,7 +505,7 @@ test("pedido web/chatbot crea fila sent vía Twilio mock", async () => {
       items: [{ type: "cake", flavor: "Lotus", qty: 1 }],
     },
     {
-      env: twilioEnv,
+      env: twilioTemplateEnv,
       logger,
       reserve: async (input) => {
         rows.set(input.orderId, { status: "pending", to: input.to, provider: input.provider })
@@ -410,6 +525,13 @@ test("pedido web/chatbot crea fila sent vía Twilio mock", async () => {
       },
       send: async (input) => {
         assert.equal(input.provider, "twilio")
+        if (input.provider !== "twilio") assert.fail("expected Twilio template send")
+        assert.equal("body" in input, false)
+        assert.equal(input.template.contentSid, "HX_order_confirmation")
+        assert.deepEqual(input.template.contentVariables, {
+          "1": "tarta grande de Lotus",
+          "2": "Recogida en tienda el 12/05/2026",
+        })
         return { sid: "SM_web_chatbot" }
       },
     }
@@ -421,6 +543,81 @@ test("pedido web/chatbot crea fila sent vía Twilio mock", async () => {
   assert.equal(row?.to, "whatsapp:+34600000000")
   assert.equal(row?.provider, "twilio")
   assert.equal(row?.sid, "SM_web_chatbot")
+})
+
+test("pedido checkout web crea intento con provider Twilio template", async () => {
+  let reservationProvider = ""
+  let sentProvider = ""
+  let sentContentSid = ""
+  const { logger } = createLogger()
+
+  const result = await sendWebOrderWhatsappConfirmation(
+    {
+      orderId: "order-checkout-web-twilio-template",
+      channel: "web",
+      phone: "600000000",
+      deliveryDate: "2026-05-13",
+      items: [{ type: "box", flavor: "Clásica", qty: 1 }],
+    },
+    {
+      env: twilioTemplateEnv,
+      logger,
+      reserve: async (input) => {
+        reservationProvider = input.provider
+        return { ok: true }
+      },
+      markSent: async (input) => {
+        sentProvider = input.provider
+      },
+      send: async (input) => {
+        assert.equal(input.provider, "twilio")
+        if (input.provider !== "twilio") assert.fail("expected Twilio template send")
+        sentContentSid = input.template.contentSid
+        return { sid: "SM_checkout_web" }
+      },
+    }
+  )
+
+  assert.equal(result.ok, true)
+  assert.equal(reservationProvider, "twilio")
+  assert.equal(sentProvider, "twilio")
+  assert.equal(sentContentSid, "HX_order_confirmation")
+})
+
+test("Twilio template conserva resumen multi-item en variables", async () => {
+  let contentVariables: Record<string, string> | undefined
+  const { logger } = createLogger()
+
+  const result = await sendWebOrderWhatsappConfirmation(
+    {
+      orderId: "order-twilio-template-multi-item",
+      channel: "web",
+      phone: "600000000",
+      deliveryDate: "2026-05-12",
+      items: [
+        { type: "cake", flavor: "Lotus", qty: 2 },
+        { type: "box", flavor: "Pistacho", qty: 1 },
+      ],
+    },
+    {
+      env: twilioTemplateEnv,
+      logger,
+      reserve: async () => ({ ok: true }),
+      markSent: async () => {},
+      send: async (input) => {
+        assert.equal(input.provider, "twilio")
+        if (input.provider !== "twilio") assert.fail("expected Twilio template send")
+        contentVariables = input.template.contentVariables
+        return { sid: "SM_multi" }
+      },
+    }
+  )
+
+  assert.equal(result.ok, true)
+  assert.deepEqual(contentVariables, {
+    "1": "tarta grande de Lotus x2, cajita de Pistacho",
+    "2": "Recogida en tienda el 12/05/2026",
+  })
 })
 
 test("si Meta no tiene template reserva idempotencia y marca el intento como fallido", async () => {

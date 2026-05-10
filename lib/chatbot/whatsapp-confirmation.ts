@@ -2,7 +2,7 @@ import type { ChatOrderItem } from "@/lib/chatbot/order-dedupe"
 import {
   getTwilioWhatsAppConfig,
   normalizeSpanishWhatsappDestination,
-  sendTwilioWhatsAppText,
+  sendTwilioWhatsAppTemplate,
   type TwilioWhatsAppEnv,
   type TwilioWhatsAppMessageResult,
 } from "@/lib/twilio/client"
@@ -26,6 +26,27 @@ type ConfirmationLogger = Pick<typeof console, "info" | "error">
 type ActiveConfirmationProvider = "meta" | "twilio"
 type ConfirmationProvider = ActiveConfirmationProvider | "disabled"
 
+type ConfirmationTemplateData = {
+  orderSummary: string
+  pickupSummary: string
+}
+
+type ConfirmationSendInput =
+  | {
+      to: string
+      body: string
+      provider: "meta"
+      template: ConfirmationTemplateData
+    }
+  | {
+      to: string
+      provider: "twilio"
+      template: ConfirmationTemplateData & {
+        contentSid: string
+        contentVariables: Record<"1" | "2", string>
+      }
+    }
+
 export type WebOrderWhatsappConfirmationInput = {
   orderId: string
   channel: Channel
@@ -41,15 +62,7 @@ export type SendWebOrderWhatsappConfirmationDeps = {
   reserve?: (input: { orderId: string; to: string; body: string; provider: ConfirmationProvider }) => Promise<ConfirmationReservation>
   markSent?: (input: { orderId: string; sid?: string; provider: ActiveConfirmationProvider }) => Promise<void>
   markFailed?: (input: { orderId: string; error: unknown }) => Promise<void>
-  send?: (input: {
-    to: string
-    body: string
-    provider: ActiveConfirmationProvider
-    template?: {
-      orderSummary: string
-      pickupSummary: string
-    }
-  }) => Promise<TwilioWhatsAppMessageResult | MetaWhatsAppMessageResult>
+  send?: (input: ConfirmationSendInput) => Promise<TwilioWhatsAppMessageResult | MetaWhatsAppMessageResult>
 }
 
 const LEAD_DAYS_RAW = Number.parseInt(process.env.CHATBOT_LEAD_DAYS ?? "3", 10)
@@ -100,6 +113,14 @@ function buildDisabledError(provider: ConfirmationProvider, missing: string[]) {
   return new Error(`${providerText}: missing ${missing.join(", ")}`)
 }
 
+function buildTwilioTemplateMissingError(missing: string[], hasMetaTemplateName: boolean) {
+  const hint = hasMetaTemplateName
+    ? "WHATSAPP_TEMPLATE_ORDER_CONFIRMATION_NAME is the Meta template name; Twilio requires TWILIO_ORDER_CONFIRMATION_CONTENT_SID (HX...) from Content Template Builder."
+    : "Twilio WhatsApp templates require TWILIO_ORDER_CONFIRMATION_CONTENT_SID (HX...) from Content Template Builder."
+
+  return new Error(`WhatsApp confirmation disabled for twilio: missing ${missing.join(", ")}. ${hint}`)
+}
+
 function getConfirmationProvider(input: {
   metaConfig: ReturnType<typeof getMetaWhatsAppConfig>
   twilioConfig: ReturnType<typeof getTwilioWhatsAppConfig>
@@ -107,6 +128,17 @@ function getConfirmationProvider(input: {
   if (input.twilioConfig.missing.length === 0) return "twilio"
   if (input.metaConfig.templateName || input.metaConfig.token || input.metaConfig.phoneNumberId) return "meta"
   return "disabled"
+}
+
+function normalizeTemplateVariable(value: string) {
+  return value.replace(/\s+/g, " ").trim()
+}
+
+function buildTwilioContentVariables(input: ConfirmationTemplateData): Record<"1" | "2", string> {
+  return {
+    "1": normalizeTemplateVariable(input.orderSummary),
+    "2": normalizeTemplateVariable(input.pickupSummary),
+  }
 }
 
 async function reserveOrderWhatsappConfirmation(input: {
@@ -176,6 +208,7 @@ export async function sendWebOrderWhatsappConfirmation(
     hasTwilioSid: Boolean(twilioConfig.accountSid),
     hasTwilioToken: Boolean(twilioConfig.authToken),
     hasTwilioFrom: Boolean(twilioConfig.from),
+    hasTwilioContentSid: Boolean(twilioConfig.orderConfirmationContentSid),
     hasMetaToken: Boolean(metaConfig.token),
     hasPhoneNumberId: Boolean(metaConfig.phoneNumberId),
     hasOrderConfirmationTemplate: Boolean(metaConfig.templateName),
@@ -224,6 +257,23 @@ export async function sendWebOrderWhatsappConfirmation(
     return { ok: true as const, skipped: "disabled" as const }
   }
 
+  if (provider === "twilio" && twilioConfig.templateMissing.length) {
+    logger.info("whatsapp_confirmation_skipped_disabled", {
+      orderId: input.orderId,
+      provider,
+      missing: twilioConfig.templateMissing,
+    })
+    try {
+      await (deps.markFailed ?? markOrderWhatsappConfirmationFailed)({
+        orderId: input.orderId,
+        error: buildTwilioTemplateMissingError(twilioConfig.templateMissing, Boolean(metaConfig.templateName)),
+      })
+    } catch (error) {
+      logger.error("whatsapp_confirmation_failed", { orderId: input.orderId, error })
+    }
+    return { ok: true as const, skipped: "disabled" as const }
+  }
+
   if (provider === "meta" && !metaConfig.templateName) {
     logger.info("whatsapp_confirmation_meta_template_missing", {
       orderId: input.orderId,
@@ -248,18 +298,32 @@ export async function sendWebOrderWhatsappConfirmation(
   try {
     const sender =
       deps.send ??
-      ((sendInput: {
-        to: string
-        body: string
-        provider: ActiveConfirmationProvider
-        template?: { orderSummary: string; pickupSummary: string }
-      }) => (sendInput.provider === "meta" ? sendMetaWhatsAppText(sendInput) : sendTwilioWhatsAppText(sendInput)))
-    const result = await sender({
-      to,
-      body,
-      provider,
-      template: { orderSummary, pickupSummary },
-    })
+      ((sendInput: ConfirmationSendInput) =>
+        sendInput.provider === "meta"
+          ? sendMetaWhatsAppText(sendInput)
+          : sendTwilioWhatsAppTemplate({
+              to: sendInput.to,
+              contentSid: sendInput.template.contentSid,
+              contentVariables: sendInput.template.contentVariables,
+            }))
+    const template = { orderSummary, pickupSummary }
+    const result =
+      provider === "meta"
+        ? await sender({
+            to,
+            body,
+            provider,
+            template,
+          })
+        : await sender({
+            to,
+            provider,
+            template: {
+              ...template,
+              contentSid: twilioConfig.orderConfirmationContentSid!,
+              contentVariables: buildTwilioContentVariables(template),
+            },
+          })
     const sid = "sid" in result ? result.sid : "id" in result ? result.id : undefined
     await (deps.markSent ?? markOrderWhatsappConfirmationSent)({ orderId: input.orderId, sid, provider })
     logger.info("whatsapp_confirmation_sent", { orderId: input.orderId, to, provider, sid })
