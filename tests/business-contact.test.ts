@@ -11,19 +11,19 @@ import {
 } from "../src/data/business"
 import { faqs } from "../src/data/faqs"
 
-test("usa el WhatsApp oficial del bot también para derivación humana", () => {
+test("separa el WhatsApp oficial del bot del contacto humano", () => {
   assert.equal(MOBILE_LAUNCHER_WHATSAPP_PHONE_E164, "+16414294476")
   assert.equal(MOBILE_LAUNCHER_WHATSAPP_LINK, "https://wa.me/16414294476")
-  assert.equal(HUMAN_SUPPORT_PHONE_E164, "+16414294476")
-  assert.equal(HUMAN_SUPPORT_WHATSAPP_LINK, "https://wa.me/16414294476")
+  assert.equal(HUMAN_SUPPORT_PHONE_E164, "+34681147149")
+  assert.equal(HUMAN_SUPPORT_WHATSAPP_LINK, "https://wa.me/34681147149")
 })
 
 test("mantiene el copy de derivación humana apuntando al contacto central", () => {
   const message = buildHumanSupportMessage()
 
-  assert.match(message, /https:\/\/wa\.me\/16414294476/)
-  assert.doesNotMatch(message, /34681147149/)
-  assert.doesNotMatch(message, /llama al \+34/)
+  assert.match(message, /https:\/\/wa\.me\/34681147149/)
+  assert.doesNotMatch(message, /https:\/\/wa\.me\/16414294476/)
+  assert.doesNotMatch(message, /\+1 641 429 4476/)
 })
 
 test("FAQ de pedidos no muestra el número antiguo ni WhatsApp directo incorrecto", () => {
@@ -33,8 +33,7 @@ test("FAQ de pedidos no muestra el número antiguo ni WhatsApp directo incorrect
   assert.ok(ordersFaq)
   assert.match(ordersFaq.answer, /web/)
   assert.match(ordersFaq.answer, /chatbot/)
-  assert.doesNotMatch(allFaqText, /34681147149/)
-  assert.doesNotMatch(allFaqText, /wa\.me\/34681147149/)
+  assert.doesNotMatch(allFaqText, /wa\.me\//)
   assert.doesNotMatch(ordersFaq.answer, /escribirnos directamente/i)
 })
 

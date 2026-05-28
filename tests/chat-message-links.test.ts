@@ -4,11 +4,11 @@ import assert from "node:assert/strict"
 import { splitMessageLinks } from "../src/components/chat-message-links"
 
 test("convierte el wa.me del handoff web en un segmento de enlace", () => {
-  const parts = splitMessageLinks("Te atiende una persona del equipo aquí: https://wa.me/16414294476")
+  const parts = splitMessageLinks("Te atiende una persona del equipo aquí: https://wa.me/34681147149")
 
   assert.deepEqual(parts, [
     { type: "text", value: "Te atiende una persona del equipo aquí: " },
-    { type: "link", value: "https://wa.me/16414294476" },
+    { type: "link", value: "https://wa.me/34681147149" },
   ])
 })
 
