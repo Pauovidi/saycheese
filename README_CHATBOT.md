@@ -4,9 +4,10 @@
 
 La fuente de verdad operativa vive en `src/data/business.ts`.
 
-- `HUMAN_SUPPORT_PHONE_RAW = 16414294476`
-- `HUMAN_SUPPORT_PHONE_E164 = +16414294476`
-- `HUMAN_SUPPORT_WHATSAPP_LINK = https://wa.me/16414294476`
+- `OFFICIAL_WHATSAPP_PHONE_E164 = +16414294476` (número Twilio del bot)
+- `HUMAN_SUPPORT_PHONE_E164 = +34681147149` (contacto humano)
+- `HUMAN_SUPPORT_WHATSAPP_LINK = https://wa.me/34681147149`
+- `STORE_ADDRESS = "C. Abián, 4, 35212 Marpequeña, Las Palmas"`
 - `PICKUP_ONLY_COPY = "Solo recogida en tienda. No hacemos envíos."`
 - labels customer-facing de tamaños:
   - `tarta` interna -> `grande`
@@ -19,7 +20,7 @@ La fuente de verdad operativa vive en `src/data/business.ts`.
   - Domingo: 10:00–14:00
   - Lunes y martes: cerrado
 
-Chatbot web, webhook de WhatsApp, FAQ y CTAs reutilizan esa misma fuente.
+Chatbot web, webhook de WhatsApp, FAQ, dirección de tienda y CTAs reutilizan esa misma fuente.
 
 ## Variables de entorno
 
@@ -69,8 +70,8 @@ Además se activa automáticamente si:
 - no hay respuesta segura (ej. alérgenos/ingredientes sin dato confirmado o pedido ambiguo)
 
 El handoff siempre devuelve:
-- WhatsApp: `https://wa.me/16414294476`
-- Teléfono visible: `+1 641 429 4476`
+- Web: `https://wa.me/34681147149`
+- WhatsApp: `+34 681 14 71 49`
 
 Cuando hay handoff, el bot se pausa 2h (`bot_paused_until`).
 

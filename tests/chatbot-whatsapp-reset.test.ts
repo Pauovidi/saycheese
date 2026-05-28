@@ -23,7 +23,8 @@ test("acepta 'empezar de nuevo' como comando de reset en WhatsApp", () => {
 test("el handoff en WhatsApp no incluye wa.me", () => {
   const handoff = buildHumanSupportMessage("Te atiende una persona del equipo aquí:", "whatsapp")
 
-  assert.match(handoff, /\+1 641 429 4476/)
+  assert.match(handoff, /\+34 681 14 71 49/)
+  assert.doesNotMatch(handoff, /\+1 641 429 4476/)
   assert.equal(handoff.includes("wa.me"), false)
   assert.equal(handoff.includes(HUMAN_SUPPORT_PHONE_DISPLAY), true)
 })
@@ -31,6 +32,7 @@ test("el handoff en WhatsApp no incluye wa.me", () => {
 test("el fallback informativo en WhatsApp tampoco incluye wa.me", () => {
   const fallback = buildUnconfirmedProductInfoMessage("whatsapp")
 
-  assert.match(fallback, /\+1 641 429 4476/)
+  assert.match(fallback, /\+34 681 14 71 49/)
+  assert.doesNotMatch(fallback, /\+1 641 429 4476/)
   assert.equal(fallback.includes("wa.me"), false)
 })

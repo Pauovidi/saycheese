@@ -5,6 +5,7 @@ import {
   buildFlavorListMessage,
   type ChatbotAvailableCakeFlavor,
 } from "../lib/chatbot/products"
+import { HUMAN_SUPPORT_PHONE_DISPLAY } from "../src/data/business"
 import { hasGreetingIntent, WELCOME_MESSAGE } from "../lib/chatbot/welcome"
 
 const catalogABC: ChatbotAvailableCakeFlavor[] = [
@@ -125,7 +126,8 @@ test("si no hay sabores publicados, ofrece contacto humano", () => {
   const message = buildFlavorListMessage([], { channel: "whatsapp" })
 
   assert.match(message, /no hay sabores publicados/)
-  assert.match(message, /\+1 641 429 4476/)
+  assert.match(message, new RegExp(HUMAN_SUPPORT_PHONE_DISPLAY.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")))
+  assert.doesNotMatch(message, /\+1 641 429 4476/)
 })
 
 test("puede responder sabores sin repetir hola en mitad del flujo", () => {

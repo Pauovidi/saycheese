@@ -25,6 +25,11 @@ import {
   type ChatOrderItem,
 } from "@/lib/chatbot/order-dedupe"
 import {
+  buildStoreLocationMessage,
+  buildStoreLocationReplyIfIntent,
+  hasUnsafeStoreAddressClaim,
+} from "@/lib/chatbot/location"
+import {
   buildPendingOrderItems,
   processOrderConversationTurn,
   type OrderState,
@@ -48,6 +53,7 @@ import {
   HUMAN_SUPPORT_PHONE_DISPLAY,
   HUMAN_SUPPORT_WHATSAPP_LINK,
   PICKUP_ONLY_COPY,
+  STORE_ADDRESS,
   STORE_HOURS_TEXT,
 } from "@/src/data/business"
 
@@ -68,6 +74,7 @@ const SYSTEM_PROMPT = `Eres el asistente de SayCheese.
 Responde en español, claro y breve.
 No inventes datos de producto. Si faltan ingredientes o alérgenos confirmados, ofrece atención humana.
 Política obligatoria: ${PICKUP_ONLY_COPY}
+Dirección oficial obligatoria: ${STORE_ADDRESS || "sin dirección configurada"}. Nunca des una dirección distinta.
 Nunca uses "recogerte" ni "recibir" para pedidos; usa "recoger"/"recogida".
 Plazo mínimo obligatorio: ${LEAD_DAYS} días naturales.
 Nunca confirmes ni crees un pedido si falta el nombre del cliente.
@@ -99,10 +106,12 @@ function getHandoffText(channel: "web" | "whatsapp") {
 }
 
 function sanitizeAssistantText(text: string) {
-  return text
+  const sanitized = text
     .replace(/\bAuditor[ií]a Temporal\s+[\p{L}-]+\b/giu, "ese sabor")
     .replace(/\brecogerte\b/gi, "recogerla")
     .replace(/\brecibir\b/gi, "recoger")
+
+  return hasUnsafeStoreAddressClaim(sanitized) ? buildStoreLocationMessage() : sanitized
 }
 
 function extractOrderState(messages: { role: string; content: string }[]): OrderState {
@@ -420,6 +429,13 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
     await saveMessage(userId, "user", message)
     await saveMessage(userId, "assistant", WHATSAPP_RESET_REPLY)
     return { text: WHATSAPP_RESET_REPLY }
+  }
+
+  const locationReply = buildStoreLocationReplyIfIntent(message)
+  if (locationReply) {
+    await saveMessage(userId, "user", message)
+    await saveMessage(userId, "assistant", locationReply)
+    return { text: locationReply }
   }
 
   const pauseState = await getPauseState(userId)
