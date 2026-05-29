@@ -25,7 +25,8 @@ export default function TerminosPage() {
           </p>
           <p>
             Los pedidos son para recogida en tienda, salvo si estás máximo a 3
-            Km a la redonda, donde Uber Eats puede dejarte la tarta en casa.
+            Km a la redonda, zona Teide, donde Uber Eats puede dejarte la
+            tarta en casa.
             No ofrecemos cobertura de entrega fuera de ese radio.
           </p>
           <p>

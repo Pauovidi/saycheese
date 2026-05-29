@@ -47,7 +47,7 @@ test("FAQ de tienda física muestra dirección y stock diario limitado", () => {
   assert.match(storeFaq.answer, /mini y medianas/)
 })
 
-test("FAQ de envíos refleja recogida y excepción Uber Eats hasta 3 Km", () => {
+test("FAQ de envíos refleja recogida y excepción Uber Eats hasta 3 Km en zona Teide", () => {
   const shippingFaq = faqs.find((faq) => faq.question.includes("envíos"))
 
   assert.ok(shippingFaq)
@@ -55,4 +55,5 @@ test("FAQ de envíos refleja recogida y excepción Uber Eats hasta 3 Km", () => 
   assert.match(shippingFaq.answer, /recogida en tienda/)
   assert.match(shippingFaq.answer, /Uber Eats/)
   assert.match(shippingFaq.answer, /3 Km/)
+  assert.match(shippingFaq.answer, /zona Teide/)
 })

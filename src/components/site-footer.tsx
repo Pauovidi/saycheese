@@ -30,7 +30,7 @@ export function SiteFooter() {
             ))}
           </nav>
           <Link
-            href="https://www.instagram.com/saycheesebynestorperez/"
+            href="https://www.instagram.com/tentadosbynestorperez?utm_source=qr"
             target="_blank"
             rel="noopener noreferrer"
             aria-label="Instagram de SayCheese"

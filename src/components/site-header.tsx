@@ -12,7 +12,7 @@ const navLinks = [
 ]
 
 const uberEatsTopBarText =
-  "Con Uber Eats recibe tu tarta en casa (solo 3 Km a la redonda)"
+  "Con Uber Eats recibe tu tarta en casa (Solo 3 Km a la redonda, zona Teide)"
 
 function UberEatsTopBar() {
   const tickerItems = Array.from({ length: 8 }, (_, index) => (
@@ -31,7 +31,7 @@ function UberEatsTopBar() {
 
   return (
     <div
-      className="uber-eats-ticker border-b border-primary/20 bg-primary py-2 text-xs font-semibold uppercase tracking-[0.14em] text-primary-foreground"
+      className="uber-eats-ticker border-b border-primary/20 bg-primary-foreground py-2 text-xs font-semibold uppercase tracking-[0.14em] text-primary"
       aria-label={uberEatsTopBarText}
     >
       <div className="uber-eats-ticker__track" aria-hidden="true">
