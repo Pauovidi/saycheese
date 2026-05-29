@@ -24,10 +24,10 @@ export default function TerminosPage() {
             vigente en el momento de la compra.
           </p>
           <p>
-            Los envíos se realizan a través de transporte refrigerado en un
-            plazo de 24-48 horas laborables desde la confirmación del pedido.
-            SayCheese no se responsabiliza de retrasos causados por el
-            transportista o por causas de fuerza mayor.
+            Los pedidos son para recogida en tienda, salvo si estás máximo a 3
+            Km a la redonda, zona Teide, donde Uber Eats puede dejarte la
+            tarta en casa.
+            No ofrecemos cobertura de entrega fuera de ese radio.
           </p>
           <p>
             Al tratarse de productos alimentarios perecederos, no se aceptan

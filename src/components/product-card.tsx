@@ -50,7 +50,7 @@ export function ProductCard({ product, sibling, priority = false }: ProductCardP
           </div>
         )}
         {/* Format badge */}
-        <span className="absolute left-2 top-2 bg-accent px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-accent-foreground">
+        <span className="absolute left-2 top-2 bg-primary px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-primary-foreground">
           {getCustomerFacingFormatLabel(displayProduct.format)}
         </span>
         {isMonthlySpecial ? (

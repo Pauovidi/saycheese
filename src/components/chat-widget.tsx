@@ -172,7 +172,7 @@ export function ChatWidget() {
               <div
                 key={`${message.role}-${index}`}
                 className={`max-w-[90%] rounded-xl px-3 py-2 text-sm ${
-                  message.role === "user" ? "ml-auto bg-black text-white" : "bg-white"
+                  message.role === "user" ? "ml-auto bg-primary text-primary-foreground" : "bg-white"
                 } whitespace-pre-line`}
               >
                 {renderMessageText(message.text)}
@@ -187,7 +187,7 @@ export function ChatWidget() {
               {QUICK_ACTIONS.map((action) => (
                 <button
                   key={action}
-                  className="rounded-full border px-2 py-1 text-xs hover:bg-neutral-100"
+                  className="rounded-full border border-primary/25 px-2 py-1 text-xs text-primary transition-colors hover:bg-primary hover:text-primary-foreground"
                   onClick={() => sendMessage(action)}
                   disabled={loading}
                 >
@@ -210,7 +210,7 @@ export function ChatWidget() {
                 placeholder="Escribe aquí..."
                 disabled={loading}
               />
-              <button className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-black text-white" disabled={loading}>
+              <button className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-primary-foreground" disabled={loading}>
                 <Send size={16} />
               </button>
             </form>
@@ -223,7 +223,7 @@ export function ChatWidget() {
           shouldAutoScrollRef.current = true
           setIsOpen((prev) => !prev)
         }}
-        className="flex h-14 w-14 items-center justify-center rounded-full bg-black text-white shadow-lg"
+        className="flex h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg"
         aria-label="Abrir chat"
       >
         <MessageCircle size={24} />

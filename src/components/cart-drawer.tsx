@@ -75,7 +75,7 @@ export function CartDrawer() {
                         <p className="text-xs font-medium uppercase tracking-wider text-foreground">
                           {item.product.name}
                         </p>
-                        <span className="mt-0.5 inline-block bg-accent px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-accent-foreground">
+                        <span className="mt-0.5 inline-block bg-primary px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-primary-foreground">
                           {getCustomerFacingFormatLabel(item.product.format)}
                         </span>
                       </div>

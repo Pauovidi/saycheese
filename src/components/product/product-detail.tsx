@@ -76,7 +76,7 @@ export function ProductDetail({ product, sibling }: ProductDetailProps) {
               </p>
             </div>
           )}
-          <span className="absolute left-3 top-3 bg-accent px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-accent-foreground">
+          <span className="absolute left-3 top-3 bg-primary px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-primary-foreground">
             {getCustomerFacingFormatLabel(product.format)}
           </span>
         </div>
@@ -141,7 +141,7 @@ export function ProductDetail({ product, sibling }: ProductDetailProps) {
                   {allergenBadges.map((badge) => (
                     <span
                       key={badge.key}
-                      className="inline-flex items-center gap-1 rounded-full border border-border bg-secondary px-2.5 py-1 text-xs text-foreground"
+                      className="inline-flex items-center gap-1 rounded-full bg-primary px-2.5 py-1 text-xs text-primary-foreground"
                     >
                       <span aria-hidden="true">{badge.emoji}</span>
                       <span>{badge.label}</span>
