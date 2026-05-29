@@ -5,7 +5,7 @@ import {
   buildFlavorListMessage,
   type ChatbotAvailableCakeFlavor,
 } from "../lib/chatbot/products"
-import { HUMAN_SUPPORT_PHONE_DISPLAY } from "../src/data/business"
+import { HUMAN_SUPPORT_PHONE_DISPLAY, PICKUP_ONLY_COPY } from "../src/data/business"
 import { hasGreetingIntent, WELCOME_MESSAGE } from "../lib/chatbot/welcome"
 
 const catalogABC: ChatbotAvailableCakeFlavor[] = [
@@ -56,7 +56,7 @@ test("lista los sabores publicados del catálogo recibido", () => {
   assert.match(message, /Trabajamos con 2 tamaños:/)
   assert.match(message, /^- Grande: 35 €$/m)
   assert.match(message, /^- Cajita: 12 €$/m)
-  assert.match(message, /Solo recogida en tienda\. No hacemos envíos\./)
+  assert.match(message, new RegExp(PICKUP_ONLY_COPY.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")))
   assert.match(message, /Plazo mínimo: 4 días\./)
 })
 

@@ -10,19 +10,19 @@
   --card-foreground: #3b2314;
   --popover: #ffffff;
   --popover-foreground: #3b2314;
-  --primary: #A16336;
-  --primary-foreground: #fffdf8;
+  --primary: #601116;
+  --primary-foreground: #f4eed4;
   --secondary: #FFF8EC;
   --secondary-foreground: #3b2314;
   --muted: #FFF3DC;
   --muted-foreground: #8b6f5a;
-  --accent: #FFDD98;
-  --accent-foreground: #3b2314;
+  --accent: #601116;
+  --accent-foreground: #f4eed4;
   --destructive: #dc2626;
   --destructive-foreground: #dc2626;
   --border: #e8d9c5;
   --input: #e8d9c5;
-  --ring: #A16336;
+  --ring: #601116;
   --radius: 0px;
 }
 
@@ -60,5 +60,43 @@
   }
   body {
     @apply bg-background text-foreground;
+  }
+}
+
+.uber-eats-ticker {
+  overflow: hidden;
+}
+
+.uber-eats-ticker__track {
+  display: flex;
+  width: max-content;
+  animation: uber-eats-ticker 28s linear infinite;
+}
+
+.uber-eats-ticker__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding-inline: 1.75rem;
+  white-space: nowrap;
+}
+
+@keyframes uber-eats-ticker {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .uber-eats-ticker__track {
+    animation: none;
+    transform: none;
+  }
+
+  .uber-eats-ticker__item:nth-child(n + 2) {
+    display: none;
   }
 }

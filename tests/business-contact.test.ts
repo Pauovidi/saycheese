@@ -6,6 +6,7 @@ import {
   HUMAN_SUPPORT_WHATSAPP_LINK,
   MOBILE_LAUNCHER_WHATSAPP_PHONE_E164,
   MOBILE_LAUNCHER_WHATSAPP_LINK,
+  PICKUP_ONLY_COPY,
   STORE_ADDRESS,
   buildHumanSupportMessage,
 } from "../src/data/business"
@@ -44,4 +45,14 @@ test("FAQ de tienda física muestra dirección y stock diario limitado", () => {
   assert.match(storeFaq.answer, new RegExp(STORE_ADDRESS.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")))
   assert.match(storeFaq.answer, /stock diario limitado/)
   assert.match(storeFaq.answer, /mini y medianas/)
+})
+
+test("FAQ de envíos refleja recogida y excepción Uber Eats hasta 3 Km", () => {
+  const shippingFaq = faqs.find((faq) => faq.question.includes("envíos"))
+
+  assert.ok(shippingFaq)
+  assert.equal(shippingFaq.answer, PICKUP_ONLY_COPY)
+  assert.match(shippingFaq.answer, /recogida en tienda/)
+  assert.match(shippingFaq.answer, /Uber Eats/)
+  assert.match(shippingFaq.answer, /3 Km/)
 })
