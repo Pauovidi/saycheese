@@ -77,6 +77,15 @@ test("hero elimina claim secundario y overlay rojo", () => {
   assert.doesNotMatch(hero, /bg-\[#601116\]\/50/)
 })
 
+test("home usa las fotos reales de packaging y fachada de Tentados", () => {
+  const manifesto = readSource("src/components/home/manifesto-section.tsx")
+
+  assert.match(manifesto, /\/images\/tentados-packaging-cake\.jpeg/)
+  assert.match(manifesto, /\/images\/tentados-fachada\.jpeg/)
+  assert.match(manifesto, /Packaging de Tentados con tarta artesanal/)
+  assert.match(manifesto, /Fachada de Tentados by Néstor Pérez/)
+})
+
 test("selector de formato no redirige cajita de vuelta a grande", () => {
   const detail = readSource("src/components/product/product-detail.tsx")
 

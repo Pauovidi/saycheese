@@ -9,17 +9,21 @@ export function ManifestoSection() {
           <div className="grid grid-cols-2 gap-4">
             <div className="relative aspect-[3/4] overflow-hidden bg-secondary">
               <Image
-                src="/images/gallery-1.jpg"
-                alt="Proceso artesanal"
+                src="/images/tentados-packaging-cake.jpeg"
+                alt="Packaging de Tentados con tarta artesanal"
                 fill
+                sizes="(min-width: 768px) 25vw, 50vw"
+                loading="eager"
                 className="object-cover"
               />
             </div>
             <div className="relative mt-8 aspect-[3/4] overflow-hidden bg-secondary">
               <Image
-                src="/images/fachada.webp"
-                alt="Interior de la galería"
+                src="/images/tentados-fachada.jpeg"
+                alt="Fachada de Tentados by Néstor Pérez"
                 fill
+                sizes="(min-width: 768px) 25vw, 50vw"
+                loading="eager"
                 className="object-cover"
               />
             </div>
