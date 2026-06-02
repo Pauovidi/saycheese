@@ -34,7 +34,7 @@ export function ManifestoSection() {
               {"Un templo de aquellas peque\u00f1as cosas que, sin saber muy bien por qu\u00e9, a veces necesitamos saborear s\u00ed o s\u00ed. Un museo de los impulsos m\u00e1s dulces. Un templo del aut\u00e9ntico sabor."}
             </p>
             <p className="text-sm leading-relaxed text-muted-foreground">
-              {"Porque en SayCheese sabemos que, cuando algo est\u00e1 exageradamente bueno, nos olvidamos de todo y de todos, y lo \u00fanico que queremos es comernos lo que tenemos entre las manos, esperando que nadie, absolutamente nadie, nos pida un poco."}
+              {"Porque en Tentados sabemos que, cuando algo est\u00e1 exageradamente bueno, nos olvidamos de todo y de todos, y lo \u00fanico que queremos es comernos lo que tenemos entre las manos, esperando que nadie, absolutamente nadie, nos pida un poco."}
             </p>
 
           </div>

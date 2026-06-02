@@ -4,7 +4,7 @@ import { Toaster } from "@/components/ui/sonner"
 import { CheckoutSummary } from "@/src/components/checkout-summary"
 
 export const metadata: Metadata = {
-  title: "Checkout | SayCheese",
+  title: "Checkout | Tentados by Néstor Pérez",
 }
 
 const LEAD_DAYS_RAW = Number.parseInt(process.env.CHATBOT_LEAD_DAYS ?? "3", 10)

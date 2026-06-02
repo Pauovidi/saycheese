@@ -5,7 +5,7 @@ import { getCatalogFlavors } from "@/src/data/products-store"
 export const dynamic = "force-dynamic"
 
 export const metadata: Metadata = {
-  title: "Productos | SayCheese",
+  title: "Productos | Tentados by Néstor Pérez",
   description: "Descubre todas nuestras tartas de queso artesanas. Cajitas y tartas completas.",
 }
 

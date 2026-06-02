@@ -145,7 +145,7 @@ export function ChatWidget() {
       {isOpen && (
         <div className="mb-3 flex h-[520px] w-[340px] flex-col overflow-hidden rounded-2xl border bg-white shadow-2xl">
           <div className="flex items-center justify-between border-b px-4 py-3">
-            <p className="text-sm font-semibold">Asistente SayCheese</p>
+            <p className="text-sm font-semibold">Asistente Tentados</p>
             <div className="flex items-center gap-2">
               <button
                 type="button"

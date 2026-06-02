@@ -2,7 +2,7 @@
 
 import Image from "next/image"
 import { useRouter } from "next/navigation"
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import { Minus, Plus } from "lucide-react"
 import { useCart } from "@/src/context/cart-context"
 import { getCustomerFacingFormatLabel, PICKUP_ONLY_COPY } from "@/src/data/business"
@@ -44,12 +44,6 @@ export function ProductDetail({ product, sibling }: ProductDetailProps) {
   const router = useRouter()
   const hasBothFormats = !!sibling
   const allergenBadges = getAllergenBadges(product.allergens)
-
-  useEffect(() => {
-    if (hasBothFormats && product.format === "cajita" && sibling) {
-      router.replace(`/producto/${sibling.slug}`)
-    }
-  }, [hasBothFormats, product.format, router, sibling])
 
   function switchFormat(format: "tarta" | "cajita") {
     if (format === product.format) return

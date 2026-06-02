@@ -17,7 +17,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const product = await getCatalogProductBySlug(slug)
   if (!product) return { title: "Producto no encontrado" }
   return {
-    title: `${product.name} (${getCustomerFacingFormatLabel(product.format)}) | SayCheese`,
+    title: `${product.name} (${getCustomerFacingFormatLabel(product.format)}) | Tentados by Néstor Pérez`,
     description: product.shortDescription,
   }
 }

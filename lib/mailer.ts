@@ -46,7 +46,7 @@ export async function sendOrderConfirmation(input: SendOrderConfirmationInput) {
     .join("\n")
 
   const text = [
-    "¡Gracias por tu pedido en SayCheese!",
+    "¡Gracias por tu pedido en Tentados by Néstor Pérez!",
     "",
     `Pedido: ${input.orderId}`,
     `Fecha programada: ${input.deliveryDate}`,
@@ -58,7 +58,7 @@ export async function sendOrderConfirmation(input: SendOrderConfirmationInput) {
   ].join("\n")
 
   const html = `
-    <h2>Confirmación de pedido – SayCheese</h2>
+    <h2>Confirmación de pedido – Tentados by Néstor Pérez</h2>
     <p><strong>Pedido:</strong> ${input.orderId}</p>
     <p><strong>Fecha programada:</strong> ${input.deliveryDate}</p>
     <p><strong>Nombre:</strong> ${input.name || "No indicado"}</p>
@@ -77,7 +77,7 @@ export async function sendOrderConfirmation(input: SendOrderConfirmationInput) {
   await transporter.sendMail({
     from,
     to: input.to,
-    subject: "Confirmación de pedido – SayCheese",
+    subject: "Confirmación de pedido – Tentados by Néstor Pérez",
     text,
     html,
   })

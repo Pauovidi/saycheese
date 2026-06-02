@@ -4,8 +4,8 @@ import Link from "next/link"
 import { pressArticles } from "@/src/data/press"
 
 export const metadata: Metadata = {
-  title: "Prensa | SayCheese",
-  description: "SayCheese en los medios. Descubre lo que dicen de nosotros.",
+  title: "Prensa | Tentados by Néstor Pérez",
+  description: "Tentados by Néstor Pérez en los medios. Descubre lo que dicen de nosotros.",
 }
 
 export default function PrensaPage() {

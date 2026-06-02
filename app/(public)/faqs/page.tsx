@@ -8,7 +8,7 @@ import {
 } from "@/components/ui/accordion"
 
 export const metadata: Metadata = {
-  title: "FAQs | SayCheese",
+  title: "FAQs | Tentados by Néstor Pérez",
   description: "Preguntas frecuentes sobre recogidas, horarios, al\u00e9rgenos y pedidos.",
 }
 
