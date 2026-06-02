@@ -59,7 +59,7 @@ test("si falta dirección configurada responde de forma segura", () => {
 })
 
 test("marca claims de direcciones falsas conocidas como inseguros", () => {
-  assert.equal(hasUnsafeStoreAddressClaim("Nuestra tienda SayCheese está en Madrid, en la calle Arapiles 14."), true)
+  assert.equal(hasUnsafeStoreAddressClaim("Nuestra tienda Tentados está en Madrid, en la calle Arapiles 14."), true)
   assert.equal(hasUnsafeStoreAddressClaim(buildStoreLocationMessage()), false)
 })
 

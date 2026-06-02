@@ -1,7 +1,7 @@
 import type { Metadata } from "next"
 
 export const metadata: Metadata = {
-  title: "Términos y Condiciones | SayCheese",
+  title: "Términos y Condiciones | Tentados by Néstor Pérez",
 }
 
 export default function TerminosPage() {
@@ -14,20 +14,19 @@ export default function TerminosPage() {
         <div className="flex flex-col gap-6 text-sm leading-relaxed text-muted-foreground">
           <p>
             Las presentes condiciones regulan la compra de productos a través de
-            la tienda online de SayCheese S.L. Al realizar un pedido, usted
+            la tienda online de Tentados by Néstor Pérez. Al realizar un pedido, usted
             acepta estas condiciones de forma íntegra.
           </p>
           <p>
             Los precios indicados en la tienda incluyen el IVA aplicable.
-            SayCheese se reserva el derecho de modificar los precios en cualquier
+            Tentados by Néstor Pérez se reserva el derecho de modificar los precios en cualquier
             momento, aunque los pedidos ya confirmados mantendrán el precio
             vigente en el momento de la compra.
           </p>
           <p>
-            Los pedidos son para recogida en tienda, salvo si estás máximo a 3
-            Km a la redonda, zona Teide, donde Uber Eats puede dejarte la
-            tarta en casa.
-            No ofrecemos cobertura de entrega fuera de ese radio.
+            Los pedidos son para recogida en tienda, salvo si estás en Zona
+            Teide, donde Uber Eats puede dejarte la tarta en casa.
+            No ofrecemos cobertura de entrega fuera de esa zona.
           </p>
           <p>
             Al tratarse de productos alimentarios perecederos, no se aceptan

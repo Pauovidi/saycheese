@@ -2,7 +2,7 @@ import type { Metadata } from "next"
 import { BUSINESS_EMAIL, BUSINESS_LEGAL_NAME, BUSINESS_NIF, STORE_ADDRESS } from "@/src/data/business"
 
 export const metadata: Metadata = {
-  title: "Politica de Privacidad | SayCheese",
+  title: "Politica de Privacidad | Tentados by Néstor Pérez",
 }
 
 export default function PrivacidadPage() {

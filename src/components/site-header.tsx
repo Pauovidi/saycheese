@@ -12,7 +12,7 @@ const navLinks = [
 ]
 
 const uberEatsTopBarText =
-  "Con Uber Eats recibe tu tarta en casa (Solo 3 Km a la redonda, zona Teide)"
+  "Con Uber Eats recibe tu tarta en casa (Zona Teide)"
 
 function UberEatsTopBar() {
   const tickerItems = Array.from({ length: 8 }, (_, index) => (
@@ -55,7 +55,7 @@ export function SiteHeader() {
           <Link href="/" className="min-w-0 flex-shrink-0">
             <Image
               src="/images/logo.png"
-              alt="SayCheese by Néstor Pérez"
+              alt="Tentados by Néstor Pérez"
               width={4680}
               height={2400}
               className="h-auto w-[150px] object-contain sm:w-[190px] lg:w-[220px]"

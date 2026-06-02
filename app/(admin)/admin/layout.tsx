@@ -5,8 +5,8 @@ import { AdminNav } from "@/src/components/admin/admin-nav"
 import { AdminLogoutButton } from "@/src/components/admin/admin-logout-button"
 
 export const metadata: Metadata = {
-  title: "Admin | SayCheese",
-  description: "Panel de administración de SayCheese",
+  title: "Admin | Tentados by Néstor Pérez",
+  description: "Panel de administración de Tentados by Néstor Pérez",
 }
 
 export default function AdminLayout({
@@ -19,7 +19,7 @@ export default function AdminLayout({
       <header className="border-b border-border bg-card px-4 py-3">
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-4">
           <h1 className="text-sm font-bold uppercase tracking-[0.15em] text-foreground">
-            SayCheese Admin
+            Tentados Admin
           </h1>
           <AdminLogoutButton />
         </div>

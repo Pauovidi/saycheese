@@ -2,7 +2,7 @@ import type { Metadata } from "next"
 import { BUSINESS_EMAIL } from "@/src/data/business"
 
 export const metadata: Metadata = {
-  title: "Política de Cookies | SayCheese",
+  title: "Política de Cookies | Tentados by Néstor Pérez",
 }
 
 export default function CookiesPage() {

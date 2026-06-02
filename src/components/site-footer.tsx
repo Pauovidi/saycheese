@@ -33,7 +33,7 @@ export function SiteFooter() {
             href="https://www.instagram.com/tentadosbynestorperez?utm_source=qr"
             target="_blank"
             rel="noopener noreferrer"
-            aria-label="Instagram de SayCheese"
+            aria-label="Instagram de Tentados by Néstor Pérez"
             className="text-muted-foreground transition-colors hover:text-foreground"
           >
             <svg
@@ -59,7 +59,7 @@ export function SiteFooter() {
       <div className="bg-primary">
         <div className="mx-auto max-w-[1600px] px-6 py-5 lg:px-10">
           <p className="text-center text-xs tracking-wider text-primary-foreground">
-            &copy; {new Date().getFullYear()} SayCheese by N&eacute;stor P&eacute;rez. Todos los derechos reservados.
+            &copy; {new Date().getFullYear()} Tentados by Néstor Pérez. Todos los derechos reservados.
           </p>
         </div>
       </div>

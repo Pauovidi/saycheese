@@ -70,7 +70,7 @@ const SHOP_TZ = process.env.SHOP_TZ ?? "Europe/Madrid"
 const SUMMARY_THRESHOLD = 30
 const ORDER_STATE_PREFIX = "__ORDER_STATE__:"
 
-const SYSTEM_PROMPT = `Eres el asistente de SayCheese.
+const SYSTEM_PROMPT = `Eres el asistente de Tentados by Néstor Pérez.
 Responde en español, claro y breve.
 No inventes datos de producto. Si faltan ingredientes o alérgenos confirmados, ofrece atención humana.
 Política obligatoria: ${PICKUP_ONLY_COPY}

@@ -3,7 +3,7 @@ import { Analytics } from "@vercel/analytics/next"
 import "./globals.css"
 
 export const metadata: Metadata = {
-  title: "SayCheese | Pastelería de Autor",
+  title: "Tentados by Néstor Pérez | Pastelería de Autor",
   description:
     "Galería de tartas de queso artesanas. Cada pieza, una obra maestra.",
   icons: {
