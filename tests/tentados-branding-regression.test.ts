@@ -86,6 +86,17 @@ test("home usa las fotos reales de packaging y fachada de Tentados", () => {
   assert.match(manifesto, /Fachada de Tentados by Néstor Pérez/)
 })
 
+test("home muestra el copy de tentación junto a las fotos", () => {
+  const manifesto = readSource("src/components/home/manifesto-section.tsx")
+
+  assert.match(manifesto, /Donde nace la/)
+  assert.match(manifesto, /tentación/)
+  assert.match(manifesto, /En TENTADOS creemos que hay placeres/)
+  assert.match(manifesto, /Creamos tartas de queso artesanales/)
+  assert.match(manifesto, /Se disfruta sin prisas/)
+  assert.match(manifesto, /Bienvenidos a la tentación/)
+})
+
 test("selector de formato no redirige cajita de vuelta a grande", () => {
   const detail = readSource("src/components/product/product-detail.tsx")
 

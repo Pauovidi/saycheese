@@ -32,15 +32,20 @@ export function ManifestoSection() {
           {/* Text */}
           <div className="flex flex-col gap-6">
             <h2 className="text-2xl font-bold uppercase leading-snug tracking-[0.05em] text-foreground md:text-3xl lg:text-4xl text-balance">
-              Donde hacemos nuestra <em className="not-italic text-primary">dulce</em> magia...
+              Donde nace la <em className="not-italic text-primary">tentación</em>
             </h2>
             <p className="text-sm leading-relaxed text-muted-foreground">
-              {"Un templo de aquellas peque\u00f1as cosas que, sin saber muy bien por qu\u00e9, a veces necesitamos saborear s\u00ed o s\u00ed. Un museo de los impulsos m\u00e1s dulces. Un templo del aut\u00e9ntico sabor."}
+              {"En TENTADOS creemos que hay placeres a los que merece la pena rendirse."}
             </p>
             <p className="text-sm leading-relaxed text-muted-foreground">
-              {"Porque en Tentados sabemos que, cuando algo est\u00e1 exageradamente bueno, nos olvidamos de todo y de todos, y lo \u00fanico que queremos es comernos lo que tenemos entre las manos, esperando que nadie, absolutamente nadie, nos pida un poco."}
+              {"Creamos tartas de queso artesanales elaboradas con ingredientes seleccionados y una obsesión por cada detalle: la textura, el sabor y la experiencia."}
             </p>
-
+            <p className="text-sm leading-relaxed text-muted-foreground">
+              {"Porque cuando algo es realmente irresistible, no se comparte por compromiso. Se disfruta sin prisas."}
+            </p>
+            <p className="text-sm leading-relaxed text-muted-foreground">
+              {"Bienvenidos a la tentación."}
+            </p>
           </div>
         </div>
       </div>
