@@ -10,6 +10,7 @@ import {
 
 const NOW = new Date("2026-03-12T10:00:00Z")
 const APRIL_2026_NOW = new Date("2026-04-27T10:00:00Z")
+const JUNE_2026_NOW = new Date("2026-06-03T10:00:00+02:00")
 const SHOP_TZ = "Europe/Madrid"
 const LEAD_DAYS = 3
 
@@ -108,4 +109,24 @@ test("pide confirmación si el día de semana escrito no coincide con la fecha n
   assert.equal(parsed?.kind, "ambiguous")
   assert.match(parsed?.question ?? "", /30\/04 cae jueves/)
   assert.match(parsed?.question ?? "", /no martes/)
+})
+
+test("resuelve martes desde 03/06/2026 al martes siguiente", () => {
+  const parsed = parseSpanishDesiredDate("martes", JUNE_2026_NOW, SHOP_TZ)
+
+  assert.deepEqual(parsed, { kind: "date", iso: "2026-06-09" })
+})
+
+test("resuelve día de semana con día numérico explícito", () => {
+  for (const message of ["miércoles 10", "miercoles 10", "el miércoles 10", "no, miércoles 10", "mejor miércoles 10"]) {
+    const parsed = parseSpanishDesiredDate(message, JUNE_2026_NOW, SHOP_TZ)
+
+    assert.deepEqual(parsed, { kind: "date", iso: "2026-06-10" }, message)
+  }
+})
+
+test("resuelve día suelto en el mes correcto", () => {
+  const parsed = parseSpanishDesiredDate("el 10", JUNE_2026_NOW, SHOP_TZ)
+
+  assert.deepEqual(parsed, { kind: "date", iso: "2026-06-10" })
 })
