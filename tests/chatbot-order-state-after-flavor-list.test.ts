@@ -17,6 +17,7 @@ import {
 import type { Product } from "../src/data/products"
 
 const NOW = new Date("2026-05-08T10:00:00+02:00")
+const JUNE_2026_NOW = new Date("2026-06-03T10:00:00+02:00")
 const SHOP_TZ = "Europe/Madrid"
 const LEAD_DAYS = 3
 
@@ -131,14 +132,15 @@ function createDeps(products: Product[] = catalogProducts, unavailable: Unavaila
 async function send(
   state: OrderState,
   message: string,
-  deps = createDeps()
+  deps = createDeps(),
+  options: { now?: Date; channel?: "web" | "whatsapp"; isOpeningConversation?: boolean } = {}
 ) {
   const result = await processOrderConversationTurn({
     message,
-    channel: "web",
+    channel: options.channel ?? "web",
     state,
-    now: NOW,
-    isOpeningConversation: false,
+    now: options.now ?? NOW,
+    isOpeningConversation: options.isOpeningConversation ?? false,
     leadDays: LEAD_DAYS,
     shopTz: SHOP_TZ,
     deps,
@@ -146,6 +148,10 @@ async function send(
 
   assert.notEqual(result.kind, "unhandled", `turno no gestionado: ${message}`)
   return result
+}
+
+async function sendJuneWhatsapp(state: OrderState, message: string) {
+  return send(state, message, createDeps(), { now: JUNE_2026_NOW, channel: "whatsapp" })
 }
 
 test("pedido -> sabores -> sabor parcial -> fecha -> cajita telefono pide solo nombre", async () => {
@@ -326,4 +332,97 @@ test("tarta del mes expirada o despublicada se rechaza", async () => {
   assert.equal(reply.kind, "reply")
   assert.equal(state.flavor, undefined)
   assert.match(reply.text, /Cereza fugaz no está disponible/)
+})
+
+test("fecha cerrada propone alternativa y acepta 'pues ese'", async () => {
+  const state: OrderState = {}
+
+  const start = await sendJuneWhatsapp(state, "quiero una tarta")
+  assert.equal(start.kind, "reply")
+  assert.match(start.text, /Para qué día/)
+
+  const proposed = await sendJuneWhatsapp(state, "martes")
+  assert.equal(proposed.kind, "reply")
+  assert.equal(state.awaitingConfirm, true)
+  assert.equal(state.pendingSuggestedDateISO, "2026-06-10")
+  assert.equal(state.pendingSuggestedDateLabel, "miércoles 10/06")
+  assert.equal(state.pendingSuggestedDateReason, "closed")
+  assert.match(proposed.text, /martes 09\/06/)
+  assert.match(proposed.text, /miércoles 10\/06/)
+
+  const accepted = await sendJuneWhatsapp(state, "pues ese")
+  assert.equal(accepted.kind, "reply")
+  assert.equal(state.finalDate, "2026-06-10")
+  assert.equal(state.awaitingConfirm, false)
+  assert.equal(state.pendingSuggestedDateISO, undefined)
+  assert.doesNotMatch(accepted.text, /Para qué día/)
+  assert.match(accepted.text, /miércoles 10\/06/)
+  assert.match(accepted.text, /sabor/)
+  assert.doesNotMatch(accepted.text, /Horario:|Miércoles: 16:30|Lunes y martes: cerrado/)
+})
+
+test("fecha propuesta pendiente acepta 'ese miércoles' sin caer al miércoles actual", async () => {
+  const state: OrderState = {
+    inOrderFlow: true,
+    format: "tarta",
+    awaitingConfirm: true,
+    desiredDate: "2026-06-09",
+    suggestedDate: "2026-06-10",
+    pendingSuggestedDateISO: "2026-06-10",
+    pendingSuggestedDateLabel: "miércoles 10/06",
+    pendingSuggestedDateReason: "closed",
+    pendingRequestedDate: "2026-06-09",
+  }
+
+  const accepted = await sendJuneWhatsapp(state, "ese miércoles")
+
+  assert.equal(accepted.kind, "reply")
+  assert.equal(state.finalDate, "2026-06-10")
+  assert.equal(state.desiredDate, "2026-06-09")
+  assert.doesNotMatch(accepted.text, /miércoles 03\/06|mínimo de 3 días|Para qué día/)
+  assert.match(accepted.text, /miércoles 10\/06/)
+})
+
+test("alternativa explícita 'no, miércoles 10' parsea la nueva fecha y no la propuesta por defecto", async () => {
+  const state: OrderState = {
+    inOrderFlow: true,
+    format: "tarta",
+    awaitingConfirm: true,
+    desiredDate: "2026-06-09",
+    suggestedDate: "2026-06-10",
+    pendingSuggestedDateISO: "2026-06-10",
+    pendingSuggestedDateLabel: "miércoles 10/06",
+    pendingSuggestedDateReason: "closed",
+    pendingRequestedDate: "2026-06-09",
+  }
+
+  const accepted = await sendJuneWhatsapp(state, "no, miércoles 10")
+
+  assert.equal(accepted.kind, "reply")
+  assert.equal(state.finalDate, "2026-06-10")
+  assert.equal(state.desiredDate, "2026-06-10")
+  assert.equal(state.awaitingConfirm, false)
+  assert.equal(state.pendingSuggestedDateISO, undefined)
+  assert.doesNotMatch(accepted.text, /miércoles 03\/06|mínimo de 3 días|Para qué día/)
+  assert.match(accepted.text, /miércoles 10\/06/)
+})
+
+test("mensaje directo 'miércoles 10' acepta la fecha explícita", async () => {
+  const state: OrderState = { inOrderFlow: true, format: "tarta" }
+
+  const accepted = await sendJuneWhatsapp(state, "miércoles 10")
+
+  assert.equal(accepted.kind, "reply")
+  assert.equal(state.finalDate, "2026-06-10")
+  assert.doesNotMatch(accepted.text, /miércoles 03\/06|mínimo de 3 días/)
+})
+
+test("mensaje directo 'el 10' acepta el día del mes correcto", async () => {
+  const state: OrderState = { inOrderFlow: true, format: "tarta" }
+
+  const accepted = await sendJuneWhatsapp(state, "el 10")
+
+  assert.equal(accepted.kind, "reply")
+  assert.equal(state.finalDate, "2026-06-10")
+  assert.match(accepted.text, /miércoles 10\/06/)
 })

@@ -30,7 +30,6 @@ import {
 } from "@/lib/chatbot/products"
 import {
   CLOSED_PICKUP_DAYS_COPY,
-  STORE_HOURS_TEXT,
 } from "@/src/data/business"
 import type { Product } from "@/src/data/products"
 
@@ -44,6 +43,10 @@ export type OrderState = {
   customerEmail?: string
   desiredDate?: string
   suggestedDate?: string
+  pendingSuggestedDateISO?: string
+  pendingSuggestedDateLabel?: string
+  pendingSuggestedDateReason?: string
+  pendingRequestedDate?: string
   finalDate?: string
   awaitingConfirm?: boolean
   awaitingName?: boolean
@@ -87,7 +90,7 @@ function normalize(text: string) {
 
 function isAffirmative(text: string) {
   const normalized = normalize(text)
-  return /\b(si|perfecto|me va bien|de acuerdo|confirmo)\b/.test(normalized)
+  return /\b(si|vale|ok|perfecto|me va bien|de acuerdo|confirmo|apuntalo|apuntamelo|apuntamela)\b/.test(normalized)
 }
 
 function isNegative(text: string) {
@@ -99,25 +102,81 @@ function hasNonEmptyValue(value?: string) {
   return typeof value === "string" && value.trim().length > 0
 }
 
+function hasExplicitDateDetail(text: string) {
+  const normalized = normalize(text)
+  return /\d/.test(normalized) || /\b(hoy|manana|pasado manana)\b/.test(normalized)
+}
+
+function getPendingSuggestedDate(state: OrderState) {
+  return state.pendingSuggestedDateISO ?? state.suggestedDate
+}
+
+function clearPendingSuggestedDate(state: OrderState) {
+  state.suggestedDate = undefined
+  state.pendingSuggestedDateISO = undefined
+  state.pendingSuggestedDateLabel = undefined
+  state.pendingSuggestedDateReason = undefined
+  state.pendingRequestedDate = undefined
+}
+
+function setPendingSuggestedDate(
+  state: OrderState,
+  input: { iso: string; reason: string; requestedDate?: string; tz: string }
+) {
+  state.suggestedDate = input.iso
+  state.pendingSuggestedDateISO = input.iso
+  state.pendingSuggestedDateLabel = formatDateEs(input.iso, input.tz)
+  state.pendingSuggestedDateReason = input.reason
+  state.pendingRequestedDate = input.requestedDate
+}
+
+function normalizedWeekdayForSuggestedDate(iso: string, tz: string) {
+  return normalize(formatDateEs(iso, tz).split(/\s+/)[0] ?? "")
+}
+
+function messageWeekdayReferenceMatchesSuggestion(text: string, iso: string, tz: string) {
+  const normalized = normalize(text)
+  const weekdayMatch = normalized.match(/\b(lunes|martes|miercoles|jueves|viernes|sabado|domingo)\b/)
+  if (!weekdayMatch) return true
+
+  return weekdayMatch[1] === normalizedWeekdayForSuggestedDate(iso, tz)
+}
+
+function isPendingSuggestedDateAcceptance(text: string, state: OrderState, tz: string) {
+  const suggestedDate = getPendingSuggestedDate(state)
+  if (!state.awaitingConfirm || !suggestedDate) return false
+
+  const normalized = normalize(text).replace(/[!?.,;:]/g, " ").replace(/\s+/g, " ").trim()
+  if (!normalized || isNegative(normalized)) return false
+  if (hasExplicitDateDetail(normalized)) return false
+
+  const acceptsSuggestion =
+    isAffirmative(normalized) ||
+    /\b(pues\s+)?(ese|esa)(\s+(dia|fecha))?\b/.test(normalized) ||
+    /\bpara\s+(ese|esa)\b/.test(normalized) ||
+    /\b(pues\s+)?el\s+(lunes|martes|miercoles|jueves|viernes|sabado|domingo)\b/.test(normalized) ||
+    /\b(ese|esa)\s+(lunes|martes|miercoles|jueves|viernes|sabado|domingo)\b/.test(normalized)
+
+  return acceptsSuggestion && messageWeekdayReferenceMatchesSuggestion(normalized, suggestedDate, tz)
+}
+
+function tryAcceptPendingSuggestedDate(state: OrderState, now: Date, leadDays: number, tz: string) {
+  const suggestedDate = getPendingSuggestedDate(state)
+  if (!suggestedDate) return false
+
+  const resolution = resolveRequestedPickupDate(suggestedDate, now, leadDays, tz)
+  if (resolution.kind !== "valid") return false
+
+  state.finalDate = resolution.pickupDate
+  state.desiredDate = state.pendingRequestedDate ?? state.desiredDate ?? suggestedDate
+  state.awaitingConfirm = false
+  clearPendingSuggestedDate(state)
+  return true
+}
+
 function extractEmailFromText(text: string) {
   const match = text.match(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i)
   return match?.[0]?.toLowerCase()
-}
-
-function isGenericNonOperationalMessage(text: string) {
-  const normalized = normalize(text).replace(/[!?.,;:]/g, " ").replace(/\s+/g, " ").trim()
-  if (!normalized) return false
-
-  const exactMessages = new Set([
-    "hola",
-    "buenos dias",
-    "buenas",
-    "ok",
-    "vale",
-    "gracias",
-  ])
-
-  return exactMessages.has(normalized)
 }
 
 function hasFlavorsIntent(text: string) {
@@ -280,7 +339,7 @@ export async function processOrderConversationTurn(input: ProcessOrderConversati
     state.customerName = undefined
     state.customerEmail = undefined
     state.desiredDate = undefined
-    state.suggestedDate = undefined
+    clearPendingSuggestedDate(state)
     state.finalDate = undefined
     state.awaitingConfirm = false
     state.awaitingName = false
@@ -324,7 +383,10 @@ export async function processOrderConversationTurn(input: ProcessOrderConversati
 
   const format = parseOrderFormat(message)
   const parsedDate = parseSpanishDesiredDate(message, now, shopTz)
-  const genericMessage = isGenericNonOperationalMessage(message)
+  let acceptedSuggestedDate = false
+  if (isPendingSuggestedDateAcceptance(message, state, shopTz)) {
+    acceptedSuggestedDate = tryAcceptPendingSuggestedDate(state, now, leadDays, shopTz)
+  }
   const additionalCakeDecisionIntent = state.awaitingAdditionalCakeDecision ? getAdditionalCakeDecisionIntent(message) : "unknown"
   const customerName =
     additionalCakeDecisionIntent === "close"
@@ -333,7 +395,7 @@ export async function processOrderConversationTurn(input: ProcessOrderConversati
           blockedNormalizedTerms: blockedCustomerNameTermsForProduct(product),
           allowSegmentExtraction: Boolean(product || format || parsedDate || email || messagePhone),
         })
-  const hasStructuredContribution = Boolean(product || format || parsedDate || customerName || email || messagePhone)
+  const hasStructuredContribution = Boolean(product || format || parsedDate || acceptedSuggestedDate || customerName || email || messagePhone)
 
   if (state.awaitingAdditionalCakeDecision) {
     const wantsCloseOrder =
@@ -367,28 +429,28 @@ export async function processOrderConversationTurn(input: ProcessOrderConversati
     state.format = format
   }
 
-  if (state.awaitingConfirm && isAffirmative(message) && state.suggestedDate && !parsedDate && !genericMessage) {
-    state.finalDate = state.suggestedDate
-    state.awaitingConfirm = false
-  }
-
   if (state.awaitingConfirm && isNegative(message) && !parsedDate) {
     state.awaitingConfirm = false
-    state.suggestedDate = undefined
+    clearPendingSuggestedDate(state)
     state.finalDate = undefined
     return { kind: "reply", text: "Perfecto, dime para qué día la necesitas.", state }
   }
 
-  if (parsedDate?.kind === "ambiguous") {
+  if (!acceptedSuggestedDate && parsedDate?.kind === "ambiguous") {
     return { kind: "reply", text: mergeIntroReply(multipleCakeIntro, parsedDate.question), state }
   }
 
-  if (parsedDate?.kind === "date") {
+  if (!acceptedSuggestedDate && parsedDate?.kind === "date") {
     const resolution = resolveRequestedPickupDate(parsedDate.iso, now, leadDays, shopTz)
     state.desiredDate = parsedDate.iso
 
     if (resolution.kind === "too_soon") {
-      state.suggestedDate = resolution.earliestDate
+      setPendingSuggestedDate(state, {
+        iso: resolution.earliestDate,
+        reason: "too_soon",
+        requestedDate: resolution.requestedDate,
+        tz: shopTz,
+      })
       state.finalDate = undefined
       state.awaitingConfirm = true
 
@@ -396,14 +458,19 @@ export async function processOrderConversationTurn(input: ProcessOrderConversati
         kind: "reply",
         text: mergeIntroReply(
           multipleCakeIntro,
-          `Aún no llegamos a ${formatDateEs(resolution.requestedDate, shopTz)} porque trabajamos con un mínimo de ${leadDays} días. La primera fecha disponible sería ${formatDateEs(resolution.earliestDate, shopTz)}. ¿Te va bien?\n${STORE_HOURS_TEXT}`
+          `Aún no llegamos a ${formatDateEs(resolution.requestedDate, shopTz)} porque trabajamos con un mínimo de ${leadDays} días. La primera fecha disponible sería ${formatDateEs(resolution.earliestDate, shopTz)}. ¿Te va bien?`
         ),
         state,
       }
     }
 
     if (resolution.kind === "closed") {
-      state.suggestedDate = resolution.nextAvailableDate
+      setPendingSuggestedDate(state, {
+        iso: resolution.nextAvailableDate,
+        reason: "closed",
+        requestedDate: resolution.requestedDate,
+        tz: shopTz,
+      })
       state.finalDate = undefined
       state.awaitingConfirm = true
 
@@ -428,7 +495,7 @@ export async function processOrderConversationTurn(input: ProcessOrderConversati
     }
 
     state.finalDate = resolution.pickupDate
-    state.suggestedDate = undefined
+    clearPendingSuggestedDate(state)
     state.awaitingConfirm = false
   }
 

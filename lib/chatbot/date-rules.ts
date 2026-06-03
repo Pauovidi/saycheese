@@ -180,10 +180,46 @@ function parseMonthNameDate(normalizedText: string, todayISO: string) {
   return resolveMonthDayCandidate(day, month, todayISO, year)
 }
 
+function parseWeekdayDayDate(normalizedText: string, todayISO: string, tz: string): DateParseResult | undefined {
+  const match = normalizedText.match(
+    /\b(?:no\s*,?\s*)?(?:mejor\s+)?(?:para\s+el\s+|para\s+|el\s+)?(lunes|martes|miercoles|jueves|viernes|sabado|domingo)\s+(\d{1,2})(?![/-])(?:\s+de\s+(ene|enero|feb|febrero|mar|marzo|abr|abril|may|mayo|jun|junio|jul|julio|ago|agosto|sep|sept|septiembre|setiembre|oct|octubre|nov|noviembre|dic|diciembre))?\b/
+  )
+  if (!match) return undefined
+
+  const weekday = WEEKDAY_INDEX[match[1] ?? ""]
+  const day = Number(match[2])
+  const month = match[3] ? MONTH_INDEX[match[3] ?? ""] : undefined
+  const candidate = month
+    ? resolveMonthDayCandidate(day, month, todayISO)
+    : parseDayOnlyCandidate(day, todayISO)
+
+  if (weekday === undefined || !candidate) return undefined
+
+  if (weekdayFromISO(candidate) === weekday) {
+    return { kind: "date", iso: candidate }
+  }
+
+  const weekdayLabel = INDEX_WEEKDAY[weekday] ?? "ese día"
+  return {
+    kind: "ambiguous",
+    question: `El ${formatDateEs(candidate, tz)} cae ${INDEX_WEEKDAY[weekdayFromISO(candidate)]}, no ${weekdayLabel}. ¿Quieres que lo apunte para ${formatDateEs(candidate, tz)}?`,
+  }
+}
+
+function parseDayOnlyCandidate(day: number, todayISO: string) {
+  if (day < 1 || day > 31) return undefined
+
+  const { year, month, day: todayDay } = partsFromISO(todayISO)
+  if (day >= todayDay && isValidDateParts(year, month, day)) {
+    return isoFromParts(year, month, day)
+  }
+
+  return findNextValidMonthDay(year, month + 1, day)
+}
+
 export function parsePartialDateFromText(text: string, now: Date, tz: string) {
   const normalizedText = normalize(text)
   const todayISO = isoTodayInTz(now, tz)
-  const { year, month, day: todayDay } = partsFromISO(todayISO)
 
   const monthDayDate = parseMonthNameDate(normalizedText, todayISO)
   if (monthDayDate) {
@@ -197,13 +233,7 @@ export function parsePartialDateFromText(text: string, now: Date, tz: string) {
   if (!partialMatch) return undefined
 
   const day = Number(partialMatch[1])
-  if (day < 1 || day > 31) return undefined
-
-  if (day >= todayDay && isValidDateParts(year, month, day)) {
-    return isoFromParts(year, month, day)
-  }
-
-  return findNextValidMonthDay(year, month + 1, day)
+  return parseDayOnlyCandidate(day, todayISO)
 }
 
 function parseNumericDate(normalizedText: string, todayISO: string) {
@@ -328,12 +358,17 @@ export function resolveRequestedPickupDate(requestedISO: string, now: Date, lead
 export function parseSpanishDesiredDate(text: string, now: Date, tz: string): DateParseResult | null {
   const normalizedText = normalize(text)
   const todayISO = isoTodayInTz(now, tz)
+  const weekdayDayDate = parseWeekdayDayDate(normalizedText, todayISO, tz)
   const numericDate = parseNumericDate(normalizedText, todayISO)
   const partialDate = parsePartialDateFromText(text, now, tz)
 
   const hasManana = /\bmanana\b/.test(normalizedText)
   const hasPasadoManana = /\bpasado manana\b/.test(normalizedText)
   const weekday = parseWeekday(normalizedText)
+
+  if (weekdayDayDate) {
+    return weekdayDayDate
+  }
 
   if (numericDate) {
     if (weekday !== undefined && weekdayFromISO(numericDate) !== weekday) {

@@ -11,6 +11,7 @@ function readSource(path: string) {
 }
 
 const oldDistanceCopyPattern = new RegExp(`${["3", "K[mM]"].join("\\s+")}|${["a la", "redonda"].join(" ")}`)
+const forbiddenDeliveryCopyPattern = /Zona Teide|3 Km|3 km|a la redonda/
 const oldBrandBylinePattern = new RegExp(`${["Say", "Cheese"].join("")} by|${["Say", "Cheese"].join(" ")} by`)
 const oldAwardClaimPattern = new RegExp(["Prem", "iada"].join(""), "i")
 
@@ -43,6 +44,7 @@ test("FAQ y fuente central de envíos usan Zona Telde sin cobertura antigua", ()
   assert.equal(shippingFaq.answer, PICKUP_ONLY_COPY)
   assert.match(faqText, /Zona Telde/)
   assert.doesNotMatch(faqText, oldDistanceCopyPattern)
+  assert.doesNotMatch(faqText, forbiddenDeliveryCopyPattern)
 })
 
 test("chatbot conserva sabores y copy de recogida en Zona Telde", () => {
@@ -65,7 +67,9 @@ test("chatbot conserva sabores y copy de recogida en Zona Telde", () => {
   assert.match(reply, /Grande: 35 €/)
   assert.match(reply, /Cajita: 12 €/)
   assert.match(reply, /Zona Telde/)
+  assert.doesNotMatch(reply, /Zona Teide/)
   assert.doesNotMatch(reply, oldDistanceCopyPattern)
+  assert.doesNotMatch(reply, forbiddenDeliveryCopyPattern)
 })
 
 test("hero elimina claim secundario y overlay rojo", () => {
