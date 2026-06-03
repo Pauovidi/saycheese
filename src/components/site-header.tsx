@@ -12,7 +12,7 @@ const navLinks = [
 ]
 
 const uberEatsTopBarText =
-  "Con Uber Eats recibe tu tarta en casa (Zona Teide)"
+  "Con Uber Eats recibe tu tarta en casa (Zona Telde)"
 
 function UberEatsTopBar() {
   const tickerItems = Array.from({ length: 8 }, (_, index) => (

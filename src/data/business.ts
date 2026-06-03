@@ -16,7 +16,7 @@ export const BUSINESS_NIF = "54269855K"
 export const BUSINESS_EMAIL = "Saycheesebynp@gmail.com"
 
 export const DELIVERY_POLICY_COPY =
-  "Solo recogida en tienda, salvo si estás en Zona Teide, donde Uber Eats te la deja en casita."
+  "Solo recogida en tienda, salvo si estás en Zona Telde, donde Uber Eats te la deja en casita."
 export const PICKUP_ONLY_COPY = DELIVERY_POLICY_COPY
 export const FORMAT_SIZE_COPY = "Siempre trabajamos con 2 tamaños: grande y cajita."
 export const CLOSED_PICKUP_DAYS_COPY = "lunes y martes estamos cerrados"

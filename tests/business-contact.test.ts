@@ -47,13 +47,13 @@ test("FAQ de tienda física muestra dirección y stock diario limitado", () => {
   assert.match(storeFaq.answer, /mini y medianas/)
 })
 
-test("FAQ de envíos refleja recogida y excepción Uber Eats en Zona Teide", () => {
+test("FAQ de envíos refleja recogida y excepción Uber Eats en Zona Telde", () => {
   const shippingFaq = faqs.find((faq) => faq.question.includes("envíos"))
 
   assert.ok(shippingFaq)
   assert.equal(shippingFaq.answer, PICKUP_ONLY_COPY)
   assert.match(shippingFaq.answer, /recogida en tienda/)
   assert.match(shippingFaq.answer, /Uber Eats/)
-  assert.match(shippingFaq.answer, /Zona Teide/)
+  assert.match(shippingFaq.answer, /Zona Telde/)
   assert.doesNotMatch(shippingFaq.answer, new RegExp(`${["3", "K[mM]"].join("\\s+")}|${["a la", "redonda"].join(" ")}`))
 })

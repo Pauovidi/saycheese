@@ -27,25 +27,25 @@ test("mantiene la marca visible Tentados en header, footer y metadatos", () => {
   assert.doesNotMatch(visibleBrandSources, oldBrandBylinePattern)
 })
 
-test("top bar comunica Uber Eats en Zona Teide sin copy de distancia anterior", () => {
+test("top bar comunica Uber Eats en Zona Telde sin copy de distancia anterior", () => {
   const header = readSource("src/components/site-header.tsx")
 
-  assert.match(header, /Con Uber Eats recibe tu tarta en casa \(Zona Teide\)/)
+  assert.match(header, /Con Uber Eats recibe tu tarta en casa \(Zona Telde\)/)
   assert.doesNotMatch(header, oldDistanceCopyPattern)
 })
 
-test("FAQ y fuente central de envíos usan Zona Teide sin cobertura antigua", () => {
+test("FAQ y fuente central de envíos usan Zona Telde sin cobertura antigua", () => {
   const shippingFaq = faqs.find((faq) => faq.question.includes("envíos"))
   const faqText = faqs.map((faq) => `${faq.question} ${faq.answer}`).join("\n")
 
   assert.ok(shippingFaq)
-  assert.equal(PICKUP_ONLY_COPY, "Solo recogida en tienda, salvo si estás en Zona Teide, donde Uber Eats te la deja en casita.")
+  assert.equal(PICKUP_ONLY_COPY, "Solo recogida en tienda, salvo si estás en Zona Telde, donde Uber Eats te la deja en casita.")
   assert.equal(shippingFaq.answer, PICKUP_ONLY_COPY)
-  assert.match(faqText, /Zona Teide/)
+  assert.match(faqText, /Zona Telde/)
   assert.doesNotMatch(faqText, oldDistanceCopyPattern)
 })
 
-test("chatbot conserva sabores y copy de recogida en Zona Teide", () => {
+test("chatbot conserva sabores y copy de recogida en Zona Telde", () => {
   const reply = buildFlavorListMessage(
     [
       {
@@ -64,7 +64,7 @@ test("chatbot conserva sabores y copy de recogida en Zona Teide", () => {
   assert.match(reply, /Tarta del mes: Dubai pistacho/)
   assert.match(reply, /Grande: 35 €/)
   assert.match(reply, /Cajita: 12 €/)
-  assert.match(reply, /Zona Teide/)
+  assert.match(reply, /Zona Telde/)
   assert.doesNotMatch(reply, oldDistanceCopyPattern)
 })
 
