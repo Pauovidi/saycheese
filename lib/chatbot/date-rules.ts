@@ -163,7 +163,7 @@ function resolveMonthDayCandidate(day: number, month: number, todayISO: string, 
 
 function parseMonthNameDate(normalizedText: string, todayISO: string) {
   const match = normalizedText.match(
-    /\b(?:para\s+el\s+)?(?:el\s+)?(\d{1,2})\s*(?:de\s+)?(ene|enero|feb|febrero|mar|marzo|abr|abril|may|mayo|jun|junio|jul|julio|ago|agosto|sep|sept|septiembre|setiembre|oct|octubre|nov|noviembre|dic|diciembre)(?:\s+de\s+(\d{2,4}))?\b/
+    /\b(?:para\s+el\s+)?(?:(?:el|dia)\s+)?(\d{1,2})\s*(?:de\s+)?(ene|enero|feb|febrero|mar|marzo|abr|abril|may|mayo|jun|junio|jul|julio|ago|agosto|sep|sept|septiembre|setiembre|oct|octubre|nov|noviembre|dic|diciembre)(?:\s+de\s+(\d{2,4}))?\b/
   )
   if (!match) return undefined
 
@@ -227,7 +227,7 @@ export function parsePartialDateFromText(text: string, now: Date, tz: string) {
   }
 
   const partialMatch =
-    normalizedText.match(/\b(?:para(?: el)?|el)\s+(\d{1,2})\b(?![/-])/)
+    normalizedText.match(/\b(?:para(?: el)?|el|dia)\s+(\d{1,2})\b(?![/-])/)
     ?? normalizedText.match(/^\s*(\d{1,2})\s*$/)
 
   if (!partialMatch) return undefined

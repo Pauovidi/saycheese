@@ -50,6 +50,7 @@ function flavor(category: string, name: string, overrides: Partial<Product> = {}
 }
 
 const catalogProducts: Product[] = [
+  ...flavor("clasica", "Clásica"),
   ...flavor("cacahuete-con-chocolate", "Cacahuete con chocolate"),
   ...flavor("lotus", "Lotus"),
   ...flavor("pistacho", "Pistacho"),
@@ -180,6 +181,155 @@ test("pedido -> sabores -> sabor parcial -> fecha -> cajita telefono pide solo n
   assert.equal(state.phone, "645290441")
   assert.match(combinedReply.text, /me falta tu nombre/)
   assert.doesNotMatch(combinedReply.text, /tel[eé]fono|formato/)
+})
+
+test("tarta de queso se interpreta como clásica y pide el siguiente dato", async () => {
+  const state: OrderState = {}
+
+  const reply = await send(state, "Hola quiero una tarta de queso")
+
+  assert.equal(reply.kind, "reply")
+  assert.equal(state.inOrderFlow, true)
+  assert.equal(state.flavor, "clasica")
+  assert.equal(state.format, "tarta")
+  assert.match(reply.text, /Para qué día/)
+  assert.doesNotMatch(reply.text, /Queso Azul/i)
+})
+
+test("mensaje combinado día, sabor genérico y tamaño rellena slots sin repetir fecha", async () => {
+  const state: OrderState = { inOrderFlow: true }
+
+  const reply = await sendJuneWhatsapp(state, "Día 17 una tarta de queso grande")
+
+  assert.equal(reply.kind, "reply")
+  assert.equal(state.finalDate, "2026-06-17")
+  assert.equal(state.flavor, "clasica")
+  assert.equal(state.format, "tarta")
+  assert.match(reply.text, /miércoles 17\/06/)
+  assert.match(reply.text, /me falta tu nombre/)
+  assert.doesNotMatch(reply.text, /Para qué día|Queso Azul/i)
+})
+
+test("día 17 de junio mantiene sabor y tamaño previos sin cambiar a queso azul", async () => {
+  const state: OrderState = { inOrderFlow: true, flavor: "clasica", format: "tarta" }
+
+  const reply = await sendJuneWhatsapp(state, "Día 17 de junio")
+
+  assert.equal(reply.kind, "reply")
+  assert.equal(state.finalDate, "2026-06-17")
+  assert.equal(state.flavor, "clasica")
+  assert.equal(state.format, "tarta")
+  assert.match(reply.text, /miércoles 17\/06/)
+  assert.match(reply.text, /me falta tu nombre/)
+  assert.doesNotMatch(reply.text, /Queso Azul/i)
+})
+
+test("corrección con pregunta de sabores limpia sabor rechazado y lista opciones", async () => {
+  const state: OrderState = {
+    inOrderFlow: true,
+    flavor: "Queso Azul",
+    format: "tarta",
+    finalDate: "2026-06-17",
+    awaitingName: true,
+  }
+
+  const reply = await sendJuneWhatsapp(state, "No quiero de queso azul, que sabores tienes")
+
+  assert.equal(reply.kind, "reply")
+  assert.equal(state.flavor, undefined)
+  assert.equal(state.format, "tarta")
+  assert.equal(state.finalDate, "2026-06-17")
+  assert.equal(state.awaitingName, false)
+  assert.match(reply.text, /Tenemos estos sabores disponibles/)
+  assert.match(reply.text, /Clásica/)
+  assert.match(reply.text, /Cuál prefieres/)
+  assert.doesNotMatch(reply.text, /Te apunto una grande de Queso Azul/i)
+})
+
+test("pregunta de sabores gana al flujo pendiente de nombre", async () => {
+  const state: OrderState = {
+    inOrderFlow: true,
+    flavor: "clasica",
+    format: "tarta",
+    finalDate: "2026-06-17",
+    awaitingName: true,
+  }
+
+  const reply = await sendJuneWhatsapp(state, "qué sabores tienes")
+
+  assert.equal(reply.kind, "reply")
+  assert.equal(state.flavor, "clasica")
+  assert.match(reply.text, /Tenemos estos sabores disponibles/)
+  assert.doesNotMatch(reply.text, /me falta tu nombre/)
+})
+
+test("corrección explícita reemplaza sabor y mantiene fecha y tamaño", async () => {
+  for (const message of ["no, clásica", "mejor clásica"]) {
+    const state: OrderState = {
+      inOrderFlow: true,
+      flavor: "lotus",
+      format: "tarta",
+      finalDate: "2026-06-17",
+    }
+
+    const reply = await sendJuneWhatsapp(state, message)
+
+    assert.equal(reply.kind, "reply")
+    assert.equal(state.flavor, "clasica")
+    assert.equal(state.format, "tarta")
+    assert.equal(state.finalDate, "2026-06-17")
+    assert.match(reply.text, /miércoles 17\/06/)
+    assert.doesNotMatch(reply.text, /Queso Azul/i)
+  }
+})
+
+test("matcher conserva sabores reales y no alucina queso azul", () => {
+  for (const message of [
+    "queso",
+    "tarta de queso",
+    "cheesecake",
+    "clásica",
+    "clasica",
+    "la normal",
+    "la de siempre",
+    "original",
+    "una tarta de queso grande",
+    "una grande de queso",
+    "quiero una tarta de queso",
+  ]) {
+    const selection = resolveFlavorSelectionFromProducts(message, catalogProducts)
+    assert.equal(selection.kind, "matched", message)
+    if (selection.kind === "matched") {
+      assert.equal(selection.product.category, "clasica", message)
+      assert.notEqual(selection.product.name, "Queso Azul")
+    }
+  }
+
+  const quesoAzul = resolveFlavorSelectionFromProducts("queso azul", catalogProducts)
+  assert.equal(quesoAzul.kind, "none")
+})
+
+test("lista de sabores usa catálogo real sin duplicados ni queso azul", async () => {
+  const reply = await sendJuneWhatsapp({}, "qué sabores tienes")
+
+  assert.equal(reply.kind, "reply")
+  assert.match(reply.text, /Clásica/)
+  assert.doesNotMatch(reply.text, /Queso Azul/i)
+
+  const flavorLines = reply.text.split("\n").filter((line) => line.startsWith("- "))
+  assert.equal(new Set(flavorLines).size, flavorLines.length)
+})
+
+test("una cajita de queso para el 17 rellena formato, sabor y fecha", async () => {
+  const state: OrderState = {}
+
+  const reply = await sendJuneWhatsapp(state, "una cajita de queso para el 17")
+
+  assert.equal(reply.kind, "reply")
+  assert.equal(state.format, "cajita")
+  assert.equal(state.flavor, "clasica")
+  assert.equal(state.finalDate, "2026-06-17")
+  assert.match(reply.text, /cajita de Clásica/)
 })
 
 test("fecha antes y sabor parcial después conserva la fecha del pedido activo", async () => {

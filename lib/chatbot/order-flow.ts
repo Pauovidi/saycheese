@@ -183,8 +183,37 @@ function hasFlavorsIntent(text: string) {
   return /sabor|tamano|tamaño|formato|tarta|grande|cajita|precio/i.test(normalize(text))
 }
 
+function hasExplicitFlavorQuestion(text: string) {
+  const normalized = normalize(text)
+  return [
+    /\bque\s+sabores\b/,
+    /\bcuales?\s+sabores\b/,
+    /\bsabores\s+disponibles\b/,
+    /\bdime\s+(?:los\s+)?sabores\b/,
+    /\blista\s+(?:de\s+)?sabores\b/,
+  ].some((pattern) => pattern.test(normalized))
+}
+
 function hasOrderIntent(text: string) {
   return /quiero|pedido|encargar|tarta|grande|cajita|para\s/i.test(normalize(text))
+}
+
+function hasFlavorCorrectionIntent(text: string) {
+  const normalized = normalize(text)
+  return [
+    /\bno\s+quiero\b/,
+    /\bno\s*,?\s*(?:de\s+)?[\p{L}\s-]+$/u,
+    /\bmejor\b/,
+    /\bprefiero\b/,
+    /\bcambia(?:lo|la)?\b/,
+  ].some((pattern) => pattern.test(normalized))
+}
+
+function messageRejectsCurrentFlavor(text: string, state: OrderState) {
+  if (!state.flavor) return false
+  const normalized = normalize(text)
+  const normalizedFlavor = normalize(state.flavor).replace(/[-_]+/g, " ")
+  return /\bno\s+quiero\b/.test(normalized) || normalized.includes(normalizedFlavor)
 }
 
 function blockedCustomerNameTermsForProduct(product?: Product) {
@@ -310,6 +339,23 @@ export async function processOrderConversationTurn(input: ProcessOrderConversati
   const explicitFlavorSelection = flavorSelection.kind === "matched" ? flavorSelection.product : undefined
   const activeOrder = state.inOrderFlow || state.awaitingConfirm || state.awaitingName || state.awaitingAdditionalCakeDecision
 
+  if (hasExplicitFlavorQuestion(message)) {
+    if (messageRejectsCurrentFlavor(message, state) || hasFlavorCorrectionIntent(message)) {
+      state.flavor = undefined
+    }
+    state.awaitingName = false
+    if (activeOrder || hasMeaningfulOrderProgress(state)) {
+      state.inOrderFlow = true
+    }
+
+    const prefix = hasFlavorCorrectionIntent(message) ? "Sin problema, corrijo el sabor. " : ""
+    return {
+      kind: "reply",
+      text: `${prefix}${await deps.buildFlavorsReply(isOpeningConversation, channel)} ¿Cuál prefieres?`,
+      state,
+    }
+  }
+
   if (hasFlavorsIntent(message) && !hasOrderIntent(message) && !explicitFlavorSelection) {
     if (activeOrder || hasMeaningfulOrderProgress(state)) {
       state.inOrderFlow = true
@@ -396,6 +442,16 @@ export async function processOrderConversationTurn(input: ProcessOrderConversati
           allowSegmentExtraction: Boolean(product || format || parsedDate || email || messagePhone),
         })
   const hasStructuredContribution = Boolean(product || format || parsedDate || acceptedSuggestedDate || customerName || email || messagePhone)
+
+  if (hasFlavorCorrectionIntent(message) && state.flavor && !product && !format && !parsedDate && !customerName) {
+    state.flavor = undefined
+    state.awaitingName = false
+    return {
+      kind: "reply",
+      text: await deps.buildFlavorsReply(false, channel),
+      state,
+    }
+  }
 
   if (state.awaitingAdditionalCakeDecision) {
     const wantsCloseOrder =
