@@ -90,9 +90,43 @@ function stripNonFlavorTerms(query: string) {
 
 function detectRequestedFormat(query: string): Product["format"] | undefined {
   const normalized = normalize(query)
-  if (/\bcajita\b/.test(normalized)) return "cajita"
-  if (/\b(tarta|grande)\b/.test(normalized)) return "tarta"
+  if (/\b(cajita|caja|pequena|pequeno|mini|individual)\b/.test(normalized)) return "cajita"
+  if (/\b(tarta|grande|mediana|mediano)\b/.test(normalized)) return "tarta"
   return undefined
+}
+
+function findClassicFlavorProduct(products: Product[], requestedFormat?: Product["format"]) {
+  const classicCategories = new Set(["clasica", "clasico", "classic", "original"])
+  const classicProducts = products.filter((product) => {
+    const fields = [product.category, product.slug, product.name].map(normalize)
+    return fields.some((field) => classicCategories.has(field) || /\bclasica\b|\bclasico\b|\boriginal\b/.test(field))
+  })
+
+  if (!classicProducts.length) return undefined
+  return selectProductForCategory(products, classicProducts[0]?.category ?? "", requestedFormat)
+}
+
+function isGenericClassicFlavorQuery(query: string) {
+  const normalized = normalize(query).replace(/[^\p{L}\d\s]+/gu, " ").replace(/\s+/g, " ").trim()
+  if (!normalized) return false
+  if (/\bqueso\s+azul\b/.test(normalized)) return false
+
+  const withoutOrderTerms = normalized
+    .replace(/\b(hola|buenas|buenos|dias|tardes|noches|quiero|queria|necesito|busco|pedido|encargar|para|una|un|de|la|el|por|favor|grande|tarta|cajita|caja|pequena|pequeno|mini|individual|mediana|mediano|cheesecake)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+
+  return (
+    /\btarta\s+de\s+queso\b/.test(normalized) ||
+    /\b(?:de|sabor)\s+queso\b/.test(normalized) ||
+    /\bcheesecake\b/.test(normalized) ||
+    /\bclasica\b/.test(normalized) ||
+    /\bclasico\b/.test(normalized) ||
+    /\bla\s+normal\b/.test(normalized) ||
+    /\bla\s+de\s+siempre\b/.test(normalized) ||
+    /\boriginal\b/.test(normalized) ||
+    withoutOrderTerms === "queso"
+  )
 }
 
 function scoreFlavorMatch(query: string, product: Product) {
@@ -158,6 +192,13 @@ export function resolveFlavorSelectionFromProducts(query: string, sourceProducts
     return {
       kind: "matched",
       product: selectProductForCategory(products, exactSlug.category, requestedFormat) ?? exactSlug,
+    }
+  }
+
+  if (isGenericClassicFlavorQuery(query)) {
+    const classicProduct = findClassicFlavorProduct(products, requestedFormat)
+    if (classicProduct) {
+      return { kind: "matched", product: classicProduct }
     }
   }
 
