@@ -44,6 +44,17 @@ La migración versionada es:
 
 Crea `drops`, `drop_reservations`, `drop_revisions`, columnas de merchandising en `order_items` y funciones RPC. No activa drops, no crea seeds productivos y no aplica cambios directamente a servicios remotos.
 
+## Despliegue de código antes de migración
+
+El código puede desplegarse antes de que la migración exista en el entorno remoto. Si Supabase devuelve un error de schema cache por tablas, columnas o RPC de Drops ausentes, la web pública degrada de forma segura:
+
+- home y navegación se comportan como si no hubiera drop activo;
+- `/drops` y `/drops/[slug]` no exponen errores internos;
+- el backoffice muestra que el módulo todavía no está inicializado y desactiva las acciones de escritura;
+- las operaciones de preventa o pedido de tipo `drop` devuelven un 503 controlado.
+
+Esta protección no ejecuta migraciones remotas, no cambia variables de entorno, no crea datos y no sustituye la migración versionada. Cuando se aplique `202606220001_add_merch_drops.sql`, el módulo vuelve a estado `READY` usando las mismas rutas y fuentes de datos.
+
 ## Backoffice
 
 En `Admin > Drops` se puede crear o editar:

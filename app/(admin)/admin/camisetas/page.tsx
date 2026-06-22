@@ -2,10 +2,16 @@ export const dynamic = "force-dynamic"
 export const revalidate = 0
 
 import { ShirtsAdmin } from "@/src/components/admin/drops/shirts-admin"
-import { listDropOrders, listDropReservations } from "@/src/data/drops-store"
+import { listDropOrdersWithAvailability, listDropReservationsWithAvailability } from "@/src/data/drops-store"
 
 export default async function AdminCamisetasPage() {
-  const [reservations, orders] = await Promise.all([listDropReservations(), listDropOrders()])
+  const [reservationsState, ordersState] = await Promise.all([
+    listDropReservationsWithAvailability(),
+    listDropOrdersWithAvailability(),
+  ])
+  const moduleAvailability =
+    reservationsState.availability === "READY" ? ordersState.availability : reservationsState.availability
+  const moduleMessage = reservationsState.message ?? ordersState.message
 
   return (
     <section className="space-y-6">
@@ -16,7 +22,12 @@ export default async function AdminCamisetasPage() {
         </p>
       </div>
 
-      <ShirtsAdmin initialReservations={reservations} initialOrders={orders} />
+      <ShirtsAdmin
+        initialReservations={reservationsState.data}
+        initialOrders={ordersState.data}
+        moduleAvailability={moduleAvailability}
+        moduleMessage={moduleMessage}
+      />
     </section>
   )
 }

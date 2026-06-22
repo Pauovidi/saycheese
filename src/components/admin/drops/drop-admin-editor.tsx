@@ -17,8 +17,15 @@ import {
   getDropStatusLabel,
   utcIsoToDateTimeLocalInZone,
 } from "@/src/data/drops"
+import type { DropModuleAvailability } from "@/src/data/drop-storage-status"
 import type { EditableDropRecord } from "@/src/data/drops-store"
 import { slugifyFlavorName } from "@/src/data/products"
+
+type DropAdminEditorProps = {
+  initialDrops: EditableDropRecord[]
+  moduleAvailability?: DropModuleAvailability
+  moduleMessage?: string
+}
 
 type DropFormState = {
   id?: string
@@ -88,15 +95,21 @@ function formatAdminDate(value: string) {
   }).format(new Date(value))
 }
 
-export function DropAdminEditor({ initialDrops }: { initialDrops: EditableDropRecord[] }) {
+export function DropAdminEditor({
+  initialDrops,
+  moduleAvailability = "READY",
+  moduleMessage,
+}: DropAdminEditorProps) {
   const [drops, setDrops] = useState(initialDrops)
   const [selectedId, setSelectedId] = useState(initialDrops[0]?.id ?? "new")
   const [form, setForm] = useState<DropFormState>(() => (initialDrops[0] ? dropToForm(initialDrops[0]) : emptyDropForm()))
   const [isPending, startTransition] = useTransition()
+  const moduleReady = moduleAvailability === "READY"
   const selectedDrop = drops.find((drop) => drop.id === selectedId)
   const uploadSlug = form.slug.trim() || slugifyFlavorName(form.name) || "draft"
 
   function updateField<K extends keyof DropFormState>(field: K, value: DropFormState[K]) {
+    if (!moduleReady) return
     setForm((current) => ({
       ...current,
       [field]: value,
@@ -105,16 +118,19 @@ export function DropAdminEditor({ initialDrops }: { initialDrops: EditableDropRe
   }
 
   function selectDrop(drop: EditableDropRecord) {
+    if (!moduleReady) return
     setSelectedId(drop.id)
     setForm(dropToForm(drop))
   }
 
   function startNewDrop() {
+    if (!moduleReady) return
     setSelectedId("new")
     setForm(emptyDropForm())
   }
 
   function handleUploadedImage(publicUrl: string) {
+    if (!moduleReady) return
     const current = form.imageUrls
       .split(/\n/)
       .map((entry) => entry.trim())
@@ -125,6 +141,7 @@ export function DropAdminEditor({ initialDrops }: { initialDrops: EditableDropRe
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    if (!moduleReady) return
 
     startTransition(async () => {
       const response = await saveDrop({
@@ -148,6 +165,17 @@ export function DropAdminEditor({ initialDrops }: { initialDrops: EditableDropRe
   return (
     <div className="grid gap-6 lg:grid-cols-[300px_minmax(0,1fr)]">
       <div className="space-y-6">
+        {!moduleReady ? (
+          <Card className="border-amber-300 bg-amber-50 text-amber-950">
+            <CardHeader>
+              <CardTitle>Módulo no inicializado</CardTitle>
+              <CardDescription className="text-amber-900">
+                {moduleMessage ?? "La migración de Drops todavía no está aplicada en este entorno."}
+              </CardDescription>
+            </CardHeader>
+          </Card>
+        ) : null}
+
         <Card>
           <CardHeader className="space-y-3">
             <div>
@@ -156,7 +184,9 @@ export function DropAdminEditor({ initialDrops }: { initialDrops: EditableDropRe
                 Solo puede haber un drop público activo para el hero en esta versión.
               </CardDescription>
             </div>
-            <Button onClick={startNewDrop}>Crear drop</Button>
+            <Button onClick={startNewDrop} disabled={!moduleReady}>
+              Crear drop
+            </Button>
           </CardHeader>
           <CardContent className="space-y-2">
             {drops.map((drop) => (
@@ -164,6 +194,7 @@ export function DropAdminEditor({ initialDrops }: { initialDrops: EditableDropRe
                 key={drop.id}
                 type="button"
                 onClick={() => selectDrop(drop)}
+                disabled={!moduleReady}
                 className={`w-full rounded-md border px-4 py-3 text-left transition-colors ${
                   drop.id === selectedId ? "border-primary bg-primary/5" : "border-border bg-background hover:border-primary/40"
                 }`}
@@ -187,7 +218,7 @@ export function DropAdminEditor({ initialDrops }: { initialDrops: EditableDropRe
             ))}
             {!drops.length ? (
               <div className="rounded-md border border-dashed border-border px-4 py-6 text-sm text-muted-foreground">
-                No hay drops todavía.
+                {moduleReady ? "No hay drops todavía." : moduleMessage ?? "La migración de Drops todavía no está aplicada en este entorno."}
               </div>
             ) : null}
           </CardContent>
@@ -205,43 +236,43 @@ export function DropAdminEditor({ initialDrops }: { initialDrops: EditableDropRe
           <CardContent className="grid gap-5 md:grid-cols-2">
             <div className="space-y-2 md:col-span-2">
               <Label htmlFor="drop-name">Nombre</Label>
-              <Input id="drop-name" value={form.name} onChange={(event) => updateField("name", event.target.value)} required />
+              <Input id="drop-name" value={form.name} onChange={(event) => updateField("name", event.target.value)} required disabled={!moduleReady} />
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="drop-slug">Slug</Label>
-              <Input id="drop-slug" value={form.slug} onChange={(event) => updateField("slug", event.target.value)} required />
+              <Input id="drop-slug" value={form.slug} onChange={(event) => updateField("slug", event.target.value)} required disabled={!moduleReady} />
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="drop-price">Precio</Label>
-              <Input id="drop-price" type="number" min="0" step="0.01" value={form.price} onChange={(event) => updateField("price", event.target.value)} required />
+              <Input id="drop-price" type="number" min="0" step="0.01" value={form.price} onChange={(event) => updateField("price", event.target.value)} required disabled={!moduleReady} />
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="drop-stock">Stock total</Label>
-              <Input id="drop-stock" type="number" min="0" step="1" value={form.stockTotal} onChange={(event) => updateField("stockTotal", event.target.value)} required />
+              <Input id="drop-stock" type="number" min="0" step="1" value={form.stockTotal} onChange={(event) => updateField("stockTotal", event.target.value)} required disabled={!moduleReady} />
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="drop-launch">Lanzamiento</Label>
-              <Input id="drop-launch" type="datetime-local" value={form.launchAtLocal} onChange={(event) => updateField("launchAtLocal", event.target.value)} required />
+              <Input id="drop-launch" type="datetime-local" value={form.launchAtLocal} onChange={(event) => updateField("launchAtLocal", event.target.value)} required disabled={!moduleReady} />
               <p className="text-xs text-muted-foreground">Zona: {form.launchTimezone}</p>
             </div>
 
             <div className="space-y-2 md:col-span-2">
               <Label htmlFor="drop-description">Descripción</Label>
-              <Textarea id="drop-description" rows={4} value={form.description} onChange={(event) => updateField("description", event.target.value)} />
+              <Textarea id="drop-description" rows={4} value={form.description} onChange={(event) => updateField("description", event.target.value)} disabled={!moduleReady} />
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="drop-sizes">Tallas</Label>
-              <Textarea id="drop-sizes" rows={5} value={form.sizes} onChange={(event) => updateField("sizes", event.target.value)} />
+              <Textarea id="drop-sizes" rows={5} value={form.sizes} onChange={(event) => updateField("sizes", event.target.value)} disabled={!moduleReady} />
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="drop-colors">Colores</Label>
-              <Textarea id="drop-colors" rows={5} value={form.colors} onChange={(event) => updateField("colors", event.target.value)} />
+              <Textarea id="drop-colors" rows={5} value={form.colors} onChange={(event) => updateField("colors", event.target.value)} disabled={!moduleReady} />
             </div>
 
             <div className="space-y-2 md:col-span-2">
@@ -251,28 +282,28 @@ export function DropAdminEditor({ initialDrops }: { initialDrops: EditableDropRe
                 slug={uploadSlug}
                 variant="drop"
                 onChange={handleUploadedImage}
-                disabled={isPending}
+                disabled={isPending || !moduleReady}
               />
             </div>
 
             <div className="space-y-2 md:col-span-2">
               <Label htmlFor="drop-images">Imágenes</Label>
-              <Textarea id="drop-images" rows={4} value={form.imageUrls} onChange={(event) => updateField("imageUrls", event.target.value)} />
+              <Textarea id="drop-images" rows={4} value={form.imageUrls} onChange={(event) => updateField("imageUrls", event.target.value)} disabled={!moduleReady} />
               <p className="text-xs text-muted-foreground">Una URL por línea. La primera será la imagen principal.</p>
             </div>
 
             <div className="grid gap-4 rounded-md border border-border p-4 md:col-span-2 md:grid-cols-3">
               <label className="flex items-center justify-between gap-3">
                 <span className="text-sm font-medium">Drop activo</span>
-                <Switch checked={form.isActive} onCheckedChange={(checked) => updateField("isActive", checked)} />
+                <Switch checked={form.isActive} onCheckedChange={(checked) => updateField("isActive", checked)} disabled={!moduleReady} />
               </label>
               <label className="flex items-center justify-between gap-3">
                 <span className="text-sm font-medium">Flotante activo</span>
-                <Switch checked={form.floatingEnabled} onCheckedChange={(checked) => updateField("floatingEnabled", checked)} />
+                <Switch checked={form.floatingEnabled} onCheckedChange={(checked) => updateField("floatingEnabled", checked)} disabled={!moduleReady} />
               </label>
               <label className="flex items-center justify-between gap-3">
                 <span className="text-sm font-medium">Cerrado</span>
-                <Switch checked={form.isClosed} onCheckedChange={(checked) => updateField("isClosed", checked)} />
+                <Switch checked={form.isClosed} onCheckedChange={(checked) => updateField("isClosed", checked)} disabled={!moduleReady} />
               </label>
             </div>
 
@@ -284,6 +315,7 @@ export function DropAdminEditor({ initialDrops }: { initialDrops: EditableDropRe
                 maxLength={600}
                 value={form.floatingMessage}
                 onChange={(event) => updateField("floatingMessage", event.target.value)}
+                disabled={!moduleReady}
               />
             </div>
           </CardContent>
@@ -306,10 +338,10 @@ export function DropAdminEditor({ initialDrops }: { initialDrops: EditableDropRe
         ) : null}
 
         <div className="flex flex-wrap gap-3">
-          <Button type="submit" disabled={isPending}>
+          <Button type="submit" disabled={isPending || !moduleReady}>
             {isPending ? "Guardando..." : "Guardar drop"}
           </Button>
-          <Button type="button" variant="outline" onClick={() => setForm(form.id && selectedDrop ? dropToForm(selectedDrop) : emptyDropForm())} disabled={isPending}>
+          <Button type="button" variant="outline" onClick={() => setForm(form.id && selectedDrop ? dropToForm(selectedDrop) : emptyDropForm())} disabled={isPending || !moduleReady}>
             Descartar cambios
           </Button>
         </div>

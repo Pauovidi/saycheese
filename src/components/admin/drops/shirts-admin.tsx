@@ -16,7 +16,9 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
+import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import type { DropModuleAvailability } from "@/src/data/drop-storage-status"
 import type { DropOrderListItem, DropReservationListItem } from "@/src/data/drops-store"
 
 function formatDate(value: string) {
@@ -33,14 +35,21 @@ function formatDate(value: string) {
 export function ShirtsAdmin({
   initialReservations,
   initialOrders,
+  moduleAvailability = "READY",
+  moduleMessage,
 }: {
   initialReservations: DropReservationListItem[]
   initialOrders: DropOrderListItem[]
+  moduleAvailability?: DropModuleAvailability
+  moduleMessage?: string
 }) {
   const [reservations, setReservations] = useState(initialReservations)
   const [isPending, startTransition] = useTransition()
+  const moduleReady = moduleAvailability === "READY"
 
   function cancelReservation(reservationId: string) {
+    if (!moduleReady) return
+
     startTransition(async () => {
       const response = await cancelDropReservationFromAdmin({
         reservationId,
@@ -71,6 +80,17 @@ export function ShirtsAdmin({
 
   return (
     <Tabs defaultValue="preventas" className="space-y-6">
+      {!moduleReady ? (
+        <Card className="border-amber-300 bg-amber-50 text-amber-950">
+          <CardHeader>
+            <CardTitle>Módulo no inicializado</CardTitle>
+            <CardDescription className="text-amber-900">
+              {moduleMessage ?? "La migración de Drops todavía no está aplicada en este entorno."}
+            </CardDescription>
+          </CardHeader>
+        </Card>
+      ) : null}
+
       <TabsList>
         <TabsTrigger value="preventas">Preventas</TabsTrigger>
         <TabsTrigger value="pedidos">Pedidos</TabsTrigger>
@@ -96,7 +116,7 @@ export function ShirtsAdmin({
                   {reservation.status === "active" ? (
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
-                        <Button variant="destructive" size="sm" disabled={isPending}>
+                        <Button variant="destructive" size="sm" disabled={isPending || !moduleReady}>
                           Cancelar preventa
                         </Button>
                       </AlertDialogTrigger>
@@ -122,7 +142,7 @@ export function ShirtsAdmin({
           ))
         ) : (
           <p className="rounded-md border border-dashed border-border p-6 text-sm text-muted-foreground">
-            Todavía no hay preventas.
+            {moduleReady ? "Todavía no hay preventas." : moduleMessage ?? "La migración de Drops todavía no está aplicada en este entorno."}
           </p>
         )}
       </TabsContent>
@@ -153,7 +173,7 @@ export function ShirtsAdmin({
           ))
         ) : (
           <p className="rounded-md border border-dashed border-border p-6 text-sm text-muted-foreground">
-            Todavía no hay pedidos de camisetas.
+            {moduleReady ? "Todavía no hay pedidos de camisetas." : moduleMessage ?? "La migración de Drops todavía no está aplicada en este entorno."}
           </p>
         )}
       </TabsContent>

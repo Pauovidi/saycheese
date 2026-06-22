@@ -7,6 +7,7 @@ import { buildUnavailableFlavorMessage, resolveFlavorAvailability } from "@/lib/
 import { normalizePhoneOrNull } from "@/lib/phone"
 import { getOrderPickupDateErrorMessage, validateOrderPickupDate } from "@/lib/pickup-date-validation"
 import { getAdminClient, getAdminUid } from "@/lib/supabase/admin"
+import { DropStorageUnavailableError } from "@/src/data/drop-storage-status"
 import { createOrderWithItems } from "@/src/data/drops-store"
 
 const LEAD_DAYS_RAW = Number.parseInt(process.env.CHATBOT_LEAD_DAYS ?? "3", 10)
@@ -170,6 +171,13 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { ok: false, error: "Payload inválido", details: error.flatten() },
         { status: 400 }
+      )
+    }
+
+    if (error instanceof DropStorageUnavailableError) {
+      return NextResponse.json(
+        { ok: false, error: "Los drops no están disponibles temporalmente.", code: error.code },
+        { status: error.status }
       )
     }
 

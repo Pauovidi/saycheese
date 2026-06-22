@@ -42,3 +42,12 @@ test("cancelar preventa es idempotente y devuelve stock una sola vez", async () 
   assert.match(source, /changed := false/)
   assert.match(source, /changed := true/)
 })
+
+test("documentación cubre despliegue de código antes de migración", async () => {
+  const source = await readFile(resolve("docs/MERCH_DROPS.md"), "utf8")
+
+  assert.match(source, /Despliegue de código antes de migración/)
+  assert.match(source, /schema cache/)
+  assert.match(source, /503 controlado/)
+  assert.match(source, /no ejecuta migraciones remotas/i)
+})

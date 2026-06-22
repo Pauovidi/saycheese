@@ -7,6 +7,15 @@ import {
   type DropPublicStatus,
   type DropStockNumbers,
 } from "@/src/data/drops"
+import {
+  DropStorageUnavailableError,
+  type DropModuleAvailability,
+  classifyDropStorageError,
+  getDropAdminUnavailableMessage,
+  getDropStorageErrorMessage,
+  logDropStorageIssueOnce,
+  toDropStorageUnavailableError,
+} from "@/src/data/drop-storage-status"
 
 export type DropRow = {
   id: string
@@ -100,6 +109,10 @@ export type DropOrderListItem = {
   priceText: string
 }
 
+export type DropAdminModuleState<T> =
+  | { availability: "READY"; data: T; message?: undefined }
+  | { availability: Exclude<DropModuleAvailability, "READY">; data: T; message: string }
+
 export type OrderWithItemsInput = {
   userId: string
   deliveryDate: string
@@ -146,6 +159,18 @@ const DROP_COLUMNS = [
   "updated_at",
 ].join(",")
 
+type DropStoreClient = ReturnType<typeof getAdminClient>
+
+let dropStoreClientForTests: DropStoreClient | null = null
+
+export function setDropStoreClientForTests(client: DropStoreClient | null) {
+  dropStoreClientForTests = client
+}
+
+function getDropClient() {
+  return dropStoreClientForTests ?? getAdminClient()
+}
+
 function readStringArray(value: unknown) {
   if (!Array.isArray(value)) return []
   return value.map((entry) => (typeof entry === "string" ? entry.trim() : "")).filter(Boolean)
@@ -156,9 +181,40 @@ function readNumber(value: number | string | null | undefined, fallback = 0) {
   return Number.isFinite(parsed) ? parsed : fallback
 }
 
-function isMissingSupabaseConfigError(error: unknown) {
-  const message = error instanceof Error ? error.message : String(error)
-  return /Faltan variables SUPABASE/i.test(message)
+function toDropMutationError(error: unknown, operation: string) {
+  if (classifyDropStorageError(error) === "NOT_INITIALIZED") {
+    return toDropStorageUnavailableError(error, operation)
+  }
+
+  return error instanceof Error ? error : new Error(getDropStorageErrorMessage(error))
+}
+
+function logDropCaughtError(error: unknown, operation: string) {
+  if (error instanceof DropStorageUnavailableError) {
+    return error.availability
+  }
+
+  const availability = classifyDropStorageError(error)
+  logDropStorageIssueOnce({ operation, availability, error })
+  return availability
+}
+
+function dropUnavailableState<T>(
+  availability: Exclude<DropModuleAvailability, "READY">,
+  data: T
+): DropAdminModuleState<T> {
+  return {
+    availability,
+    data,
+    message: getDropAdminUnavailableMessage(availability),
+  }
+}
+
+function dropReadyState<T>(data: T): DropAdminModuleState<T> {
+  return {
+    availability: "READY",
+    data,
+  }
 }
 
 function mapSummary(value: unknown, fallbackStockTotal = 0): DropStockNumbers {
@@ -254,7 +310,7 @@ function buildRevisionSnapshot(drop: EditableDropRecord) {
 }
 
 async function insertRevision(input: { drop: EditableDropRecord; action: string; actor?: string | null }) {
-  const supabase = getAdminClient()
+  const supabase = getDropClient()
   const { error } = await supabase.from("drop_revisions").insert({
     drop_id: input.drop.id,
     action: input.action,
@@ -263,16 +319,16 @@ async function insertRevision(input: { drop: EditableDropRecord; action: string;
     actor: input.actor ?? null,
   })
 
-  if (error) throw new Error(error.message)
+  if (error) throw toDropMutationError(error, "insertRevision")
 }
 
 export async function getDropStockSummary(dropId: string): Promise<DropStockNumbers> {
-  const supabase = getAdminClient()
+  const supabase = getDropClient()
   const { data, error } = await supabase.rpc("get_drop_stock_summary", {
     p_drop_id: dropId,
   })
 
-  if (error) throw new Error(error.message)
+  if (error) throw toDropStorageUnavailableError(error, "getDropStockSummary")
   return mapSummary(data)
 }
 
@@ -286,19 +342,28 @@ async function mapRowsWithStock(rows: DropRow[], now: Date = new Date()) {
 }
 
 export async function listAdminDrops(now: Date = new Date()) {
-  const supabase = getAdminClient()
+  const supabase = getDropClient()
   const { data, error } = await supabase
     .from("drops")
     .select(DROP_COLUMNS)
     .order("created_at", { ascending: false })
 
-  if (error) throw new Error(error.message)
+  if (error) throw toDropStorageUnavailableError(error, "listAdminDrops")
   return mapRowsWithStock((data ?? []) as unknown as DropRow[], now)
+}
+
+export async function listAdminDropsWithAvailability(now: Date = new Date()): Promise<DropAdminModuleState<EditableDropRecord[]>> {
+  try {
+    return dropReadyState(await listAdminDrops(now))
+  } catch (error) {
+    const availability = logDropCaughtError(error, "listAdminDropsWithAvailability")
+    return dropUnavailableState(availability, [])
+  }
 }
 
 export async function getHeroDrop(now: Date = new Date()) {
   try {
-    const supabase = getAdminClient()
+    const supabase = getDropClient()
     const { data, error } = await supabase
       .from("drops")
       .select(DROP_COLUMNS)
@@ -308,20 +373,20 @@ export async function getHeroDrop(now: Date = new Date()) {
       .limit(1)
       .maybeSingle()
 
-    if (error) throw new Error(error.message)
+    if (error) throw toDropStorageUnavailableError(error, "getHeroDrop")
     if (!data) return null
 
     const stock = await getDropStockSummary((data as unknown as DropRow).id)
     return mapDropRow(data as unknown as DropRow, stock, now)
   } catch (error) {
-    if (isMissingSupabaseConfigError(error)) return null
-    throw error
+    logDropCaughtError(error, "getHeroDrop")
+    return null
   }
 }
 
 export async function hasPublicDropsNav(now: Date = new Date()) {
   try {
-    const supabase = getAdminClient()
+    const supabase = getDropClient()
     const { count, error } = await supabase
       .from("drops")
       .select("id", { count: "exact", head: true })
@@ -329,17 +394,17 @@ export async function hasPublicDropsNav(now: Date = new Date()) {
       .eq("is_closed", false)
       .lte("launch_at", now.toISOString())
 
-    if (error) throw new Error(error.message)
+    if (error) throw toDropStorageUnavailableError(error, "hasPublicDropsNav")
     return (count ?? 0) > 0
   } catch (error) {
-    if (isMissingSupabaseConfigError(error)) return false
-    throw error
+    logDropCaughtError(error, "hasPublicDropsNav")
+    return false
   }
 }
 
 export async function listPublicDrops(now: Date = new Date()) {
   try {
-    const supabase = getAdminClient()
+    const supabase = getDropClient()
     const { data, error } = await supabase
       .from("drops")
       .select(DROP_COLUMNS)
@@ -348,17 +413,17 @@ export async function listPublicDrops(now: Date = new Date()) {
       .lte("launch_at", now.toISOString())
       .order("launch_at", { ascending: false })
 
-    if (error) throw new Error(error.message)
+    if (error) throw toDropStorageUnavailableError(error, "listPublicDrops")
     return mapRowsWithStock((data ?? []) as unknown as DropRow[], now)
   } catch (error) {
-    if (isMissingSupabaseConfigError(error)) return []
-    throw error
+    logDropCaughtError(error, "listPublicDrops")
+    return []
   }
 }
 
 export async function getPublicDropBySlug(slug: string, now: Date = new Date()) {
   try {
-    const supabase = getAdminClient()
+    const supabase = getDropClient()
     const { data, error } = await supabase
       .from("drops")
       .select(DROP_COLUMNS)
@@ -367,23 +432,23 @@ export async function getPublicDropBySlug(slug: string, now: Date = new Date()) 
       .eq("is_closed", false)
       .maybeSingle()
 
-    if (error) throw new Error(error.message)
+    if (error) throw toDropStorageUnavailableError(error, "getPublicDropBySlug")
     if (!data) return null
 
     const stock = await getDropStockSummary((data as unknown as DropRow).id)
     const drop = mapDropRow(data as unknown as DropRow, stock, now)
     return drop.status === "LIVE" || drop.status === "SOLD_OUT" ? drop : null
   } catch (error) {
-    if (isMissingSupabaseConfigError(error)) return null
-    throw error
+    logDropCaughtError(error, "getPublicDropBySlug")
+    return null
   }
 }
 
 export async function createDropRecord(input: DropMutationInput, actor?: string | null) {
-  const supabase = getAdminClient()
+  const supabase = getDropClient()
   const { data, error } = await supabase.from("drops").insert(mutationRow(input)).select(DROP_COLUMNS).single()
 
-  if (error) throw new Error(error.message)
+  if (error) throw toDropMutationError(error, "createDropRecord")
   const stock = await getDropStockSummary((data as unknown as DropRow).id)
   const drop = mapDropRow(data as unknown as DropRow, stock)
   await insertRevision({ drop, action: "create", actor })
@@ -391,7 +456,7 @@ export async function createDropRecord(input: DropMutationInput, actor?: string 
 }
 
 export async function updateDropRecord(id: string, input: DropMutationInput, actor?: string | null) {
-  const supabase = getAdminClient()
+  const supabase = getDropClient()
   const { data, error } = await supabase
     .from("drops")
     .update(mutationRow(input))
@@ -399,7 +464,7 @@ export async function updateDropRecord(id: string, input: DropMutationInput, act
     .select(DROP_COLUMNS)
     .single()
 
-  if (error) throw new Error(error.message)
+  if (error) throw toDropMutationError(error, "updateDropRecord")
   const stock = await getDropStockSummary((data as unknown as DropRow).id)
   const drop = mapDropRow(data as unknown as DropRow, stock)
   await insertRevision({ drop, action: "update", actor })
@@ -411,7 +476,7 @@ export async function reserveDrop(input: {
   idempotencyKey: string
   customerReference?: string | null
 }) {
-  const supabase = getAdminClient()
+  const supabase = getDropClient()
   const { data, error } = await supabase
     .rpc("create_drop_reservation", {
       p_drop_id: input.dropId,
@@ -420,7 +485,7 @@ export async function reserveDrop(input: {
     })
     .single()
 
-  if (error) throw new Error(error.message)
+  if (error) throw toDropMutationError(error, "reserveDrop")
 
   const row = data as unknown as {
     reservation_id: string
@@ -438,7 +503,7 @@ export async function reserveDrop(input: {
 }
 
 export async function cancelDropReservation(input: { reservationId: string; reason?: string | null }) {
-  const supabase = getAdminClient()
+  const supabase = getDropClient()
   const { data, error } = await supabase
     .rpc("cancel_drop_reservation", {
       p_reservation_id: input.reservationId,
@@ -446,7 +511,7 @@ export async function cancelDropReservation(input: { reservationId: string; reas
     })
     .single()
 
-  if (error) throw new Error(error.message)
+  if (error) throw toDropMutationError(error, "cancelDropReservation")
 
   const row = data as unknown as {
     reservation_id: string
@@ -464,7 +529,7 @@ export async function cancelDropReservation(input: { reservationId: string; reas
 }
 
 export async function createOrderWithItems(input: OrderWithItemsInput) {
-  const supabase = getAdminClient()
+  const supabase = getDropClient()
   const { data, error } = await supabase.rpc("create_order_with_items", {
     p_user_id: input.userId,
     p_delivery_date: input.deliveryDate,
@@ -478,20 +543,20 @@ export async function createOrderWithItems(input: OrderWithItemsInput) {
     p_items: input.items,
   })
 
-  if (error) throw new Error(error.message)
+  if (error) throw toDropMutationError(error, "createOrderWithItems")
   if (typeof data !== "string") throw new Error("No se pudo crear el pedido")
   return { id: data }
 }
 
 export async function listDropReservations(): Promise<DropReservationListItem[]> {
-  const supabase = getAdminClient()
+  const supabase = getDropClient()
   const { data, error } = await supabase
     .from("drop_reservations")
     .select("id, created_at, drop_id, quantity, status, idempotency_key, customer_reference, cancelled_at, cancellation_reason, drops(name, slug)")
     .order("created_at", { ascending: false })
     .limit(100)
 
-  if (error) throw new Error(error.message)
+  if (error) throw toDropStorageUnavailableError(error, "listDropReservations")
 
   return ((data ?? []) as unknown as Array<Record<string, unknown>>).map((row) => {
     const drop = Array.isArray(row.drops) ? row.drops[0] : (row.drops as Record<string, unknown> | null)
@@ -514,8 +579,17 @@ export async function listDropReservations(): Promise<DropReservationListItem[]>
   })
 }
 
+export async function listDropReservationsWithAvailability(): Promise<DropAdminModuleState<DropReservationListItem[]>> {
+  try {
+    return dropReadyState(await listDropReservations())
+  } catch (error) {
+    const availability = logDropCaughtError(error, "listDropReservationsWithAvailability")
+    return dropUnavailableState(availability, [])
+  }
+}
+
 export async function listDropOrders(): Promise<DropOrderListItem[]> {
-  const supabase = getAdminClient()
+  const supabase = getDropClient()
   const { data, error } = await supabase
     .from("order_items")
     .select(
@@ -525,7 +599,7 @@ export async function listDropOrders(): Promise<DropOrderListItem[]> {
     .order("id", { ascending: false })
     .limit(100)
 
-  if (error) throw new Error(error.message)
+  if (error) throw toDropStorageUnavailableError(error, "listDropOrders")
 
   return ((data ?? []) as unknown as Array<Record<string, unknown>>).map((row) => {
     const order = Array.isArray(row.orders) ? row.orders[0] : (row.orders as Record<string, unknown> | null)
@@ -549,4 +623,13 @@ export async function listDropOrders(): Promise<DropOrderListItem[]> {
       priceText: formatDropPrice(unitPrice),
     }
   })
+}
+
+export async function listDropOrdersWithAvailability(): Promise<DropAdminModuleState<DropOrderListItem[]>> {
+  try {
+    return dropReadyState(await listDropOrders())
+  } catch (error) {
+    const availability = logDropCaughtError(error, "listDropOrdersWithAvailability")
+    return dropUnavailableState(availability, [])
+  }
 }

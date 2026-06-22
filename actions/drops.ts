@@ -11,6 +11,7 @@ import {
   parseDropImageList,
   parseDropOptionList,
 } from "@/src/data/drops"
+import { DropStorageUnavailableError } from "@/src/data/drop-storage-status"
 import {
   cancelDropReservation,
   createDropRecord,
@@ -91,6 +92,10 @@ function revalidateDropSurfaces(slug?: string) {
 }
 
 function publicDropErrorMessage(error: unknown) {
+  if (error instanceof DropStorageUnavailableError) {
+    return "La preventa no está disponible temporalmente."
+  }
+
   const message = error instanceof Error ? error.message : String(error)
 
   if (/drop_sold_out/i.test(message)) return "Agotado"
@@ -119,6 +124,14 @@ export async function saveDrop(payload: z.input<typeof dropFormSchema>) {
       selectedId: saved.id,
     }
   } catch (error) {
+    if (error instanceof DropStorageUnavailableError) {
+      return {
+        ok: false as const,
+        error: error.message,
+        code: error.code,
+      }
+    }
+
     return {
       ok: false as const,
       error: error instanceof Error ? error.message : "No se pudo guardar el drop",
@@ -141,6 +154,14 @@ export async function reserveDropPrelaunch(payload: z.infer<typeof reserveDropSc
       reservation,
     }
   } catch (error) {
+    if (error instanceof DropStorageUnavailableError) {
+      return {
+        ok: false as const,
+        error: publicDropErrorMessage(error),
+        code: error.code,
+      }
+    }
+
     return {
       ok: false as const,
       error: publicDropErrorMessage(error),
@@ -164,6 +185,14 @@ export async function cancelDropReservationFromAdmin(payload: z.infer<typeof can
       result,
     }
   } catch (error) {
+    if (error instanceof DropStorageUnavailableError) {
+      return {
+        ok: false as const,
+        error: error.message,
+        code: error.code,
+      }
+    }
+
     return {
       ok: false as const,
       error: error instanceof Error ? error.message : "No se pudo cancelar la preventa",

@@ -40,6 +40,7 @@ test("ficha live permite talla, color, cantidad y línea drop en carrito", async
 
 test("backoffice expone Drops y Camisetas con preventas y pedidos separados", async () => {
   const nav = await readFile(resolve("src/components/admin/admin-nav.tsx"), "utf8")
+  const editor = await readFile(resolve("src/components/admin/drops/drop-admin-editor.tsx"), "utf8")
   const shirts = await readFile(resolve("src/components/admin/drops/shirts-admin.tsx"), "utf8")
 
   assert.match(nav, /\/admin\/drops/)
@@ -47,4 +48,8 @@ test("backoffice expone Drops y Camisetas con preventas y pedidos separados", as
   assert.match(shirts, /Preventas/)
   assert.match(shirts, /Pedidos/)
   assert.match(shirts, /cancelDropReservationFromAdmin/)
+  assert.match(editor, /Módulo no inicializado/)
+  assert.match(editor, /moduleReady/)
+  assert.match(shirts, /Módulo no inicializado/)
+  assert.match(shirts, /moduleReady/)
 })

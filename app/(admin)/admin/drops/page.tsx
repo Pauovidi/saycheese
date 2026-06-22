@@ -2,10 +2,10 @@ export const dynamic = "force-dynamic"
 export const revalidate = 0
 
 import { DropAdminEditor } from "@/src/components/admin/drops/drop-admin-editor"
-import { listAdminDrops } from "@/src/data/drops-store"
+import { listAdminDropsWithAvailability } from "@/src/data/drops-store"
 
 export default async function AdminDropsPage() {
-  const drops = await listAdminDrops()
+  const dropsState = await listAdminDropsWithAvailability()
 
   return (
     <section className="space-y-6">
@@ -16,7 +16,11 @@ export default async function AdminDropsPage() {
         </p>
       </div>
 
-      <DropAdminEditor initialDrops={drops} />
+      <DropAdminEditor
+        initialDrops={dropsState.data}
+        moduleAvailability={dropsState.availability}
+        moduleMessage={dropsState.message}
+      />
     </section>
   )
 }
