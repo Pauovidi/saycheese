@@ -31,6 +31,16 @@ type ConfirmationTemplateData = {
   pickupSummary: string
 }
 
+type WebOrderConfirmationItem =
+  | ChatOrderItem
+  | {
+      type: "drop"
+      flavor?: string
+      qty: number
+      selected_size?: string
+      selected_color?: string
+    }
+
 type ConfirmationSendInput =
   | {
       to: string
@@ -52,7 +62,7 @@ export type WebOrderWhatsappConfirmationInput = {
   channel: Channel
   phone?: string | null
   deliveryDate?: string | null
-  items: ChatOrderItem[]
+  items: WebOrderConfirmationItem[]
   reusedExisting?: boolean
 }
 
@@ -68,16 +78,22 @@ export type SendWebOrderWhatsappConfirmationDeps = {
 const LEAD_DAYS_RAW = Number.parseInt(process.env.CHATBOT_LEAD_DAYS ?? "3", 10)
 const LEAD_DAYS = Number.isFinite(LEAD_DAYS_RAW) && LEAD_DAYS_RAW > 0 ? LEAD_DAYS_RAW : 3
 
-function getItemSizeLabel(type: ChatOrderItem["type"]) {
+function getItemSizeLabel(type: WebOrderConfirmationItem["type"]) {
+  if (type === "drop") return "drop"
   return type === "box" ? "cajita" : "tarta grande"
 }
 
-function buildItemsText(items: ChatOrderItem[]) {
+function buildItemsText(items: WebOrderConfirmationItem[]) {
   if (!items.length) return "Pedido confirmado"
 
   return items
     .map((item) => {
       const qty = item.qty > 1 ? ` x${item.qty}` : ""
+      if (item.type === "drop") {
+        const options = [item.selected_size, item.selected_color].filter(Boolean).join(" · ")
+        return `${getItemSizeLabel(item.type)} ${item.flavor ?? "merch"}${options ? ` (${options})` : ""}${qty}`
+      }
+
       return `${getItemSizeLabel(item.type)} de ${item.flavor}${qty}`
     })
     .join(", ")
@@ -96,7 +112,7 @@ function formatIsoDateEs(value: string) {
 
 export function buildWebOrderWhatsappConfirmationMessage(input: {
   deliveryDate?: string | null
-  items: ChatOrderItem[]
+  items: WebOrderConfirmationItem[]
 }) {
   const pickupText = `${buildPickupSummary(input.deliveryDate)}.`
 

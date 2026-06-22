@@ -8,6 +8,8 @@ import { cn } from "@/lib/utils"
 const items = [
   { href: "/admin/produccion", label: "Producción" },
   { href: "/admin/edicion", label: "Edición" },
+  { href: "/admin/drops", label: "Drops" },
+  { href: "/admin/camisetas", label: "Camisetas" },
 ]
 
 export function AdminNav() {

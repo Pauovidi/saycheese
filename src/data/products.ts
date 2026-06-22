@@ -2,7 +2,7 @@ export interface Product {
   id: string
   name: string
   slug: string
-  format: "tarta" | "cajita"
+  format: "tarta" | "cajita" | "drop"
   category: string
   priceText: string
   priceValue: number
@@ -18,6 +18,10 @@ export interface Product {
   isMonthlySpecial?: boolean
   isMonthlySpecialActive?: boolean
   monthlySpecialExpiresAt?: string | null
+  dropId?: string
+  selectedSize?: string
+  selectedColor?: string
+  stockAvailable?: number
 }
 
 /** A "flavor" groups both formats (tarta + cajita) under a shared category */

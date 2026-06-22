@@ -68,8 +68,14 @@ function isSafeChatbotRecord(record: EditableFlavorRecord) {
   return !includesUnsafeCatalogTerm(record.name, record.slug)
 }
 
-function filterSafeChatbotProducts(products: Product[]) {
-  return products.filter(isSafeChatbotProduct)
+type CakeCatalogProduct = Product & { format: "tarta" | "cajita" }
+
+function isCakeCatalogProduct(product: Product): product is CakeCatalogProduct {
+  return product.format === "tarta" || product.format === "cajita"
+}
+
+function filterSafeChatbotProducts(products: Product[]): CakeCatalogProduct[] {
+  return products.filter(isCakeCatalogProduct).filter(isSafeChatbotProduct)
 }
 
 async function getSafeCatalogProducts() {

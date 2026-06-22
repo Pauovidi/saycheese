@@ -21,17 +21,19 @@ export const PICKUP_ONLY_COPY = DELIVERY_POLICY_COPY
 export const FORMAT_SIZE_COPY = "Siempre trabajamos con 2 tamaños: grande y cajita."
 export const CLOSED_PICKUP_DAYS_COPY = "lunes y martes estamos cerrados"
 
-export type ProductFormat = "tarta" | "cajita"
-export type OrderItemType = "cake" | "box"
+export type ProductFormat = "tarta" | "cajita" | "drop"
+export type OrderItemType = "cake" | "box" | "drop"
 
 const CUSTOMER_FACING_FORMAT_LABELS: Record<ProductFormat, string> = {
   tarta: "grande",
   cajita: "cajita",
+  drop: "drop",
 }
 
 const ORDER_ITEM_TYPE_LABELS: Record<OrderItemType, string> = {
   cake: CUSTOMER_FACING_FORMAT_LABELS.tarta,
   box: CUSTOMER_FACING_FORMAT_LABELS.cajita,
+  drop: CUSTOMER_FACING_FORMAT_LABELS.drop,
 }
 
 export const STORE_HOURS_LINES = [

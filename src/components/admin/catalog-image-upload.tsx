@@ -10,7 +10,7 @@ type CatalogImageUploadProps = {
   label: string
   value: string
   slug: string
-  variant: "tarta" | "cajita"
+  variant: "tarta" | "cajita" | "drop"
   onChange: (nextValue: string) => void
   disabled?: boolean
 }

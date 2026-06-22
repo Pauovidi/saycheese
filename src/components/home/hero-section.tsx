@@ -1,4 +1,18 @@
-export function HeroSection() {
+import { HeroDropFloating } from "@/src/components/drops/hero-drop-floating"
+
+type HeroSectionProps = {
+  dropPromo?: {
+    id: string
+    slug: string
+    name: string
+    launchAt: string
+    floatingMessage: string
+    availableStock: number
+    status: "PRELAUNCH" | "SOLD_OUT"
+  } | null
+}
+
+export function HeroSection({ dropPromo }: HeroSectionProps) {
   return (
     <section className="relative flex min-h-[85vh] items-center justify-center overflow-hidden">
       <video
@@ -22,6 +36,7 @@ export function HeroSection() {
           Ver tartas
         </a>
       </div>
+      {dropPromo ? <HeroDropFloating drop={dropPromo} /> : null}
     </section>
   )
 }

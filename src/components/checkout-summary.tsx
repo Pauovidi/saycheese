@@ -42,11 +42,24 @@ export function CheckoutSummary({ leadDays, shopTimeZone }: CheckoutSummaryProps
 
   const payloadItems = useMemo(
     () =>
-      items.map((item) => ({
-        type: item.product.format === "tarta" ? "cake" : "box",
-        flavor: item.product.name,
-        qty: item.quantity,
-      })),
+      items.map((item) => {
+        if (item.product.format === "drop") {
+          return {
+            type: "drop" as const,
+            flavor: item.product.name,
+            drop_id: item.product.dropId,
+            selected_size: item.product.selectedSize,
+            selected_color: item.product.selectedColor,
+            qty: item.quantity,
+          }
+        }
+
+        return {
+          type: item.product.format === "tarta" ? "cake" as const : "box" as const,
+          flavor: item.product.name,
+          qty: item.quantity,
+        }
+      }),
     [items]
   )
   const earliestPickupDate = useMemo(
@@ -237,6 +250,7 @@ export function CheckoutSummary({ leadDays, shopTimeZone }: CheckoutSummaryProps
               </p>
               <p className="mt-1 text-xs text-muted-foreground">
                 {getCustomerFacingFormatLabel(item.product.format)} · Cantidad: {item.quantity}
+                {item.product.format === "drop" ? ` · ${item.product.selectedSize} · ${item.product.selectedColor}` : ""}
               </p>
             </div>
             <p className="text-sm font-medium text-foreground">

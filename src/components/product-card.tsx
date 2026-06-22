@@ -16,10 +16,11 @@ interface ProductCardProps {
 export function ProductCard({ product, sibling, priority = false }: ProductCardProps) {
   const { addItem } = useCart()
   const hasBothFormats = !!sibling
+  const initialFormat = product.format === "cajita" ? "cajita" : "tarta"
 
   // The card starts showing whichever format was passed in
   const [selectedFormat, setSelectedFormat] = useState<"tarta" | "cajita">(
-    hasBothFormats ? "tarta" : product.format,
+    hasBothFormats ? "tarta" : initialFormat,
   )
 
   // The actual product to display depends on the selected format

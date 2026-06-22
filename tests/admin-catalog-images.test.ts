@@ -18,6 +18,17 @@ test("genera una ruta estable por sabor y variante", () => {
   assert.match(path, /^flavors\/mango-maracuya\/tarta-\d+-[\w-]+\.webp$/)
 })
 
+test("genera rutas de drops en el mismo bucket de imágenes", () => {
+  const path = buildCatalogImagePath({
+    slug: "Camiseta Tentados",
+    variant: "drop",
+    fileName: "camiseta.png",
+    mimeType: "image/png",
+  })
+
+  assert.match(path, /^drops\/camiseta-tentados\/drop-\d+-[\w-]+\.png$/)
+})
+
 test("rechaza tipos no permitidos", () => {
   const file = new File(["svg"], "vector.svg", { type: "image/svg+xml" })
 

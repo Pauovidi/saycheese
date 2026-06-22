@@ -9,7 +9,7 @@ import { ProductionPanel } from "@/src/components/admin/production-panel"
 import { getCatalogFlavors } from "@/src/data/products-store"
 
 type OrderItem = {
-  type: "cake" | "box"
+  type: "cake" | "box" | "drop"
   flavor: string
   qty: number
 }

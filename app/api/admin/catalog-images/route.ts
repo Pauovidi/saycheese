@@ -6,7 +6,7 @@ import { uploadCatalogImage } from "@/lib/admin/catalog-images"
 
 const uploadPayloadSchema = z.object({
   slug: z.string().min(1),
-  variant: z.enum(["tarta", "cajita"]),
+  variant: z.enum(["tarta", "cajita", "drop"]),
 })
 
 export async function POST(request: Request) {

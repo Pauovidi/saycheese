@@ -11,7 +11,7 @@ import { CancelOrderDialog } from "@/src/components/admin/cancel-order-dialog"
 import { MarkDoneDialog } from "@/src/components/admin/mark-done-dialog"
 
 type OrderItem = {
-  type: "cake" | "box"
+  type: "cake" | "box" | "drop"
   flavor: string
   qty: number
 }

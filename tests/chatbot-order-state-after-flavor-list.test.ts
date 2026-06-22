@@ -67,6 +67,8 @@ function flavorsForMessage(products: Product[]): ChatbotAvailableCakeFlavor[] {
   const grouped = new Map<string, ChatbotAvailableCakeFlavor>()
 
   for (const entry of products) {
+    if (entry.format !== "tarta" && entry.format !== "cajita") continue
+
     const current = grouped.get(entry.category) ?? {
       flavor: entry.name,
       sizes: [],

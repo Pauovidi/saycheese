@@ -1,6 +1,6 @@
 import { normalizePhone } from "@/lib/phone"
 
-export type ProductionPresentationType = "cake" | "box"
+export type ProductionPresentationType = "cake" | "box" | "drop"
 
 export type ProductionCatalogFlavor = {
   category: string
@@ -107,11 +107,15 @@ function getGroupKey(line: ProductionDetailInput) {
 }
 
 export function getProductionTypeLabel(type: ProductionPresentationType) {
-  return type === "cake" ? "Tarta grande" : "Cajita"
+  if (type === "cake") return "Tarta grande"
+  if (type === "drop") return "Drop"
+  return "Cajita"
 }
 
 export function getProductionSummaryTypeLabel(type: ProductionPresentationType) {
-  return type === "cake" ? "Grandes" : "Cajitas"
+  if (type === "cake") return "Grandes"
+  if (type === "drop") return "Drops"
+  return "Cajitas"
 }
 
 export function getFlavorEmoji(flavor: string) {
@@ -215,7 +219,7 @@ export function buildProductionFlavorSummary(details: ProductionDetailInput[], c
     byType.set(line.type, byFlavor)
   }
 
-  const order: ProductionPresentationType[] = ["cake", "box"]
+  const order: ProductionPresentationType[] = ["cake", "box", "drop"]
 
   return order.flatMap((type): ProductionFlavorSummaryGroup[] => {
     const byFlavor = byType.get(type)

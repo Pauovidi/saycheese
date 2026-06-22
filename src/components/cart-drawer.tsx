@@ -62,12 +62,18 @@ export function CartDrawer() {
               {items.map((item) => (
                 <li key={item.product.id} className="flex gap-4">
                   <div className="relative h-20 w-20 flex-shrink-0 overflow-hidden bg-secondary">
-                    <Image
-                      src={item.product.images[0]}
-                      alt={item.product.name}
-                      fill
-                      className="object-cover"
-                    />
+                    {item.product.images[0] ? (
+                      <Image
+                        src={item.product.images[0]}
+                        alt={item.product.name}
+                        fill
+                        className="object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center bg-secondary px-2 text-center text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                        Drop
+                      </div>
+                    )}
                   </div>
                   <div className="flex flex-1 flex-col justify-between">
                     <div className="flex items-start justify-between gap-2">
@@ -78,6 +84,11 @@ export function CartDrawer() {
                         <span className="mt-0.5 inline-block bg-primary px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-primary-foreground">
                           {getCustomerFacingFormatLabel(item.product.format)}
                         </span>
+                        {item.product.format === "drop" ? (
+                          <p className="mt-1 text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
+                            {item.product.selectedSize} · {item.product.selectedColor}
+                          </p>
+                        ) : null}
                       </div>
                       <button
                         onClick={() => removeItem(item.product.id)}

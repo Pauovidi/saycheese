@@ -42,9 +42,12 @@ function UberEatsTopBar() {
   )
 }
 
-export function SiteHeader() {
+export function SiteHeader({ showDropsLink = false }: { showDropsLink?: boolean }) {
   const { totalItems, openCart } = useCart()
   const [mobileOpen, setMobileOpen] = useState(false)
+  const visibleNavLinks = showDropsLink
+    ? [...navLinks.slice(0, 1), { href: "/drops", label: "DROPS" }, ...navLinks.slice(1)]
+    : navLinks
 
   return (
     <>
@@ -65,7 +68,7 @@ export function SiteHeader() {
 
           {/* Desktop Nav */}
           <nav className="hidden items-center gap-8 md:flex" aria-label="Navegacion principal">
-            {navLinks.map((link) => (
+            {visibleNavLinks.map((link) => (
               <Link
                 key={link.href}
                 href={link.href}
@@ -102,7 +105,7 @@ export function SiteHeader() {
             aria-label="Navegacion movil"
           >
             <ul className="flex flex-col gap-4">
-              {navLinks.map((link) => (
+              {visibleNavLinks.map((link) => (
                 <li key={link.href}>
                   <Link
                     href={link.href}

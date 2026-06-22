@@ -17,7 +17,7 @@ const MIME_TO_EXTENSION: Record<(typeof ALLOWED_IMAGE_MIME_TYPES)[number], strin
   "image/avif": "avif",
 }
 
-export type CatalogImageVariant = "tarta" | "cajita"
+export type CatalogImageVariant = "tarta" | "cajita" | "drop"
 
 function normalizeExtension(fileName: string, mimeType: string) {
   const rawExtension = fileName.split(".").pop()?.toLowerCase()
@@ -52,5 +52,7 @@ export function buildCatalogImagePath({
   const safeSlug = slugifyFlavorName(slug) || "draft"
   const extension = normalizeExtension(fileName, mimeType)
 
-  return `flavors/${safeSlug}/${variant}-${Date.now()}-${randomUUID()}.${extension}`
+  const baseFolder = variant === "drop" ? "drops" : "flavors"
+
+  return `${baseFolder}/${safeSlug}/${variant}-${Date.now()}-${randomUUID()}.${extension}`
 }

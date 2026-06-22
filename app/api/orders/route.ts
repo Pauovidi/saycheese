@@ -7,6 +7,7 @@ import { buildUnavailableFlavorMessage, resolveFlavorAvailability } from "@/lib/
 import { normalizePhoneOrNull } from "@/lib/phone"
 import { getOrderPickupDateErrorMessage, validateOrderPickupDate } from "@/lib/pickup-date-validation"
 import { getAdminClient, getAdminUid } from "@/lib/supabase/admin"
+import { createOrderWithItems } from "@/src/data/drops-store"
 
 const LEAD_DAYS_RAW = Number.parseInt(process.env.CHATBOT_LEAD_DAYS ?? "3", 10)
 const LEAD_DAYS = Number.isFinite(LEAD_DAYS_RAW) && LEAD_DAYS_RAW > 0 ? LEAD_DAYS_RAW : 3
@@ -19,14 +20,69 @@ const orderPayloadSchema = z.object({
   delivery_date: z.string().date().optional().nullable(),
   items: z
     .array(
-      z.object({
-        type: z.enum(["cake", "box"]),
-        flavor: z.string().min(1),
-        qty: z.number().int().positive(),
-      })
+      z.discriminatedUnion("type", [
+        z.object({
+          type: z.enum(["cake", "box"]),
+          flavor: z.string().min(1),
+          qty: z.number().int().positive(),
+        }),
+        z.object({
+          type: z.literal("drop"),
+          flavor: z.string().min(1).optional(),
+          drop_id: z.string().uuid(),
+          selected_size: z.string().min(1),
+          selected_color: z.string().min(1),
+          qty: z.number().int().positive(),
+        }),
+      ])
     )
     .min(1),
 })
+
+type ParsedOrderPayload = z.infer<typeof orderPayloadSchema>
+type ParsedCakeOrderItem = Extract<ParsedOrderPayload["items"][number], { type: "cake" | "box" }>
+
+async function createCakeOrderDirectly(input: {
+  adminUid: string
+  deliveryDateFinal: string
+  payload: z.infer<typeof orderPayloadSchema>
+  reminderAt: string | null
+  supabase: ReturnType<typeof getAdminClient>
+}) {
+  const { data: order, error: orderError } = await input.supabase
+    .from("orders")
+    .insert({
+      user_id: input.adminUid,
+      delivery_date: input.deliveryDateFinal,
+      status: "pending",
+      customer_name: input.payload.customer_name,
+      customer_email: input.payload.customer_email ?? null,
+      phone: input.payload.phone,
+      phone_normalized: normalizePhoneOrNull(input.payload.phone),
+      reminder_at: input.reminderAt,
+      reminder_status: "pending",
+    })
+    .select("id")
+    .single()
+
+  if (orderError || !order) {
+    throw new Error(orderError?.message ?? "No se pudo crear order")
+  }
+
+  const { error: itemError } = await input.supabase.from("order_items").insert(
+    input.payload.items.map((item) => ({
+      order_id: order.id,
+      ...item,
+    }))
+  )
+
+  if (itemError) {
+    await input.supabase.from("orders").delete().eq("id", order.id)
+    throw new Error(itemError.message)
+  }
+
+  return order
+}
 
 export async function POST(request: Request) {
   try {
@@ -47,7 +103,9 @@ export async function POST(request: Request) {
       )
     }
 
-    const flavorChecks = await Promise.all(payload.items.map((item) => resolveFlavorAvailability(item.flavor)))
+    const cakeItems = payload.items.filter((item): item is ParsedCakeOrderItem => item.type === "cake" || item.type === "box")
+    const hasDropItems = payload.items.some((item) => item.type === "drop")
+    const flavorChecks = await Promise.all(cakeItems.map((item) => resolveFlavorAvailability(item.flavor)))
     const unavailableFlavor = flavorChecks.find((check) => !check.available)
 
     if (unavailableFlavor) {
@@ -64,39 +122,35 @@ export async function POST(request: Request) {
     const deliveryDateFinal = deliveryDateValidation.pickupDate
     const reminderAt = computeReminderAt({ createdAt, deliveryDate: deliveryDateFinal, usedDefaultDeliveryDate: false })
 
-    const { data: order, error: orderError } = await supabase
-      .from("orders")
-      .insert({
-        user_id: adminUid,
-        delivery_date: deliveryDateFinal,
-        status: "pending",
-        customer_name: payload.customer_name,
-        customer_email: payload.customer_email ?? null,
-        phone: payload.phone,
-        phone_normalized: normalizePhoneOrNull(payload.phone),
-        reminder_at: reminderAt,
-        reminder_status: "pending",
-      })
-      .select("id")
-      .single()
-
-    if (orderError || !order) {
-      throw new Error(orderError?.message ?? "No se pudo crear order")
-    }
-
-    const { error: itemError } = await supabase
-      .from("order_items")
-      .insert(
-        payload.items.map((item) => ({
-          order_id: order.id,
-          ...item,
-        }))
-      )
-
-    if (itemError) {
-      await supabase.from("orders").delete().eq("id", order.id)
-      throw new Error(itemError.message)
-    }
+    const order = hasDropItems
+      ? await createOrderWithItems({
+          userId: adminUid,
+          deliveryDate: deliveryDateFinal,
+          status: "pending",
+          customerName: payload.customer_name,
+          customerEmail: payload.customer_email ?? null,
+          phone: payload.phone,
+          reminderAt,
+          reminderStatus: "pending",
+          items: payload.items.map((item) =>
+            item.type === "drop"
+              ? {
+                  type: "drop",
+                  drop_id: item.drop_id,
+                  selected_size: item.selected_size,
+                  selected_color: item.selected_color,
+                  qty: item.qty,
+                }
+              : item
+          ),
+        })
+      : await createCakeOrderDirectly({
+          adminUid,
+          deliveryDateFinal,
+          payload,
+          reminderAt,
+          supabase,
+        })
 
     await sendWebOrderWhatsappConfirmation({
       orderId: order.id,
