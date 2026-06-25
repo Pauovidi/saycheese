@@ -7,6 +7,7 @@ type HeroSectionProps = {
     name: string
     launchAt: string
     floatingMessage: string
+    preorderCtaText?: string
     availableStock: number
     status: "PRELAUNCH" | "SOLD_OUT"
   } | null

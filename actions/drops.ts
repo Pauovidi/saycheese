@@ -6,12 +6,15 @@ import { z } from "zod"
 import { requireAdminUser } from "@/lib/admin-auth"
 import {
   DEFAULT_DROP_LAUNCH_LOCAL,
+  DEFAULT_DROP_PREORDER_CTA_TEXT,
   DROP_LAUNCH_TIME_ZONE,
+  MAX_DROP_PREORDER_CTA_LENGTH,
   localDateTimeToUtcIso,
+  normalizeDropPreorderCtaText,
   parseDropImageList,
   parseDropOptionList,
 } from "@/src/data/drops"
-import { DropStorageUnavailableError } from "@/src/data/drop-storage-status"
+import { DropCtaMigrationRequiredError, DropStorageUnavailableError } from "@/src/data/drop-storage-status"
 import {
   cancelDropReservation,
   createDropRecord,
@@ -36,6 +39,7 @@ const dropFormSchema = z.object({
   isActive: z.boolean().default(false),
   floatingEnabled: z.boolean().default(false),
   floatingMessage: z.string().max(600, "El mensaje puede tener como máximo 600 caracteres").default(""),
+  preorderCtaText: z.string().max(MAX_DROP_PREORDER_CTA_LENGTH, `El CTA puede tener como máximo ${MAX_DROP_PREORDER_CTA_LENGTH} caracteres`).default(DEFAULT_DROP_PREORDER_CTA_TEXT),
   isClosed: z.boolean().default(false),
 })
 
@@ -55,6 +59,7 @@ function normalizeDropForm(input: z.input<typeof dropFormSchema>) {
   const imageUrls = parseDropImageList(parsed.imageUrls)
   const colors = parseDropOptionList(parsed.colors)
   const sizes = parseDropOptionList(parsed.sizes)
+  const preorderCtaText = normalizeDropPreorderCtaText(parsed.preorderCtaText)
 
   if (!slug) {
     throw new Error("No se pudo generar el identificador del drop")
@@ -62,6 +67,14 @@ function normalizeDropForm(input: z.input<typeof dropFormSchema>) {
 
   if (parsed.isActive && (!colors.length || !sizes.length)) {
     throw new Error("Antes de activar un drop debes configurar al menos una talla y un color")
+  }
+
+  if (parsed.isActive && imageUrls.length === 0) {
+    throw new Error("Antes de publicar un drop debes subir una imagen principal")
+  }
+
+  if (parsed.floatingEnabled && parsed.preorderCtaText.trim().length === 0) {
+    throw new Error("El texto del botón de preventa es obligatorio para mostrar el flotante")
   }
 
   return {
@@ -79,6 +92,7 @@ function normalizeDropForm(input: z.input<typeof dropFormSchema>) {
     isActive: parsed.isActive,
     floatingEnabled: parsed.floatingEnabled,
     floatingMessage: parsed.floatingMessage,
+    preorderCtaText,
     isClosed: parsed.isClosed,
   }
 }
@@ -124,6 +138,14 @@ export async function saveDrop(payload: z.input<typeof dropFormSchema>) {
       selectedId: saved.id,
     }
   } catch (error) {
+    if (error instanceof DropCtaMigrationRequiredError) {
+      return {
+        ok: false as const,
+        error: error.message,
+        code: error.code,
+      }
+    }
+
     if (error instanceof DropStorageUnavailableError) {
       return {
         ok: false as const,

@@ -7,6 +7,7 @@ import { Check, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 
 import { reserveDropPrelaunch } from "@/actions/drops"
+import { DEFAULT_DROP_PREORDER_CTA_TEXT, normalizeDropPreorderCtaText } from "@/src/data/drops"
 
 type HeroDropFloatingProps = {
   drop: {
@@ -15,6 +16,7 @@ type HeroDropFloatingProps = {
     name: string
     launchAt: string
     floatingMessage: string
+    preorderCtaText?: string
     availableStock: number
     status: "PRELAUNCH" | "SOLD_OUT"
   }
@@ -44,6 +46,69 @@ function formatCountdown(ms: number) {
   return `${days}d ${String(hours).padStart(2, "0")}h ${String(minutes).padStart(2, "0")}m ${String(seconds).padStart(2, "0")}s`
 }
 
+export type HeroDropFloatingCardProps = {
+  message: string
+  countdown: string
+  availableStock: number
+  ctaText?: string
+  soldOut?: boolean
+  isPending?: boolean
+  reservationDone?: boolean
+  preview?: boolean
+  onCtaClick?: () => void
+}
+
+export function HeroDropFloatingCard({
+  message,
+  countdown,
+  availableStock,
+  ctaText = DEFAULT_DROP_PREORDER_CTA_TEXT,
+  soldOut = false,
+  isPending = false,
+  reservationDone = false,
+  preview = false,
+  onCtaClick,
+}: HeroDropFloatingCardProps) {
+  const visibleCta = normalizeDropPreorderCtaText(ctaText)
+
+  return (
+    <aside className="border border-[#f4eed4]/70 bg-[#601116]/92 p-4 text-[#f4eed4] shadow-2xl backdrop-blur md:p-5">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div className="min-w-0 space-y-2">
+          <p className="whitespace-pre-line text-sm font-semibold leading-relaxed text-[#fffdf8]">
+            {message}
+          </p>
+          <div className="flex flex-wrap items-center gap-3 text-xs font-bold uppercase tracking-[0.16em]">
+            <span aria-hidden="true">{countdown}</span>
+            <span className="sr-only">Cuenta atrás hasta el lanzamiento.</span>
+            <span>{soldOut ? "Agotado" : `Quedan ${availableStock} unidades`}</span>
+          </div>
+        </div>
+
+        {reservationDone ? (
+          <Link
+            href="/"
+            className="inline-flex min-h-11 items-center justify-center gap-2 border border-[#f4eed4] px-5 py-3 text-xs font-bold uppercase tracking-[0.2em] text-[#f4eed4]"
+          >
+            <Check className="h-4 w-4" aria-hidden="true" />
+            Reservado
+          </Link>
+        ) : (
+          <button
+            type="button"
+            onClick={preview ? undefined : onCtaClick}
+            disabled={preview || soldOut || isPending}
+            className="inline-flex min-h-11 items-center justify-center gap-2 bg-[#f4eed4] px-5 py-3 text-xs font-bold uppercase tracking-[0.2em] text-[#601116] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {isPending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}
+            {soldOut ? "Agotado" : visibleCta}
+          </button>
+        )}
+      </div>
+    </aside>
+  )
+}
+
 export function HeroDropFloating({ drop }: HeroDropFloatingProps) {
   const router = useRouter()
   const [remainingMs, setRemainingMs] = useState(() => new Date(drop.launchAt).getTime() - Date.now())
@@ -52,6 +117,7 @@ export function HeroDropFloating({ drop }: HeroDropFloatingProps) {
   const [isPending, startTransition] = useTransition()
   const soldOut = drop.status === "SOLD_OUT" || availableStock <= 0
   const countdown = useMemo(() => formatCountdown(remainingMs), [remainingMs])
+  const ctaText = normalizeDropPreorderCtaText(drop.preorderCtaText)
 
   useEffect(() => {
     const launchTime = new Date(drop.launchAt).getTime()
@@ -92,39 +158,17 @@ export function HeroDropFloating({ drop }: HeroDropFloatingProps) {
   }
 
   return (
-    <aside className="absolute inset-x-4 bottom-6 z-20 mx-auto max-w-2xl border border-[#f4eed4]/70 bg-[#601116]/92 p-4 text-[#f4eed4] shadow-2xl backdrop-blur md:bottom-8 md:p-5">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div className="min-w-0 space-y-2">
-          <p className="whitespace-pre-line text-sm font-semibold leading-relaxed text-[#fffdf8]">
-            {drop.floatingMessage}
-          </p>
-          <div className="flex flex-wrap items-center gap-3 text-xs font-bold uppercase tracking-[0.16em]">
-            <span aria-hidden="true">{countdown}</span>
-            <span className="sr-only">Cuenta atrás hasta el lanzamiento.</span>
-            <span>{soldOut ? "Agotado" : `Quedan ${availableStock} unidades`}</span>
-          </div>
-        </div>
-
-        {reservationDone ? (
-          <Link
-            href="/"
-            className="inline-flex min-h-11 items-center justify-center gap-2 border border-[#f4eed4] px-5 py-3 text-xs font-bold uppercase tracking-[0.2em] text-[#f4eed4]"
-          >
-            <Check className="h-4 w-4" aria-hidden="true" />
-            Reservado
-          </Link>
-        ) : (
-          <button
-            type="button"
-            onClick={handleReserve}
-            disabled={soldOut || isPending}
-            className="inline-flex min-h-11 items-center justify-center gap-2 bg-[#f4eed4] px-5 py-3 text-xs font-bold uppercase tracking-[0.2em] text-[#601116] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {isPending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}
-            {soldOut ? "Agotado" : "Preventa"}
-          </button>
-        )}
-      </div>
-    </aside>
+    <div className="absolute inset-x-4 bottom-6 z-20 mx-auto max-w-2xl md:bottom-8">
+      <HeroDropFloatingCard
+        message={drop.floatingMessage}
+        countdown={countdown}
+        availableStock={availableStock}
+        ctaText={ctaText}
+        soldOut={soldOut}
+        isPending={isPending}
+        reservationDone={reservationDone}
+        onCtaClick={handleReserve}
+      />
+    </div>
   )
 }

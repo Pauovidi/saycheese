@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useTransition, type FormEvent } from "react"
+import { useEffect, useMemo, useState, useTransition, type FormEvent } from "react"
 import { toast } from "sonner"
 
 import { saveDrop } from "@/actions/drops"
@@ -10,11 +10,16 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
-import { CatalogImageUpload } from "@/src/components/admin/catalog-image-upload"
+import { DropImageGalleryEditor } from "@/src/components/admin/drops/drop-image-gallery-editor"
+import { HeroDropFloatingCard } from "@/src/components/drops/hero-drop-floating"
 import {
   DEFAULT_DROP_LAUNCH_LOCAL,
+  DEFAULT_DROP_PREORDER_CTA_TEXT,
   DROP_LAUNCH_TIME_ZONE,
   getDropStatusLabel,
+  getDropPublicStatus,
+  localDateTimeToUtcIso,
+  normalizeDropPreorderCtaText,
   utcIsoToDateTimeLocalInZone,
 } from "@/src/data/drops"
 import type { DropModuleAvailability } from "@/src/data/drop-storage-status"
@@ -25,6 +30,8 @@ type DropAdminEditorProps = {
   initialDrops: EditableDropRecord[]
   moduleAvailability?: DropModuleAvailability
   moduleMessage?: string
+  preorderCtaTextMigrated?: boolean
+  capabilityMessage?: string
 }
 
 type DropFormState = {
@@ -33,7 +40,7 @@ type DropFormState = {
   slug: string
   description: string
   price: string
-  imageUrls: string
+  imageUrls: string[]
   colors: string
   sizes: string
   stockTotal: string
@@ -42,6 +49,7 @@ type DropFormState = {
   isActive: boolean
   floatingEnabled: boolean
   floatingMessage: string
+  preorderCtaText: string
   isClosed: boolean
 }
 
@@ -51,7 +59,7 @@ function emptyDropForm(): DropFormState {
     slug: "",
     description: "",
     price: "25",
-    imageUrls: "",
+    imageUrls: [],
     colors: "Blanco\nNegro",
     sizes: "S\nM\nL\nXL",
     stockTotal: "30",
@@ -60,6 +68,7 @@ function emptyDropForm(): DropFormState {
     isActive: false,
     floatingEnabled: false,
     floatingMessage: "",
+    preorderCtaText: DEFAULT_DROP_PREORDER_CTA_TEXT,
     isClosed: false,
   }
 }
@@ -71,7 +80,7 @@ function dropToForm(drop: EditableDropRecord): DropFormState {
     slug: drop.slug,
     description: drop.description,
     price: String(drop.price),
-    imageUrls: drop.imageUrls.join("\n"),
+    imageUrls: drop.imageUrls,
     colors: drop.colors.join("\n"),
     sizes: drop.sizes.join("\n"),
     stockTotal: String(drop.stockTotal),
@@ -80,8 +89,19 @@ function dropToForm(drop: EditableDropRecord): DropFormState {
     isActive: drop.isActive,
     floatingEnabled: drop.floatingEnabled,
     floatingMessage: drop.floatingMessage,
+    preorderCtaText: drop.preorderCtaText,
     isClosed: drop.isClosed,
   }
+}
+
+function formatCountdown(ms: number) {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000))
+  const days = Math.floor(totalSeconds / 86_400)
+  const hours = Math.floor((totalSeconds % 86_400) / 3_600)
+  const minutes = Math.floor((totalSeconds % 3_600) / 60)
+  const seconds = totalSeconds % 60
+
+  return `${days}d ${String(hours).padStart(2, "0")}h ${String(minutes).padStart(2, "0")}m ${String(seconds).padStart(2, "0")}s`
 }
 
 function formatAdminDate(value: string) {
@@ -99,14 +119,54 @@ export function DropAdminEditor({
   initialDrops,
   moduleAvailability = "READY",
   moduleMessage,
+  preorderCtaTextMigrated = true,
+  capabilityMessage,
 }: DropAdminEditorProps) {
   const [drops, setDrops] = useState(initialDrops)
   const [selectedId, setSelectedId] = useState(initialDrops[0]?.id ?? "new")
   const [form, setForm] = useState<DropFormState>(() => (initialDrops[0] ? dropToForm(initialDrops[0]) : emptyDropForm()))
+  const [now, setNow] = useState(() => new Date())
   const [isPending, startTransition] = useTransition()
   const moduleReady = moduleAvailability === "READY"
   const selectedDrop = drops.find((drop) => drop.id === selectedId)
   const uploadSlug = form.slug.trim() || slugifyFlavorName(form.name) || "draft"
+  const previewLaunchAt = useMemo(() => {
+    try {
+      return localDateTimeToUtcIso(form.launchAtLocal, form.launchTimezone || DROP_LAUNCH_TIME_ZONE)
+    } catch {
+      return new Date().toISOString()
+    }
+  }, [form.launchAtLocal, form.launchTimezone])
+  const previewAvailableStock = Math.max(0, Number(form.stockTotal) || 0)
+  const previewStatus = getDropPublicStatus(
+    {
+      isActive: form.isActive,
+      isClosed: form.isClosed,
+      launchAt: previewLaunchAt,
+      availableStock: previewAvailableStock,
+    },
+    now
+  )
+  const previewCountdown = formatCountdown(new Date(previewLaunchAt).getTime() - now.getTime())
+  const activePrelaunchHidden = form.isActive && previewStatus === "PRELAUNCH" && !form.floatingEnabled
+  const statusSummary = form.isClosed
+    ? "Drop cerrado manualmente."
+    : !form.isActive
+      ? "Drop inactivo."
+      : previewStatus === "PRELAUNCH" && form.floatingEnabled
+        ? "Preventa activa con flotante visible."
+        : previewStatus === "PRELAUNCH"
+          ? "Preventa activa con flotante oculto."
+          : previewStatus === "LIVE"
+            ? "Drop en venta."
+            : previewStatus === "SOLD_OUT"
+              ? "Drop agotado."
+              : "Drop inactivo."
+
+  useEffect(() => {
+    const interval = window.setInterval(() => setNow(new Date()), 1000)
+    return () => window.clearInterval(interval)
+  }, [])
 
   function updateField<K extends keyof DropFormState>(field: K, value: DropFormState[K]) {
     if (!moduleReady) return
@@ -127,16 +187,6 @@ export function DropAdminEditor({
     if (!moduleReady) return
     setSelectedId("new")
     setForm(emptyDropForm())
-  }
-
-  function handleUploadedImage(publicUrl: string) {
-    if (!moduleReady) return
-    const current = form.imageUrls
-      .split(/\n/)
-      .map((entry) => entry.trim())
-      .filter(Boolean)
-    const next = [publicUrl, ...current.filter((entry) => entry !== publicUrl)]
-    updateField("imageUrls", next.join("\n"))
   }
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -171,6 +221,17 @@ export function DropAdminEditor({
               <CardTitle>Módulo no inicializado</CardTitle>
               <CardDescription className="text-amber-900">
                 {moduleMessage ?? "La migración de Drops todavía no está aplicada en este entorno."}
+              </CardDescription>
+            </CardHeader>
+          </Card>
+        ) : null}
+
+        {moduleReady && !preorderCtaTextMigrated ? (
+          <Card className="border-amber-300 bg-amber-50 text-amber-950">
+            <CardHeader>
+              <CardTitle>Actualización pendiente</CardTitle>
+              <CardDescription className="text-amber-900">
+                {capabilityMessage ?? "El CTA configurable todavía no está migrado. Puedes previsualizar con fallback, pero no guardar un CTA personalizado."}
               </CardDescription>
             </CardHeader>
           </Card>
@@ -276,35 +337,58 @@ export function DropAdminEditor({
             </div>
 
             <div className="space-y-2 md:col-span-2">
-              <CatalogImageUpload
-                label="Subir imagen principal"
-                value={form.imageUrls.split(/\n/).find(Boolean) ?? ""}
-                slug={uploadSlug}
-                variant="drop"
-                onChange={handleUploadedImage}
+              <DropImageGalleryEditor
+                images={form.imageUrls}
+                uploadSlug={uploadSlug}
+                onChange={(images) => updateField("imageUrls", images)}
                 disabled={isPending || !moduleReady}
               />
             </div>
 
-            <div className="space-y-2 md:col-span-2">
-              <Label htmlFor="drop-images">Imágenes</Label>
-              <Textarea id="drop-images" rows={4} value={form.imageUrls} onChange={(event) => updateField("imageUrls", event.target.value)} disabled={!moduleReady} />
-              <p className="text-xs text-muted-foreground">Una URL por línea. La primera será la imagen principal.</p>
-            </div>
-
-            <div className="grid gap-4 rounded-md border border-border p-4 md:col-span-2 md:grid-cols-3">
-              <label className="flex items-center justify-between gap-3">
-                <span className="text-sm font-medium">Drop activo</span>
-                <Switch checked={form.isActive} onCheckedChange={(checked) => updateField("isActive", checked)} disabled={!moduleReady} />
-              </label>
-              <label className="flex items-center justify-between gap-3">
-                <span className="text-sm font-medium">Flotante activo</span>
-                <Switch checked={form.floatingEnabled} onCheckedChange={(checked) => updateField("floatingEnabled", checked)} disabled={!moduleReady} />
-              </label>
-              <label className="flex items-center justify-between gap-3">
-                <span className="text-sm font-medium">Cerrado</span>
-                <Switch checked={form.isClosed} onCheckedChange={(checked) => updateField("isClosed", checked)} disabled={!moduleReady} />
-              </label>
+            <div className="space-y-3 md:col-span-2">
+              <div>
+                <p className="text-sm font-semibold text-foreground">Estado del drop</p>
+                <p className="text-xs text-muted-foreground">{statusSummary}</p>
+              </div>
+              {activePrelaunchHidden ? (
+                <p className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
+                  El drop está activo, pero el flotante de preventa está oculto.
+                </p>
+              ) : null}
+              {form.isClosed ? (
+                <p className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
+                  El drop está cerrado: no admite reservas ni pedidos.
+                </p>
+              ) : null}
+              <div className="grid gap-3 md:grid-cols-3">
+                <label className="flex min-h-28 flex-col justify-between gap-4 rounded-md border border-border p-4">
+                  <span>
+                    <span className="block text-sm font-semibold text-foreground">Publicar drop</span>
+                    <span className="mt-1 block text-xs leading-relaxed text-muted-foreground">
+                      Permite que el drop entre en preventa o venta según la fecha configurada.
+                    </span>
+                  </span>
+                  <Switch checked={form.isActive} onCheckedChange={(checked) => updateField("isActive", checked)} disabled={!moduleReady} aria-label="Publicar drop" />
+                </label>
+                <label className="flex min-h-28 flex-col justify-between gap-4 rounded-md border border-border p-4">
+                  <span>
+                    <span className="block text-sm font-semibold text-foreground">Mostrar flotante de preventa</span>
+                    <span className="mt-1 block text-xs leading-relaxed text-muted-foreground">
+                      Muestra el aviso en el hero solo antes del lanzamiento.
+                    </span>
+                  </span>
+                  <Switch checked={form.floatingEnabled} onCheckedChange={(checked) => updateField("floatingEnabled", checked)} disabled={!moduleReady} aria-label="Mostrar flotante de preventa" />
+                </label>
+                <label className="flex min-h-28 flex-col justify-between gap-4 rounded-md border border-border p-4">
+                  <span>
+                    <span className="block text-sm font-semibold text-foreground">Cerrar drop manualmente</span>
+                    <span className="mt-1 block text-xs leading-relaxed text-muted-foreground">
+                      Bloquea preventas y ventas aunque el drop siga publicado.
+                    </span>
+                  </span>
+                  <Switch checked={form.isClosed} onCheckedChange={(checked) => updateField("isClosed", checked)} disabled={!moduleReady} aria-label="Cerrar drop manualmente" />
+                </label>
+              </div>
             </div>
 
             <div className="space-y-2 md:col-span-2">
@@ -317,6 +401,20 @@ export function DropAdminEditor({
                 onChange={(event) => updateField("floatingMessage", event.target.value)}
                 disabled={!moduleReady}
               />
+            </div>
+
+            <div className="space-y-2 md:col-span-2">
+              <Label htmlFor="drop-preorder-cta">Texto del botón de preventa</Label>
+              <Input
+                id="drop-preorder-cta"
+                maxLength={60}
+                value={form.preorderCtaText}
+                onChange={(event) => updateField("preorderCtaText", event.target.value)}
+                disabled={!moduleReady}
+              />
+              <p className="text-xs text-muted-foreground">
+                Se mostrará en el CTA del flotante antes del lanzamiento.
+              </p>
             </div>
           </CardContent>
         </Card>
@@ -336,6 +434,23 @@ export function DropAdminEditor({
             </CardContent>
           </Card>
         ) : null}
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Vista previa privada</CardTitle>
+            <CardDescription>Vista previa privada — no publica cambios</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <HeroDropFloatingCard
+              message={form.floatingMessage || "NUEVO DROP MUY PRONTO"}
+              countdown={previewCountdown}
+              availableStock={previewAvailableStock}
+              ctaText={normalizeDropPreorderCtaText(form.preorderCtaText)}
+              soldOut={previewStatus === "SOLD_OUT" || previewAvailableStock <= 0}
+              preview
+            />
+          </CardContent>
+        </Card>
 
         <div className="flex flex-wrap gap-3">
           <Button type="submit" disabled={isPending || !moduleReady}>

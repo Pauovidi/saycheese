@@ -16,6 +16,7 @@ export default async function HomePage() {
           name: heroDrop.name,
           launchAt: heroDrop.launchAt,
           floatingMessage: heroDrop.floatingMessage,
+          preorderCtaText: heroDrop.preorderCtaText,
           availableStock: heroDrop.stock.availableStock,
           status: heroDrop.status,
         }

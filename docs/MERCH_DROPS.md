@@ -44,6 +44,12 @@ La migración versionada es:
 
 Crea `drops`, `drop_reservations`, `drop_revisions`, columnas de merchandising en `order_items` y funciones RPC. No activa drops, no crea seeds productivos y no aplica cambios directamente a servicios remotos.
 
+La migración aditiva de refinamiento es:
+
+`supabase/migrations/202606250001_refine_merch_drop_admin.sql`
+
+Añade `drops.preorder_cta_text` con default `Preventa`, constraint de texto no vacío y máximo 60 caracteres, y deja versionado el endurecimiento de permisos de las RPC para que solo `service_role` pueda ejecutarlas. No inserta drops, no modifica datos existentes y no debe ejecutarse automáticamente contra producción desde una terminal local.
+
 ## Despliegue de código antes de migración
 
 El código puede desplegarse antes de que la migración exista en el entorno remoto. Si Supabase devuelve un error de schema cache por tablas, columnas o RPC de Drops ausentes, la web pública degrada de forma segura:
@@ -54,6 +60,8 @@ El código puede desplegarse antes de que la migración exista en el entorno rem
 - las operaciones de preventa o pedido de tipo `drop` devuelven un 503 controlado.
 
 Esta protección no ejecuta migraciones remotas, no cambia variables de entorno, no crea datos y no sustituye la migración versionada. Cuando se aplique `202606220001_add_merch_drops.sql`, el módulo vuelve a estado `READY` usando las mismas rutas y fuentes de datos.
+
+Para `preorder_cta_text`, el código también puede desplegarse antes de aplicar la migración aditiva. Si PostgREST informa que falta esa columna, las lecturas públicas reintentan con columnas legacy y usan el CTA fallback `Preventa`. El backoffice muestra una actualización pendiente: permite leer y previsualizar, pero no finge que un CTA personalizado se ha guardado si la columna aún no existe.
 
 ## Backoffice
 
@@ -66,10 +74,21 @@ En `Admin > Drops` se puede crear o editar:
 - colores y tallas;
 - stock total;
 - fecha de lanzamiento;
-- activo/inactivo;
-- flotante activo/inactivo;
+- `Publicar drop`: permite que el drop entre en preventa o venta según la fecha configurada;
+- `Mostrar flotante de preventa`: muestra el aviso en el hero solo antes del lanzamiento;
+- `Cerrar drop manualmente`: bloquea preventas y ventas aunque el drop siga publicado;
 - mensaje exacto del flotante;
-- cerrado/manual.
+- texto del botón de preventa;
+- imágenes principales y secundarias.
+
+La preview privada de `Admin > Drops` reutiliza la misma capa visual del flotante público, usa los valores actuales del formulario y no publica cambios. El CTA de la preview está desactivado: no crea reservas, no consume stock y no llama a `reserveDropPrelaunch`.
+
+Las imágenes se guardan en `image_urls` como array ordenado:
+
+- posición `0`: imagen principal, usada en listados y portada de ficha;
+- posiciones posteriores: imágenes secundarias.
+
+El backoffice permite reemplazar o quitar la principal en borradores, añadir secundarias, eliminar secundarias, convertir una secundaria en principal y reordenar secundarias. Publicar un drop requiere imagen principal; guardar un borrador inactivo no.
 
 En `Admin > Camisetas` hay dos pestañas:
 
@@ -85,7 +104,7 @@ Antes de `launchAt`, si el drop está activo, en `PRELAUNCH`, con flotante activ
 - el mensaje exacto del administrador;
 - cuenta atrás;
 - stock disponible;
-- CTA `Preventa`.
+- CTA `preorder_cta_text`, con fallback `Preventa`.
 
 La preventa no pide talla, color ni cantidad, no abre checkout y no crea un pedido normal.
 

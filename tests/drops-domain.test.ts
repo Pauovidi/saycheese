@@ -3,9 +3,11 @@ import test from "node:test"
 
 import {
   DEFAULT_DROP_LAUNCH_AT_UTC,
+  DEFAULT_DROP_PREORDER_CTA_TEXT,
   computeAvailableDropStock,
   getDropPublicStatus,
   localDateTimeToUtcIso,
+  normalizeDropPreorderCtaText,
   parseDropOptionList,
   utcIsoToDateTimeLocalInZone,
 } from "../src/data/drops"
@@ -78,4 +80,10 @@ test("stock disponible descuenta preventas activas y pedidos", () => {
 
 test("normaliza tallas y colores configurables sin duplicados", () => {
   assert.deepEqual(parseDropOptionList("S\nM\nm\nL, XL "), ["S", "M", "L", "XL"])
+})
+
+test("CTA de preventa usa fallback y trim seguro", () => {
+  assert.equal(normalizeDropPreorderCtaText(undefined), DEFAULT_DROP_PREORDER_CTA_TEXT)
+  assert.equal(normalizeDropPreorderCtaText("  QUIERO LA MÍA  "), "QUIERO LA MÍA")
+  assert.equal(normalizeDropPreorderCtaText("   "), DEFAULT_DROP_PREORDER_CTA_TEXT)
 })

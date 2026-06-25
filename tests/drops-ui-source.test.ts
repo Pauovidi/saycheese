@@ -7,9 +7,11 @@ test("flotante usa texto exacto seguro, stock y CTA Preventa", async () => {
   const source = await readFile(resolve("src/components/drops/hero-drop-floating.tsx"), "utf8")
 
   assert.match(source, /drop\.floatingMessage/)
+  assert.match(source, /drop\.preorderCtaText/)
   assert.match(source, /Quedan \$\{availableStock\} unidades/)
-  assert.match(source, /Preventa/)
+  assert.match(source, /visibleCta/)
   assert.match(source, /reserveDropPrelaunch/)
+  assert.match(source, /HeroDropFloatingCard/)
   assert.doesNotMatch(source, /dangerouslySetInnerHTML/)
 })
 
@@ -50,6 +52,31 @@ test("backoffice expone Drops y Camisetas con preventas y pedidos separados", as
   assert.match(shirts, /cancelDropReservationFromAdmin/)
   assert.match(editor, /Módulo no inicializado/)
   assert.match(editor, /moduleReady/)
+  assert.match(editor, /Vista previa privada/)
+  assert.match(editor, /HeroDropFloatingCard/)
+  assert.match(editor, /Publicar drop/)
+  assert.match(editor, /Mostrar flotante de preventa/)
+  assert.match(editor, /Cerrar drop manualmente/)
   assert.match(shirts, /Módulo no inicializado/)
   assert.match(shirts, /moduleReady/)
+})
+
+test("backoffice gestiona imágenes sin textarea crudo de URLs", async () => {
+  const editor = await readFile(resolve("src/components/admin/drops/drop-admin-editor.tsx"), "utf8")
+  const gallery = await readFile(resolve("src/components/admin/drops/drop-image-gallery-editor.tsx"), "utf8")
+
+  assert.match(editor, /DropImageGalleryEditor/)
+  assert.doesNotMatch(editor, /Una URL por línea/)
+  assert.doesNotMatch(editor, /id="drop-images"/)
+  assert.match(gallery, /Imagen principal/)
+  assert.match(gallery, /Imágenes secundarias/)
+  assert.match(gallery, /Convertir imagen secundaria/)
+})
+
+test("preview privada no llama a reserva ni modifica stock", async () => {
+  const editor = await readFile(resolve("src/components/admin/drops/drop-admin-editor.tsx"), "utf8")
+
+  assert.match(editor, /preview/)
+  assert.doesNotMatch(editor, /reserveDropPrelaunch/)
+  assert.doesNotMatch(editor, /setAvailableStock/)
 })

@@ -1,6 +1,8 @@
 export const DROP_LAUNCH_TIME_ZONE = "Atlantic/Canary"
 export const DEFAULT_DROP_LAUNCH_LOCAL = "2026-07-01T00:00"
 export const DEFAULT_DROP_LAUNCH_AT_UTC = "2026-06-30T23:00:00.000Z"
+export const DEFAULT_DROP_PREORDER_CTA_TEXT = "Preventa"
+export const MAX_DROP_PREORDER_CTA_LENGTH = 60
 
 export type DropPublicStatus = "INACTIVE" | "PRELAUNCH" | "LIVE" | "SOLD_OUT" | "CLOSED"
 
@@ -71,6 +73,11 @@ export function parseDropOptionList(value: string | string[] | null | undefined)
 
 export function parseDropImageList(value: string | string[] | null | undefined) {
   return parseDropOptionList(value).filter((entry) => /^\/|^https?:\/\//i.test(entry))
+}
+
+export function normalizeDropPreorderCtaText(value: string | null | undefined) {
+  const normalized = (value ?? DEFAULT_DROP_PREORDER_CTA_TEXT).trim()
+  return normalized || DEFAULT_DROP_PREORDER_CTA_TEXT
 }
 
 function readDateTimePartsInZone(instant: Date, timeZone: string) {

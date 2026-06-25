@@ -2,7 +2,9 @@ import assert from "node:assert/strict"
 import test from "node:test"
 
 import {
+  DROP_CTA_MIGRATION_REQUIRED_CODE,
   DROP_SCHEMA_NOT_INITIALIZED_CODE,
+  DropCtaMigrationRequiredError,
   DropStorageUnavailableError,
 } from "../src/data/drop-storage-status"
 import {
@@ -27,6 +29,8 @@ type MockResponse = {
   count?: number | null
 }
 
+type MockResponseSource = MockResponse | MockResponse[]
+
 function createQueryBuilder(response: MockResponse) {
   const builder = {
     select: () => builder,
@@ -47,11 +51,16 @@ function createQueryBuilder(response: MockResponse) {
   return builder
 }
 
-function setMockClient(input: { from?: Record<string, MockResponse>; rpc?: Record<string, MockResponse> }) {
+function takeResponse(source: MockResponseSource | undefined, fallback: MockResponse) {
+  if (Array.isArray(source)) return source.shift() ?? fallback
+  return source ?? fallback
+}
+
+function setMockClient(input: { from?: Record<string, MockResponseSource>; rpc?: Record<string, MockResponseSource> }) {
   const fallback: MockResponse = { data: [], error: null, count: 0 }
   const client = {
-    from: (table: string) => createQueryBuilder(input.from?.[table] ?? fallback),
-    rpc: (name: string) => createQueryBuilder(input.rpc?.[name] ?? fallback),
+    from: (table: string) => createQueryBuilder(takeResponse(input.from?.[table], fallback)),
+    rpc: (name: string) => createQueryBuilder(takeResponse(input.rpc?.[name], fallback)),
   }
 
   setDropStoreClientForTests(client as unknown as Parameters<typeof setDropStoreClientForTests>[0])
@@ -60,6 +69,31 @@ function setMockClient(input: { from?: Record<string, MockResponse>; rpc?: Recor
 const schemaCacheError = {
   code: "PGRST205",
   message: "Could not find the table 'public.drops' in the schema cache",
+}
+
+const ctaColumnMissingError = {
+  code: "PGRST204",
+  message: "Could not find the 'preorder_cta_text' column of 'drops' in the schema cache",
+}
+
+const legacyDropRow = {
+  id: "00000000-0000-0000-0000-000000000010",
+  slug: "camiseta-tentados",
+  name: "Camiseta Tentados",
+  description: "Drop legacy",
+  price: 25,
+  image_urls: ["/images/drop.jpg"],
+  colors: ["Burdeos"],
+  sizes: ["M"],
+  stock_total: 30,
+  launch_at: "2026-06-30T23:00:00.000Z",
+  launch_timezone: "Atlantic/Canary",
+  is_active: true,
+  floating_enabled: true,
+  floating_message: "NUEVO DROP MUY PRONTO",
+  is_closed: false,
+  created_at: null,
+  updated_at: null,
 }
 
 const dropInput: DropMutationInput = {
@@ -75,6 +109,7 @@ const dropInput: DropMutationInput = {
   isActive: false,
   floatingEnabled: false,
   floatingMessage: "",
+  preorderCtaText: "Preventa",
   isClosed: false,
 }
 
@@ -172,9 +207,69 @@ test("estado READY se conserva cuando la consulta responde sin error", async () 
     },
   })
 
-  assert.deepEqual(await listAdminDropsWithAvailability(), { availability: "READY", data: [] })
-  assert.deepEqual(await listDropReservationsWithAvailability(), { availability: "READY", data: [] })
-  assert.deepEqual(await listDropOrdersWithAvailability(), { availability: "READY", data: [] })
+  assert.deepEqual(await listAdminDropsWithAvailability(), {
+    availability: "READY",
+    data: [],
+    preorderCtaTextMigrated: true,
+    capabilityMessage: undefined,
+  })
+  assert.deepEqual(await listDropReservationsWithAvailability(), {
+    availability: "READY",
+    data: [],
+    preorderCtaTextMigrated: true,
+    capabilityMessage: undefined,
+  })
+  assert.deepEqual(await listDropOrdersWithAvailability(), {
+    availability: "READY",
+    data: [],
+    preorderCtaTextMigrated: true,
+    capabilityMessage: undefined,
+  })
+})
+
+test("columna preorder_cta_text ausente reintenta lectura legacy con CTA fallback", async () => {
+  setMockClient({
+    from: {
+      drops: [
+        { data: null, error: ctaColumnMissingError },
+        { data: legacyDropRow, error: null },
+        { data: null, error: ctaColumnMissingError },
+        { data: [legacyDropRow], error: null },
+      ],
+    },
+    rpc: {
+      get_drop_stock_summary: [
+        { data: { stock_total: 30, reserved_units: 0, ordered_units: 0, available_stock: 30 }, error: null },
+        { data: { stock_total: 30, reserved_units: 0, ordered_units: 0, available_stock: 30 }, error: null },
+      ],
+    },
+  })
+
+  const heroDrop = await getHeroDrop()
+  assert.equal(heroDrop?.preorderCtaText, "Preventa")
+
+  const state = await listAdminDropsWithAvailability()
+  assert.equal(state.availability, "READY")
+  assert.equal(state.preorderCtaTextMigrated, false)
+  assert.match(state.capabilityMessage ?? "", /CTA/)
+  assert.equal(state.data[0]?.preorderCtaText, "Preventa")
+})
+
+test("schema antiguo no devuelve falso éxito al guardar CTA personalizado", async () => {
+  setMockClient({
+    from: {
+      drops: { data: null, error: ctaColumnMissingError },
+    },
+  })
+
+  await assert.rejects(
+    () => createDropRecord({ ...dropInput, preorderCtaText: "QUIERO LA MÍA" }),
+    (error: unknown) => {
+      assert.ok(error instanceof DropCtaMigrationRequiredError)
+      assert.equal(error.code, DROP_CTA_MIGRATION_REQUIRED_CODE)
+      return true
+    }
+  )
 })
 
 test("errores inesperados se clasifican como UNAVAILABLE sin fingir migración pendiente", async () => {

@@ -13,6 +13,7 @@ type CatalogImageUploadProps = {
   variant: "tarta" | "cajita" | "drop"
   onChange: (nextValue: string) => void
   disabled?: boolean
+  showValueText?: boolean
 }
 
 const MAX_SIZE_LABEL = "Máximo 5 MB. Formatos: JPG, PNG, WEBP o AVIF."
@@ -24,6 +25,7 @@ export function CatalogImageUpload({
   variant,
   onChange,
   disabled = false,
+  showValueText = true,
 }: CatalogImageUploadProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [isDragging, setIsDragging] = useState(false)
@@ -201,7 +203,7 @@ export function CatalogImageUpload({
               {value ? "Imagen preparada" : "Sin imagen"}
             </p>
             <p className="truncate text-xs text-muted-foreground">
-              {value || "Selecciona o arrastra un archivo"}
+              {showValueText && value ? value : "Selecciona o arrastra un archivo"}
             </p>
           </div>
           <span className="inline-flex items-center gap-2 rounded-full bg-secondary px-3 py-1.5 text-xs font-medium text-secondary-foreground">

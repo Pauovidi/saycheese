@@ -20,6 +20,8 @@ export default async function AdminDropsPage() {
         initialDrops={dropsState.data}
         moduleAvailability={dropsState.availability}
         moduleMessage={dropsState.message}
+        preorderCtaTextMigrated={dropsState.preorderCtaTextMigrated}
+        capabilityMessage={dropsState.capabilityMessage}
       />
     </section>
   )

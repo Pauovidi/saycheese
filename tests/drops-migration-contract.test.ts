@@ -51,3 +51,25 @@ test("documentación cubre despliegue de código antes de migración", async () 
   assert.match(source, /503 controlado/)
   assert.match(source, /no ejecuta migraciones remotas/i)
 })
+
+test("migración aditiva del refinamiento añade CTA y endurece permisos RPC", async () => {
+  const source = await readFile(resolve("supabase/migrations/202606250001_refine_merch_drop_admin.sql"), "utf8")
+
+  assert.match(source, /add column if not exists preorder_cta_text text not null default 'Preventa'/)
+  assert.match(source, /drops_preorder_cta_text_check/)
+  assert.match(source, /char_length\(preorder_cta_text\) <= 60/)
+  assert.match(source, /length\(btrim\(preorder_cta_text\)\) > 0/)
+  assert.doesNotMatch(source, /insert into public\.drops/i)
+
+  for (const fn of [
+    "get_drop_stock_summary\\(uuid\\)",
+    "create_drop_reservation\\(uuid, text, text\\)",
+    "cancel_drop_reservation\\(uuid, text\\)",
+    "create_order_with_items\\(uuid, date, text, text, text, text, text, timestamptz, text, jsonb\\)",
+  ]) {
+    assert.match(source, new RegExp(`revoke all on function public\\.${fn} from public`))
+    assert.match(source, new RegExp(`revoke all on function public\\.${fn} from anon`))
+    assert.match(source, new RegExp(`revoke all on function public\\.${fn} from authenticated`))
+    assert.match(source, new RegExp(`grant execute on function public\\.${fn} to service_role`))
+  }
+})

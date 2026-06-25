@@ -2,6 +2,7 @@ export type DropModuleAvailability = "READY" | "NOT_INITIALIZED" | "UNAVAILABLE"
 
 export const DROP_SCHEMA_NOT_INITIALIZED_CODE = "DROP_SCHEMA_NOT_INITIALIZED"
 export const DROP_STORAGE_UNAVAILABLE_CODE = "DROP_STORAGE_UNAVAILABLE"
+export const DROP_CTA_MIGRATION_REQUIRED_CODE = "DROP_CTA_MIGRATION_REQUIRED"
 
 type ErrorLike = {
   code?: unknown
@@ -54,6 +55,11 @@ export function isDropSchemaMissingError(error: unknown) {
   ].some((pattern) => pattern.test(text))
 }
 
+export function isDropPreorderCtaColumnMissingError(error: unknown) {
+  const text = getSearchableErrorText(error)
+  return /preorder_cta_text/i.test(text) && /schema\s+cache|does\s+not\s+exist|not\s+found/i.test(text)
+}
+
 export function classifyDropStorageError(error: unknown): Exclude<DropModuleAvailability, "READY"> {
   return isDropSchemaMissingError(error) ? "NOT_INITIALIZED" : "UNAVAILABLE"
 }
@@ -80,6 +86,16 @@ export class DropStorageUnavailableError extends Error {
     this.code = input.availability === "NOT_INITIALIZED" ? DROP_SCHEMA_NOT_INITIALIZED_CODE : DROP_STORAGE_UNAVAILABLE_CODE
     this.status = 503
     this.originalCode = input.originalCode
+  }
+}
+
+export class DropCtaMigrationRequiredError extends Error {
+  readonly code = DROP_CTA_MIGRATION_REQUIRED_CODE
+  readonly status = 503
+
+  constructor() {
+    super("La migración del CTA de Drops todavía no está aplicada en este entorno.")
+    this.name = "DropCtaMigrationRequiredError"
   }
 }
 

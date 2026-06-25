@@ -6,6 +6,7 @@ import {
   DROP_STORAGE_UNAVAILABLE_CODE,
   DropStorageUnavailableError,
   classifyDropStorageError,
+  isDropPreorderCtaColumnMissingError,
   isDropSchemaMissingError,
   toDropStorageUnavailableError,
 } from "../src/data/drop-storage-status"
@@ -74,4 +75,26 @@ test("no clasifica permisos ni timeouts como schema no inicializado", () => {
   })
   assert.equal(normalized.code, DROP_STORAGE_UNAVAILABLE_CODE)
   assert.equal(normalized.availability, "UNAVAILABLE")
+})
+
+test("detecta solo la columna preorder_cta_text ausente como migración CTA pendiente", () => {
+  assert.equal(
+    isDropPreorderCtaColumnMissingError({
+      message: "Could not find the 'preorder_cta_text' column of 'drops' in the schema cache",
+    }),
+    true
+  )
+  assert.equal(
+    isDropPreorderCtaColumnMissingError({
+      code: "42501",
+      message: "permission denied for column preorder_cta_text",
+    }),
+    false
+  )
+  assert.equal(
+    isDropPreorderCtaColumnMissingError({
+      message: "fetch failed because the connection timed out",
+    }),
+    false
+  )
 })
