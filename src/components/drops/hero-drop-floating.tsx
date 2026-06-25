@@ -72,23 +72,27 @@ export function HeroDropFloatingCard({
   const visibleCta = normalizeDropPreorderCtaText(ctaText)
 
   return (
-    <aside className="border border-[#f4eed4]/70 bg-[#601116]/92 p-4 text-[#f4eed4] shadow-2xl backdrop-blur md:p-5">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div className="min-w-0 space-y-2">
-          <p className="whitespace-pre-line text-sm font-semibold leading-relaxed text-[#fffdf8]">
+    <aside className="bg-[rgba(96,17,22,0.7)] p-6 text-[#f4eed4] shadow-2xl backdrop-blur-md sm:p-7 md:p-8">
+      <div className="grid gap-6 md:grid-cols-[minmax(0,1fr)_auto] md:items-center md:gap-8">
+        <div className="min-w-0 space-y-4 text-left">
+          <p className="whitespace-pre-line text-base font-semibold leading-relaxed text-[#fffdf8] md:text-lg">
             {message}
           </p>
-          <div className="flex flex-wrap items-center gap-3 text-xs font-bold uppercase tracking-[0.16em]">
-            <span aria-hidden="true">{countdown}</span>
+          <div className="space-y-2">
+            <span aria-hidden="true" className="block text-2xl font-bold uppercase tracking-[0.12em] text-[#fffdf8] sm:text-3xl md:text-4xl">
+              {countdown}
+            </span>
             <span className="sr-only">Cuenta atrás hasta el lanzamiento.</span>
-            <span>{soldOut ? "Agotado" : `Quedan ${availableStock} unidades`}</span>
+            <span className="block text-xs font-bold uppercase tracking-[0.18em] text-[#f4eed4]/90 md:text-sm">
+              {soldOut ? "Agotado" : `Quedan ${availableStock} unidades`}
+            </span>
           </div>
         </div>
 
         {reservationDone ? (
           <Link
             href="/"
-            className="inline-flex min-h-11 items-center justify-center gap-2 border border-[#f4eed4] px-5 py-3 text-xs font-bold uppercase tracking-[0.2em] text-[#f4eed4]"
+            className="inline-flex min-h-14 items-center justify-center gap-2 bg-white px-7 py-4 text-sm font-bold uppercase tracking-[0.22em] text-[#601116] md:min-w-48"
           >
             <Check className="h-4 w-4" aria-hidden="true" />
             Reservado
@@ -98,7 +102,7 @@ export function HeroDropFloatingCard({
             type="button"
             onClick={preview ? undefined : onCtaClick}
             disabled={preview || soldOut || isPending}
-            className="inline-flex min-h-11 items-center justify-center gap-2 bg-[#f4eed4] px-5 py-3 text-xs font-bold uppercase tracking-[0.2em] text-[#601116] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex min-h-14 w-full items-center justify-center gap-2 bg-white px-7 py-4 text-sm font-bold uppercase tracking-[0.22em] text-[#601116] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60 md:w-auto md:min-w-48"
           >
             {isPending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}
             {soldOut ? "Agotado" : visibleCta}
@@ -158,7 +162,7 @@ export function HeroDropFloating({ drop }: HeroDropFloatingProps) {
   }
 
   return (
-    <div className="absolute inset-x-4 bottom-6 z-20 mx-auto max-w-2xl md:bottom-8">
+    <div className="w-full max-w-4xl">
       <HeroDropFloatingCard
         message={drop.floatingMessage}
         countdown={countdown}

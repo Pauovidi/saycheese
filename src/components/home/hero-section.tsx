@@ -26,7 +26,8 @@ export function HeroSection({ dropPromo }: HeroSectionProps) {
       >
         <source src="/videos/hero.mp4" type="video/mp4" />
       </video>
-      <div className="relative z-10 flex flex-col items-center gap-6 px-4 text-center">
+      <div className="relative z-10 flex w-full max-w-5xl flex-col items-center gap-7 px-5 text-center sm:px-6 md:gap-8">
+        {dropPromo ? <HeroDropFloating drop={dropPromo} /> : null}
         <h2 className="max-w-3xl text-4xl font-bold uppercase leading-tight tracking-[0.1em] text-[#fffdf8] drop-shadow-[0_2px_10px_rgba(0,0,0,0.55)] md:text-6xl lg:text-7xl text-balance">
           Nuestra mejor obra de arte
         </h2>
@@ -37,7 +38,6 @@ export function HeroSection({ dropPromo }: HeroSectionProps) {
           Ver tartas
         </a>
       </div>
-      {dropPromo ? <HeroDropFloating drop={dropPromo} /> : null}
     </section>
   )
 }

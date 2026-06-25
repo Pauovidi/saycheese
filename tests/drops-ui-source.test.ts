@@ -12,7 +12,20 @@ test("flotante usa texto exacto seguro, stock y CTA Preventa", async () => {
   assert.match(source, /visibleCta/)
   assert.match(source, /reserveDropPrelaunch/)
   assert.match(source, /HeroDropFloatingCard/)
+  assert.match(source, /bg-\[rgba\(96,17,22,0\.7\)\]/)
+  assert.match(source, /md:text-4xl/)
+  assert.match(source, /bg-white/)
+  assert.doesNotMatch(source, /border border-\[#f4eed4\]/)
   assert.doesNotMatch(source, /dangerouslySetInnerHTML/)
+})
+
+test("flotante aparece sobre el titular del hero y no anclado abajo", async () => {
+  const hero = await readFile(resolve("src/components/home/hero-section.tsx"), "utf8")
+  const floating = await readFile(resolve("src/components/drops/hero-drop-floating.tsx"), "utf8")
+
+  assert.ok(hero.indexOf("<HeroDropFloating") < hero.indexOf("<h2"))
+  assert.doesNotMatch(floating, /bottom-6|bottom-8/)
+  assert.match(hero, /gap-7/)
 })
 
 test("preventa no muestra talla, color, cantidad ni checkout normal", async () => {
