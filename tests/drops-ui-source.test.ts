@@ -43,6 +43,34 @@ test("Drops aparece en navegación solo si el servidor lo habilita", async () =>
   assert.match(header, /\/drops/)
 })
 
+test("catalogo de drops comparte grid responsive con tartas", async () => {
+  const grid = await readFile(resolve("src/components/catalog/catalog-grid.tsx"), "utf8")
+  const tienda = await readFile(resolve("src/components/tienda/tienda-content.tsx"), "utf8")
+  const drops = await readFile(resolve("app/(public)/drops/page.tsx"), "utf8")
+
+  assert.match(grid, /grid grid-cols-2 gap-4 sm:gap-10 lg:grid-cols-3/)
+  assert.match(tienda, /<CatalogGrid>/)
+  assert.match(drops, /<CatalogGrid>/)
+  assert.match(drops, /mb-12/)
+  assert.doesNotMatch(drops, /md:grid-cols-2/)
+  assert.doesNotMatch(drops, /mt-12 grid/)
+})
+
+test("card publica de drops sigue la composicion de producto y enlaza al detalle", async () => {
+  const source = await readFile(resolve("src/components/drops/drop-card.tsx"), "utf8")
+
+  assert.match(source, /aspect-square/)
+  assert.match(source, /\(max-width: 768px\) 50vw, \(max-width: 1024px\) 50vw, 33vw/)
+  assert.match(source, /drop\.name/)
+  assert.match(source, /drop\.priceText/)
+  assert.match(source, /stockLabel/)
+  assert.match(source, /line-clamp-2 sm:text-xs sm:line-clamp-3/)
+  assert.match(source, /href=\{`\/drops\/\$\{drop\.slug\}`\}/)
+  assert.match(source, /Hacer pedido/)
+  assert.match(source, /Agotado/)
+  assert.doesNotMatch(source, /addItem/)
+})
+
 test("ficha live permite talla, color, cantidad y línea drop en carrito", async () => {
   const source = await readFile(resolve("src/components/drops/drop-product-detail.tsx"), "utf8")
 

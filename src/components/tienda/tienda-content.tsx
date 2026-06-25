@@ -1,4 +1,5 @@
 import type { Flavor } from "@/src/data/products"
+import { CatalogGrid } from "@/src/components/catalog/catalog-grid"
 import { ProductCard } from "@/src/components/product-card"
 
 interface TiendaContentProps {
@@ -7,7 +8,7 @@ interface TiendaContentProps {
 
 export function TiendaContent({ flavors }: TiendaContentProps) {
   return (
-    <div className="grid grid-cols-2 gap-4 sm:gap-10 lg:grid-cols-3">
+    <CatalogGrid>
       {flavors.map((flavor) => {
         // Show the cajita version by default; fall back to tarta if no cajita exists
         const primaryProduct = flavor.cajita ?? flavor.tarta
@@ -17,6 +18,6 @@ export function TiendaContent({ flavors }: TiendaContentProps) {
           <ProductCard key={flavor.category} product={primaryProduct} sibling={sibling} />
         )
       })}
-    </div>
+    </CatalogGrid>
   )
 }
