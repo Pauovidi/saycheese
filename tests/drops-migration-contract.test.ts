@@ -93,6 +93,9 @@ test("migración aditiva de archivado y stock por talla es segura y no destructi
   )
   assert.doesNotMatch(globalStockRpc, /size_stock/i)
   assert.match(source, /create or replace function public\.get_drop_size_stock_summary\(p_drop_id uuid\)/)
+  const sizeStockRpc = source.match(/create or replace function public\.get_drop_size_stock_summary[\s\S]*?\)\s*language plpgsql/i)?.[0] ?? ""
+  assert.match(sizeStockRpc, /"position" integer/)
+  assert.doesNotMatch(sizeStockRpc, /^\s*position integer\s*$/im)
   assert.match(source, /from public\.get_drop_size_stock_summary\(v_drop_id\) as x/)
   assert.match(source, /where s\.drop_id = p_drop_id[\s\S]*s\.is_active = true[\s\S]*s\.archived_at is null/)
   assert.match(source, /archived_at is null/)

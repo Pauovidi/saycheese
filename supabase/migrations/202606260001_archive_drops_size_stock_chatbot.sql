@@ -111,7 +111,7 @@ returns table (
   ordered_units integer,
   available_raw integer,
   sellable_now integer,
-  position integer
+  "position" integer
 )
 language plpgsql
 security definer
