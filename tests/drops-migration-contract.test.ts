@@ -149,8 +149,11 @@ test("migración aditiva de tallas opcionales mantiene contratos y permisos segu
   const sizeStockRpc = source.match(/create or replace function public\.get_drop_size_stock_summary[\s\S]*?end;\s*\$\$;/i)?.[0] ?? ""
   const orderRpc = source.match(/create or replace function public\.create_order_with_items[\s\S]*?end;\s*\$\$;/i)?.[0] ?? ""
   const orderItemsConstraint = source.match(/add constraint order_items_drop_fields_check check \([\s\S]*?\n  \);/i)?.[0] ?? ""
+  const sizeStockBackfill = source.match(/update public\.drops d[\s\S]*?set size_stock_enabled = true[\s\S]*?;/i)?.[0] ?? ""
 
   assert.match(source, /add column if not exists size_stock_enabled boolean not null default false/)
+  assert.match(sizeStockBackfill, /coalesce\(\([\s\S]*sum\(s\.stock_total\)[\s\S]*\), 0\) > 0/i)
+  assert.doesNotMatch(sizeStockBackfill, /exists\s*\(\s*select\s+1/i)
   assert.match(source, /drop constraint if exists order_items_drop_fields_check/)
   assert.doesNotMatch(orderItemsConstraint, /selected_size/)
   assert.match(

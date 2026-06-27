@@ -4,13 +4,13 @@ alter table public.drops
 update public.drops d
 set size_stock_enabled = true
 where size_stock_enabled = false
-  and exists (
-    select 1
+  and coalesce((
+    select sum(s.stock_total)
     from public.drop_size_stock s
     where s.drop_id = d.id
       and s.is_active = true
       and s.archived_at is null
-  );
+  ), 0) > 0;
 
 alter table public.order_items
   drop constraint if exists order_items_drop_fields_check;
