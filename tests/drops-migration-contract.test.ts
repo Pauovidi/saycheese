@@ -86,12 +86,19 @@ test("migración aditiva de archivado y stock por talla es segura y no destructi
   assert.match(source, /drop_size_stock_total_non_negative/)
   assert.match(source, /drop_size_stock_size_not_blank/)
   assert.match(source, /drop_size_stock_drop_position_idx/)
+  const globalStockRpc = source.match(/create or replace function public\.get_drop_stock_summary[\s\S]*?\$\$/i)?.[0] ?? ""
+  assert.match(
+    globalStockRpc,
+    /returns table \(\s*stock_total integer,\s*reserved_units integer,\s*ordered_units integer,\s*available_stock integer\s*\)/i
+  )
+  assert.doesNotMatch(globalStockRpc, /size_stock/i)
+  assert.match(source, /create or replace function public\.get_drop_size_stock_summary\(p_drop_id uuid\)/)
+  assert.match(source, /from public\.get_drop_size_stock_summary\(v_drop_id\) as x/)
   assert.match(source, /where s\.drop_id = p_drop_id[\s\S]*s\.is_active = true[\s\S]*s\.archived_at is null/)
   assert.match(source, /archived_at is null/)
   assert.match(source, /drop_archived/)
   assert.match(source, /reservation_cancelled_idempotency_key/)
   assert.match(source, /drop_size_sold_out/)
-  assert.match(source, /jsonb_agg/)
   assert.match(source, /sellable_now/)
   assert.match(source, /v_has_phone_normalized boolean/)
   assert.match(source, /v_phone_normalized_generated boolean/)
@@ -108,6 +115,7 @@ test("migración aditiva de archivado y stock por talla es segura y no destructi
 
   for (const fn of [
     "get_drop_stock_summary\\(uuid\\)",
+    "get_drop_size_stock_summary\\(uuid\\)",
     "create_drop_reservation\\(uuid, text, text\\)",
     "cancel_drop_reservation\\(uuid, text\\)",
     "create_order_with_items\\(uuid, date, text, text, text, text, text, timestamptz, text, jsonb\\)",

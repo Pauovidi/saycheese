@@ -29,10 +29,11 @@ function createQueryBuilder(response: MockResponse) {
   return builder
 }
 
-function setMockClient(input: { drops: MockResponse; stock?: MockResponse }) {
+function setMockClient(input: { drops: MockResponse; stock?: MockResponse; sizeStock?: MockResponse }) {
   const client = {
     from: () => createQueryBuilder(input.drops),
-    rpc: () => createQueryBuilder(input.stock ?? { data: null, error: null }),
+    rpc: (name: string) =>
+      createQueryBuilder(name === "get_drop_size_stock_summary" ? input.sizeStock ?? { data: [], error: null } : input.stock ?? { data: null, error: null }),
   }
 
   setDropStoreClientForTests(client as unknown as Parameters<typeof setDropStoreClientForTests>[0])
@@ -67,20 +68,21 @@ const stockSummary = {
   reserved_units: 0,
   ordered_units: 0,
   available_stock: 30,
-  size_stock: [
-    { size: "S", stock_total: 5, ordered_units: 0, available_raw: 5, sellable_now: 5, position: 0 },
-    { size: "M", stock_total: 10, ordered_units: 0, available_raw: 10, sellable_now: 10, position: 1 },
-    { size: "L", stock_total: 10, ordered_units: 0, available_raw: 10, sellable_now: 10, position: 2 },
-    { size: "XL", stock_total: 5, ordered_units: 0, available_raw: 5, sellable_now: 5, position: 3 },
-  ],
 }
+
+const sizeStockSummary = [
+  { size: "S", stock_total: 5, ordered_units: 0, available_raw: 5, sellable_now: 5, position: 0 },
+  { size: "M", stock_total: 10, ordered_units: 0, available_raw: 10, sellable_now: 10, position: 1 },
+  { size: "L", stock_total: 10, ordered_units: 0, available_raw: 10, sellable_now: 10, position: 2 },
+  { size: "XL", stock_total: 5, ordered_units: 0, available_raw: 5, sellable_now: 5, position: 3 },
+]
 
 test.afterEach(() => {
   setDropStoreClientForTests(null)
 })
 
 test("chatbot responde drops en preventa con fecha, precio, stock global, tallas y colores", async () => {
-  setMockClient({ drops: { data: [dropRow], error: null }, stock: { data: stockSummary, error: null } })
+  setMockClient({ drops: { data: [dropRow], error: null }, stock: { data: stockSummary, error: null }, sizeStock: { data: sizeStockSummary, error: null } })
 
   const reply = await buildDropsReplyIfIntent("¿tenéis drops?")
 
@@ -97,6 +99,7 @@ test("chatbot responde disponibilidad real de talla concreta en LIVE", async () 
   setMockClient({
     drops: { data: [{ ...dropRow, launch_at: "2026-01-01T00:00:00.000Z" }], error: null },
     stock: { data: stockSummary, error: null },
+    sizeStock: { data: sizeStockSummary, error: null },
   })
 
   const reply = await buildDropsReplyIfIntent("¿queda talla M?")
@@ -109,6 +112,7 @@ test("chatbot no crea pedidos de camisetas por WhatsApp", async () => {
   setMockClient({
     drops: { data: [{ ...dropRow, launch_at: "2026-01-01T00:00:00.000Z" }], error: null },
     stock: { data: stockSummary, error: null },
+    sizeStock: { data: sizeStockSummary, error: null },
   })
 
   const reply = await buildDropsReplyIfIntent("quiero una camiseta")

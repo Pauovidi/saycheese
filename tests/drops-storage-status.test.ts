@@ -6,6 +6,7 @@ import {
   DROP_STORAGE_UNAVAILABLE_CODE,
   DropStorageUnavailableError,
   classifyDropStorageError,
+  isDropArchiveOrSizeStockMissingError,
   isDropPreorderCtaColumnMissingError,
   isDropSchemaMissingError,
   toDropStorageUnavailableError,
@@ -46,6 +47,12 @@ test("detecta variaciones de schema cache para columnas y RPC de drops", () => {
     }),
     true
   )
+  const sizeStockRpcError = {
+    code: "PGRST202",
+    message: "Could not find the function public.get_drop_size_stock_summary(p_drop_id) in the schema cache",
+  }
+  assert.equal(isDropSchemaMissingError(sizeStockRpcError), true)
+  assert.equal(isDropArchiveOrSizeStockMissingError(sizeStockRpcError), true)
 })
 
 test("no clasifica permisos ni timeouts como schema no inicializado", () => {

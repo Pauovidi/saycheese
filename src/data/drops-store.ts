@@ -214,6 +214,10 @@ const DROP_COLUMNS = [
 ].join(",")
 
 type DropStoreClient = ReturnType<typeof getAdminClient>
+type DropStockSummaryResult = {
+  stock: DropStockNumbers
+  sizeStockMigrated: boolean
+}
 type DropSizeStockRow = {
   id: string
   drop_id: string
@@ -327,7 +331,7 @@ function mapSummary(value: unknown, fallbackStockTotal = 0, sizes: string[] = []
   const reservedUnits = readNumber(record.reserved_units as number | string | null)
   const orderedUnits = readNumber(record.ordered_units as number | string | null)
   const availableStock = readNumber(record.available_stock as number | string | null, Math.max(0, stockTotal - reservedUnits - orderedUnits))
-  const sizeStock = readSizeStockSummary(record.size_stock, sizes, availableStock)
+  const sizeStock = readSizeStockSummary([], sizes, availableStock)
 
   return {
     stockTotal,
@@ -335,6 +339,29 @@ function mapSummary(value: unknown, fallbackStockTotal = 0, sizes: string[] = []
     orderedUnits,
     availableStock,
     sizeStock,
+  }
+}
+
+async function getDropSizeStockSummary(dropId: string, sizes: string[], globalAvailable: number) {
+  const supabase = getDropClient()
+  const { data, error } = await supabase.rpc("get_drop_size_stock_summary", {
+    p_drop_id: dropId,
+  })
+
+  if (error) {
+    if (isDropArchiveOrSizeStockMissingError(error)) {
+      logDropStorageIssueOnce({ operation: "getDropSizeStockSummary", availability: classifyDropStorageError(error), error })
+      return {
+        sizeStock: readSizeStockSummary([], sizes, globalAvailable),
+        migrated: false,
+      }
+    }
+    throw toDropStorageUnavailableError(error, "getDropSizeStockSummary")
+  }
+
+  return {
+    sizeStock: readSizeStockSummary(data, sizes, globalAvailable),
+    migrated: true,
   }
 }
 
@@ -441,23 +468,45 @@ async function insertRevision(input: { drop: EditableDropRecord; action: string;
   if (error) throw toDropMutationError(error, "insertRevision")
 }
 
-export async function getDropStockSummary(dropId: string, sizes: string[] = []): Promise<DropStockNumbers> {
+export async function getDropStockSummaryWithCapabilities(dropId: string, sizes: string[] = []): Promise<DropStockSummaryResult> {
   const supabase = getDropClient()
   const { data, error } = await supabase.rpc("get_drop_stock_summary", {
     p_drop_id: dropId,
   })
 
   if (error) throw toDropStorageUnavailableError(error, "getDropStockSummary")
-  return mapSummary(data, 0, sizes)
+  const stock = mapSummary(data, 0, sizes)
+  const sizeStockResult = await getDropSizeStockSummary(dropId, sizes, stock.availableStock)
+
+  return {
+    stock: {
+      ...stock,
+      sizeStock: sizeStockResult.sizeStock,
+    },
+    sizeStockMigrated: sizeStockResult.migrated,
+  }
+}
+
+export async function getDropStockSummary(dropId: string, sizes: string[] = []): Promise<DropStockNumbers> {
+  const result = await getDropStockSummaryWithCapabilities(dropId, sizes)
+  return result.stock
 }
 
 async function mapRowsWithStock(rows: DropRow[], now: Date = new Date()) {
-  return Promise.all(
+  const results = await Promise.all(
     rows.map(async (row) => {
-      const stock = await getDropStockSummary(row.id, readStringArray(row.sizes))
-      return mapDropRow(row, stock, now)
+      const stockResult = await getDropStockSummaryWithCapabilities(row.id, readStringArray(row.sizes))
+      return {
+        drop: mapDropRow(row, stockResult.stock, now),
+        sizeStockMigrated: stockResult.sizeStockMigrated,
+      }
     })
   )
+
+  return {
+    drops: results.map((result) => result.drop),
+    sizeStockMigrated: results.every((result) => result.sizeStockMigrated),
+  }
 }
 
 async function readDropRowsWithCtaFallback(
@@ -512,11 +561,15 @@ export async function listAdminDropsWithCapabilities(now: Date = new Date()) {
   const result = await readDropRowsWithCtaFallback("listAdminDrops", (columns) =>
     supabase.from("drops").select(columns).order("created_at", { ascending: false })
   )
+  const mapped = await mapRowsWithStock((result.data ?? []) as unknown as DropRow[], now)
+  const stockCapabilityMessage =
+    "La migración de archivado y stock por talla todavía no está aplicada. Las lecturas usan fallback legacy; guardar, archivar o editar stock falla cerrado hasta migrar."
+  const fullyMigrated = result.preorderCtaTextMigrated && mapped.sizeStockMigrated
 
   return {
-    drops: await mapRowsWithStock((result.data ?? []) as unknown as DropRow[], now),
-    preorderCtaTextMigrated: result.preorderCtaTextMigrated,
-    capabilityMessage: result.capabilityMessage,
+    drops: mapped.drops,
+    preorderCtaTextMigrated: fullyMigrated,
+    capabilityMessage: fullyMigrated ? result.capabilityMessage : result.capabilityMessage ?? stockCapabilityMessage,
   }
 }
 
@@ -687,7 +740,7 @@ export async function listPublicDrops(now: Date = new Date()) {
       return columns === LEGACY_DROP_COLUMNS ? query : query.is("archived_at", null)
     })
 
-    return mapRowsWithStock((data ?? []) as unknown as DropRow[], now)
+    return (await mapRowsWithStock((data ?? []) as unknown as DropRow[], now)).drops
   } catch (error) {
     logDropCaughtError(error, "listPublicDrops")
     return []
@@ -772,7 +825,7 @@ export async function listChatbotDrops(now: Date = new Date()) {
       return columns === LEGACY_DROP_COLUMNS ? query : query.is("archived_at", null)
     })
 
-    return mapRowsWithStock((data ?? []) as unknown as DropRow[], now)
+    return (await mapRowsWithStock((data ?? []) as unknown as DropRow[], now)).drops
   } catch (error) {
     logDropCaughtError(error, "listChatbotDrops")
     return null

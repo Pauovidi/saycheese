@@ -75,7 +75,7 @@ La migración aditiva de archivado y stock por talla es:
 
 `supabase/migrations/202606260001_archive_drops_size_stock_chatbot.sql`
 
-Añade `archived_at`, `archived_by`, `archive_reason`, crea `drop_size_stock`, actualiza filtros públicos mediante `archived_at is null`, actualiza `get_drop_stock_summary`, `create_drop_reservation` y `create_order_with_items`, y mantiene permisos de RPC cerrados a `anon`/`authenticated`. No ejecuta SQL remoto, no crea drops productivos y no activa ni archiva datos existentes.
+Añade `archived_at`, `archived_by`, `archive_reason`, crea `drop_size_stock`, mantiene estable el contrato global de `get_drop_stock_summary`, añade `get_drop_size_stock_summary` para stock por talla, actualiza filtros públicos mediante `archived_at is null`, actualiza `create_drop_reservation` y `create_order_with_items`, y mantiene permisos de RPC cerrados a `anon`/`authenticated`. No ejecuta SQL remoto, no crea drops productivos y no activa ni archiva datos existentes.
 
 La RPC `create_order_with_items` usa `order_items.product_name` como snapshot del nombre del drop. No existe ni se añade una columna redundante `drop_name`. También conserva la lógica defensiva de `orders.phone_normalized`: detecta si la columna existe, detecta si es generada y solo escribe `regexp_replace(coalesce(p_phone, ''), '\D', '', 'g')` cuando la columna existe y no es generada.
 
@@ -92,7 +92,7 @@ Esta protección no ejecuta migraciones remotas, no cambia variables de entorno,
 
 Para `preorder_cta_text`, el código también puede desplegarse antes de aplicar la migración aditiva. Si PostgREST informa que falta esa columna, las lecturas públicas reintentan con columnas legacy y usan el CTA fallback `Preventa`. El backoffice muestra una actualización pendiente: permite leer y previsualizar, pero no finge que un CTA personalizado se ha guardado si la columna aún no existe.
 
-Para archivado y stock por talla, las lecturas públicas tienen fallback legacy cuando faltan columnas nuevas. El backoffice muestra explícitamente que la migración de archivado y stock por talla está pendiente. Las mutaciones que dependen del modelo nuevo hacen una comprobación previa de schema y fallan cerrado con 503 controlado hasta aplicar la migración, evitando falsos éxitos o actualizaciones parciales si `drop_size_stock` todavía no existe. No ejecutes SQL remoto ni `supabase db push` sin autorización explícita.
+Para archivado y stock por talla, las lecturas públicas tienen fallback legacy cuando faltan columnas nuevas o el RPC nuevo `get_drop_size_stock_summary` todavía no existe. El backoffice muestra explícitamente que la migración de archivado y stock por talla está pendiente. Las mutaciones que dependen del modelo nuevo hacen una comprobación previa de schema y fallan cerrado con 503 controlado hasta aplicar la migración, evitando falsos éxitos o actualizaciones parciales si `drop_size_stock` todavía no existe. No ejecutes SQL remoto ni `supabase db push` sin autorización explícita.
 
 ## Backoffice
 

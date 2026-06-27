@@ -83,6 +83,11 @@ const archiveColumnMissingError = {
   message: "Could not find the 'archived_at' column of 'drops' in the schema cache",
 }
 
+const sizeStockRpcMissingError = {
+  code: "PGRST202",
+  message: "Could not find the function public.get_drop_size_stock_summary(p_drop_id) in the schema cache",
+}
+
 const legacyDropRow = {
   id: "00000000-0000-0000-0000-000000000010",
   slug: "camiseta-tentados",
@@ -282,6 +287,55 @@ test("migración de archivado y stock pendiente muestra mensaje específico en b
   assert.match(state.capabilityMessage ?? "", /archivado y stock por talla/i)
   assert.doesNotMatch(state.capabilityMessage ?? "", /CTA configurable/i)
   assert.equal(state.data[0]?.archivedAt, null)
+})
+
+test("RPC de stock por talla ausente mantiene lectura admin y marca migración pendiente", async () => {
+  setMockClient({
+    from: {
+      drops: {
+        data: [{ ...legacyDropRow, preorder_cta_text: "Preventa", archived_at: null, archived_by: null, archive_reason: null }],
+        error: null,
+      },
+    },
+    rpc: {
+      get_drop_stock_summary: { data: { stock_total: 30, reserved_units: 7, ordered_units: 0, available_stock: 23 }, error: null },
+      get_drop_size_stock_summary: { data: null, error: sizeStockRpcMissingError },
+    },
+  })
+
+  const state = await listAdminDropsWithAvailability()
+  assert.equal(state.availability, "READY")
+  assert.equal(state.preorderCtaTextMigrated, false)
+  assert.match(state.capabilityMessage ?? "", /stock por talla/i)
+  assert.equal(state.data[0]?.stock.availableStock, 23)
+  assert.equal(state.data[0]?.stock.sizeStock[0]?.size, "M")
+  assert.equal(state.data[0]?.stock.sizeStock[0]?.sellableNow, 0)
+})
+
+test("RPC de stock por talla se combina con resumen global estable", async () => {
+  setMockClient({
+    from: {
+      drops: {
+        data: [{ ...legacyDropRow, sizes: ["M", "L"], preorder_cta_text: "Preventa", archived_at: null, archived_by: null, archive_reason: null }],
+        error: null,
+      },
+    },
+    rpc: {
+      get_drop_stock_summary: { data: { stock_total: 30, reserved_units: 0, ordered_units: 28, available_stock: 2 }, error: null },
+      get_drop_size_stock_summary: {
+        data: [
+          { size: "M", stock_total: 10, ordered_units: 3, available_raw: 7, sellable_now: 2, position: 0 },
+          { size: "L", stock_total: 20, ordered_units: 25, available_raw: 0, sellable_now: 0, position: 1 },
+        ],
+        error: null,
+      },
+    },
+  })
+
+  const drops = await listPublicDrops(new Date("2026-07-01T00:00:00.000Z"))
+  assert.equal(drops[0]?.stock.availableStock, 2)
+  assert.equal(drops[0]?.stock.sizeStock.find((entry) => entry.size === "M")?.sellableNow, 2)
+  assert.equal(drops[0]?.stock.sizeStock.find((entry) => entry.size === "L")?.availableRaw, 0)
 })
 
 test("schema antiguo no devuelve falso éxito al guardar CTA personalizado", async () => {

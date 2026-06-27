@@ -58,8 +58,7 @@ returns table (
   stock_total integer,
   reserved_units integer,
   ordered_units integer,
-  available_stock integer,
-  size_stock jsonb
+  available_stock integer
 )
 language plpgsql
 security definer
@@ -101,36 +100,50 @@ begin
     v_stock_total,
     v_reserved,
     v_ordered,
-    v_available,
-    coalesce(
-      (
-        select jsonb_agg(
-          jsonb_build_object(
-            'size', s.size,
-            'stock_total', s.stock_total,
-            'ordered_units', coalesce(o.ordered_units, 0),
-            'available_raw', greatest(0, s.stock_total - coalesce(o.ordered_units, 0)),
-            'sellable_now', least(v_available, greatest(0, s.stock_total - coalesce(o.ordered_units, 0))),
-            'position', s.position
-          )
-          order by s.position, s.size
-        )
-        from public.drop_size_stock s
-        left join (
-          select order_items.selected_size, coalesce(sum(order_items.qty), 0)::integer as ordered_units
-          from public.order_items
-          join public.orders on orders.id = order_items.order_id
-          where order_items.drop_id = p_drop_id
-            and order_items.type = 'drop'
-            and orders.status <> 'cancelled'
-          group by order_items.selected_size
-        ) o on lower(btrim(o.selected_size)) = lower(btrim(s.size))
-        where s.drop_id = p_drop_id
-          and s.is_active = true
-          and s.archived_at is null
-      ),
-      '[]'::jsonb
-    );
+    v_available;
+end;
+$$;
+
+create or replace function public.get_drop_size_stock_summary(p_drop_id uuid)
+returns table (
+  size text,
+  stock_total integer,
+  ordered_units integer,
+  available_raw integer,
+  sellable_now integer,
+  position integer
+)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_summary record;
+begin
+  select * into v_summary from public.get_drop_stock_summary(p_drop_id);
+
+  return query
+  select
+    s.size,
+    s.stock_total,
+    coalesce(o.ordered_units, 0)::integer as ordered_units,
+    greatest(0, s.stock_total - coalesce(o.ordered_units, 0))::integer as available_raw,
+    least(v_summary.available_stock, greatest(0, s.stock_total - coalesce(o.ordered_units, 0)))::integer as sellable_now,
+    s.position
+  from public.drop_size_stock s
+  left join (
+    select order_items.selected_size, coalesce(sum(order_items.qty), 0)::integer as ordered_units
+    from public.order_items
+    join public.orders on orders.id = order_items.order_id
+    where order_items.drop_id = p_drop_id
+      and order_items.type = 'drop'
+      and orders.status <> 'cancelled'
+    group by order_items.selected_size
+  ) o on lower(btrim(o.selected_size)) = lower(btrim(s.size))
+  where s.drop_id = p_drop_id
+    and s.is_active = true
+    and s.archived_at is null
+  order by s.position, s.size;
 end;
 $$;
 
@@ -321,14 +334,7 @@ begin
 
       select *
         into v_size_row
-      from jsonb_to_recordset(v_summary.size_stock) as x(
-        size text,
-        stock_total integer,
-        ordered_units integer,
-        available_raw integer,
-        sellable_now integer,
-        position integer
-      )
+      from public.get_drop_size_stock_summary(v_drop_id) as x
       where lower(btrim(x.size)) = lower(v_size);
 
       if not found then
@@ -480,6 +486,11 @@ revoke all on function public.get_drop_stock_summary(uuid) from public;
 revoke all on function public.get_drop_stock_summary(uuid) from anon;
 revoke all on function public.get_drop_stock_summary(uuid) from authenticated;
 grant execute on function public.get_drop_stock_summary(uuid) to service_role;
+
+revoke all on function public.get_drop_size_stock_summary(uuid) from public;
+revoke all on function public.get_drop_size_stock_summary(uuid) from anon;
+revoke all on function public.get_drop_size_stock_summary(uuid) from authenticated;
+grant execute on function public.get_drop_size_stock_summary(uuid) to service_role;
 
 revoke all on function public.create_drop_reservation(uuid, text, text) from public;
 revoke all on function public.create_drop_reservation(uuid, text, text) from anon;
