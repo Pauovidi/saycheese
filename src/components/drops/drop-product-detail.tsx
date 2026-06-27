@@ -10,12 +10,15 @@ import type { Product } from "@/src/data/products"
 
 export function DropProductDetail({ drop }: { drop: EditableDropRecord }) {
   const { addItem } = useCart()
-  const [selectedSize, setSelectedSize] = useState(drop.sizes[0] ?? "")
+  const firstSellableSize = drop.stock.sizeStock.find((entry) => entry.sellableNow > 0)?.size ?? drop.sizes[0] ?? ""
+  const [selectedSize, setSelectedSize] = useState(firstSellableSize)
   const [selectedColor, setSelectedColor] = useState(drop.colors[0] ?? "")
   const [quantity, setQuantity] = useState(1)
   const availableStock = drop.stock.availableStock
-  const soldOut = drop.status === "SOLD_OUT" || availableStock <= 0
-  const cappedQuantity = Math.min(quantity, Math.max(1, availableStock))
+  const selectedSizeStock = drop.stock.sizeStock.find((entry) => entry.size === selectedSize)
+  const selectedSizeSellable = selectedSizeStock?.sellableNow ?? 0
+  const soldOut = drop.status === "SOLD_OUT" || availableStock <= 0 || !drop.stock.sizeStock.some((entry) => entry.sellableNow > 0)
+  const cappedQuantity = Math.min(quantity, Math.max(1, selectedSizeSellable))
 
   const cartProduct = useMemo<Product>(
     () => ({
@@ -34,12 +37,13 @@ export function DropProductDetail({ drop }: { drop: EditableDropRecord }) {
       dropId: drop.id,
       selectedSize,
       selectedColor,
-      stockAvailable: availableStock,
+      stockAvailable: selectedSizeSellable,
     }),
-    [availableStock, drop, selectedColor, selectedSize]
+    [drop, selectedColor, selectedSize, selectedSizeSellable]
   )
 
   function addDropToCart() {
+    if (soldOut || selectedSizeSellable <= 0) return
     addItem(cartProduct, cappedQuantity)
     setQuantity(1)
   }
@@ -72,6 +76,11 @@ export function DropProductDetail({ drop }: { drop: EditableDropRecord }) {
             <p className="text-sm text-muted-foreground">
               {soldOut ? "Agotado" : `Quedan ${availableStock} unidades`}
             </p>
+            {drop.stock.sizeStock.length ? (
+              <p className="text-sm text-muted-foreground">
+                Tallas: {drop.stock.sizeStock.map((entry) => `${entry.size} (${entry.sellableNow})`).join(", ")}
+              </p>
+            ) : null}
             <p className="max-w-2xl whitespace-pre-line text-sm leading-relaxed text-muted-foreground">
               {drop.description}
             </p>
@@ -82,18 +91,30 @@ export function DropProductDetail({ drop }: { drop: EditableDropRecord }) {
               <legend className="text-xs font-bold uppercase tracking-[0.16em] text-foreground">Talla</legend>
               <div className="flex flex-wrap gap-2">
                 {drop.sizes.map((size) => (
-                  <button
-                    key={size}
-                    type="button"
-                    onClick={() => setSelectedSize(size)}
-                    className={`min-h-10 border px-4 text-xs font-bold uppercase tracking-[0.14em] transition-colors ${
-                      selectedSize === size
-                        ? "border-primary bg-primary text-primary-foreground"
-                        : "border-border text-foreground hover:border-primary"
-                    }`}
-                  >
-                    {size}
-                  </button>
+                  (() => {
+                    const stock = drop.stock.sizeStock.find((entry) => entry.size === size)
+                    const disabled = soldOut || !stock || stock.sellableNow <= 0
+                    return (
+                      <button
+                        key={size}
+                        type="button"
+                        onClick={() => {
+                          setSelectedSize(size)
+                          setQuantity(1)
+                        }}
+                        disabled={disabled}
+                        aria-label={disabled ? `${size} agotada` : `${size}, quedan ${stock?.sellableNow ?? 0}`}
+                        className={`min-h-10 border px-4 text-xs font-bold uppercase tracking-[0.14em] transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${
+                          selectedSize === size
+                            ? "border-primary bg-primary text-primary-foreground"
+                            : "border-border text-foreground hover:border-primary"
+                        }`}
+                      >
+                        {size}
+                        <span className="ml-1 text-[10px]">{disabled ? "Agotada" : stock?.sellableNow}</span>
+                      </button>
+                    )
+                  })()
                 ))}
               </div>
             </fieldset>
@@ -132,10 +153,10 @@ export function DropProductDetail({ drop }: { drop: EditableDropRecord }) {
                 <span className="min-w-[3rem] text-center text-sm font-medium text-foreground">{cappedQuantity}</span>
                 <button
                   type="button"
-                  onClick={() => setQuantity((current) => Math.min(availableStock, current + 1))}
+                  onClick={() => setQuantity((current) => Math.min(selectedSizeSellable, current + 1))}
                   aria-label="Aumentar cantidad"
                   className="flex h-11 w-11 items-center justify-center text-foreground transition-colors hover:bg-secondary"
-                  disabled={soldOut}
+                  disabled={soldOut || selectedSizeSellable <= 0}
                 >
                   <Plus className="h-4 w-4" />
                 </button>
@@ -144,7 +165,7 @@ export function DropProductDetail({ drop }: { drop: EditableDropRecord }) {
               <button
                 type="button"
                 onClick={addDropToCart}
-                disabled={soldOut || !selectedSize || !selectedColor}
+                disabled={soldOut || !selectedSize || !selectedColor || selectedSizeSellable <= 0}
                 className="min-h-11 flex-1 bg-primary px-6 py-3 text-xs font-bold uppercase tracking-[0.2em] text-primary-foreground transition-opacity hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {soldOut ? "Agotado" : "Añadir al pedido"}

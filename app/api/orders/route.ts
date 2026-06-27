@@ -182,6 +182,15 @@ export async function POST(request: Request) {
     }
 
     const message = error instanceof Error ? error.message : "Error interno"
+    if (/drop_archived/i.test(message)) {
+      return NextResponse.json({ ok: false, error: "Este drop ya no está disponible.", code: "drop_archived" }, { status: 400 })
+    }
+    if (/drop_size_sold_out|invalid_drop_size/i.test(message)) {
+      return NextResponse.json({ ok: false, error: "La talla seleccionada ya no está disponible.", code: "drop_size_sold_out" }, { status: 400 })
+    }
+    if (/drop_sold_out/i.test(message)) {
+      return NextResponse.json({ ok: false, error: "Agotado", code: "drop_sold_out" }, { status: 400 })
+    }
     return NextResponse.json({ ok: false, error: message }, { status: 500 })
   }
 }

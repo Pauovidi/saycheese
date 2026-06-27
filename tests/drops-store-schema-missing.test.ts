@@ -35,11 +35,13 @@ function createQueryBuilder(response: MockResponse) {
   const builder = {
     select: () => builder,
     eq: () => builder,
+    is: () => builder,
     lte: () => builder,
     order: () => builder,
     limit: () => builder,
     insert: () => builder,
     update: () => builder,
+    delete: () => builder,
     single: () => Promise.resolve(response),
     maybeSingle: () => Promise.resolve(response),
     then: <TResult1 = MockResponse, TResult2 = never>(
@@ -104,6 +106,7 @@ const dropInput: DropMutationInput = {
   imageUrls: [],
   colors: ["Burdeos"],
   sizes: ["M"],
+  sizeStock: [{ size: "M", stockTotal: 30, position: 0 }],
   stockTotal: 30,
   launchAt: "2026-06-30T23:00:00.000Z",
   isActive: false,

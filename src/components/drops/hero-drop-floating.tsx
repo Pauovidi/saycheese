@@ -36,6 +36,18 @@ function createBrowserIdempotencyKey(dropId: string) {
   }
 }
 
+function rotateBrowserIdempotencyKey(dropId: string) {
+  const storageKey = `tentados-drop-preorder-${dropId}`
+
+  try {
+    const next = crypto.randomUUID()
+    window.localStorage.setItem(storageKey, next)
+    return next
+  } catch {
+    return `${dropId}-${Date.now()}-${Math.random().toString(36).slice(2)}`
+  }
+}
+
 function formatCountdown(ms: number) {
   const totalSeconds = Math.max(0, Math.floor(ms / 1000))
   const days = Math.floor(totalSeconds / 86_400)
@@ -142,11 +154,19 @@ export function HeroDropFloating({ drop }: HeroDropFloatingProps) {
 
   function handleReserve() {
     startTransition(async () => {
-      const idempotencyKey = createBrowserIdempotencyKey(drop.id)
-      const response = await reserveDropPrelaunch({
+      let idempotencyKey = createBrowserIdempotencyKey(drop.id)
+      let response = await reserveDropPrelaunch({
         dropId: drop.id,
         idempotencyKey,
       })
+
+      if (!response.ok && response.code === "reservation_cancelled_idempotency_key") {
+        idempotencyKey = rotateBrowserIdempotencyKey(drop.id)
+        response = await reserveDropPrelaunch({
+          dropId: drop.id,
+          idempotencyKey,
+        })
+      }
 
       if (!response.ok) {
         toast.error(response.error)

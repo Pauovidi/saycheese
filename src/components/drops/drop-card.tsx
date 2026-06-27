@@ -13,12 +13,14 @@ type DropCardProps = {
     status: DropPublicStatus
     stock: {
       availableStock: number
+      sizeStock?: Array<{ sellableNow: number }>
     }
   }
 }
 
 export function DropCard({ drop }: DropCardProps) {
-  const soldOut = drop.status === "SOLD_OUT" || drop.stock.availableStock <= 0
+  const hasSellableSize = drop.stock.sizeStock?.some((entry) => entry.sellableNow > 0) ?? true
+  const soldOut = drop.status === "SOLD_OUT" || drop.stock.availableStock <= 0 || !hasSellableSize
   const stockLabel = soldOut
     ? "Agotado"
     : `${getDropStatusLabel(drop.status)} \u00b7 Quedan ${drop.stock.availableStock}`

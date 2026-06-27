@@ -10,16 +10,19 @@ import {
   DROP_LAUNCH_TIME_ZONE,
   MAX_DROP_PREORDER_CTA_LENGTH,
   localDateTimeToUtcIso,
+  normalizeDropSizeStock,
   normalizeDropPreorderCtaText,
   parseDropImageList,
   parseDropOptionList,
 } from "@/src/data/drops"
-import { DropCtaMigrationRequiredError, DropStorageUnavailableError } from "@/src/data/drop-storage-status"
+import { DropArchiveSizeStockMigrationRequiredError, DropCtaMigrationRequiredError, DropStorageUnavailableError } from "@/src/data/drop-storage-status"
 import {
+  archiveDropRecord,
   cancelDropReservation,
   createDropRecord,
   listAdminDrops,
   reserveDrop,
+  unarchiveDropRecord,
   updateDropRecord,
 } from "@/src/data/drops-store"
 import { slugifyFlavorName } from "@/src/data/products"
@@ -33,6 +36,11 @@ const dropFormSchema = z.object({
   imageUrls: z.union([z.string(), z.array(z.string())]).default(""),
   colors: z.union([z.string(), z.array(z.string())]).default(""),
   sizes: z.union([z.string(), z.array(z.string())]).default(""),
+  sizeStock: z.array(z.object({
+    size: z.string().trim().min(1),
+    stockTotal: z.coerce.number().int().min(0),
+    position: z.coerce.number().int().min(0),
+  })).default([]),
   stockTotal: z.coerce.number().int().min(0, "El stock debe ser entero y no negativo"),
   launchAtLocal: z.string().trim().min(1, "La fecha de lanzamiento es obligatoria").default(DEFAULT_DROP_LAUNCH_LOCAL),
   launchTimezone: z.string().trim().default(DROP_LAUNCH_TIME_ZONE),
@@ -53,12 +61,22 @@ const cancelReservationSchema = z.object({
   reason: z.string().trim().max(300).optional(),
 })
 
+const archiveDropSchema = z.object({
+  dropId: z.string().uuid(),
+  reason: z.string().trim().max(300).optional(),
+})
+
+const unarchiveDropSchema = z.object({
+  dropId: z.string().uuid(),
+})
+
 function normalizeDropForm(input: z.input<typeof dropFormSchema>) {
   const parsed = dropFormSchema.parse(input)
   const slug = parsed.slug?.trim() ? slugifyFlavorName(parsed.slug) : slugifyFlavorName(parsed.name)
   const imageUrls = parseDropImageList(parsed.imageUrls)
   const colors = parseDropOptionList(parsed.colors)
   const sizes = parseDropOptionList(parsed.sizes)
+  const sizeStock = normalizeDropSizeStock(sizes, parsed.sizeStock)
   const preorderCtaText = normalizeDropPreorderCtaText(parsed.preorderCtaText)
 
   if (!slug) {
@@ -67,6 +85,16 @@ function normalizeDropForm(input: z.input<typeof dropFormSchema>) {
 
   if (parsed.isActive && (!colors.length || !sizes.length)) {
     throw new Error("Antes de activar un drop debes configurar al menos una talla y un color")
+  }
+
+  const sizeStockBySize = new Set(sizeStock.map((entry) => entry.size.toLocaleLowerCase("es")))
+  const sizeStockTotal = sizeStock.reduce((sum, entry) => sum + entry.stockTotal, 0)
+  if (parsed.isActive && (!sizeStock.length || sizes.some((size) => !sizeStockBySize.has(size.toLocaleLowerCase("es"))))) {
+    throw new Error("Antes de publicar un drop debes configurar stock para cada talla")
+  }
+
+  if (parsed.isActive && sizeStockTotal !== parsed.stockTotal) {
+    throw new Error("Para publicar, la suma del stock por talla debe coincidir con el stock general")
   }
 
   if (parsed.isActive && imageUrls.length === 0) {
@@ -86,6 +114,7 @@ function normalizeDropForm(input: z.input<typeof dropFormSchema>) {
     imageUrls,
     colors,
     sizes,
+    sizeStock,
     stockTotal: parsed.stockTotal,
     launchAt: localDateTimeToUtcIso(parsed.launchAtLocal, parsed.launchTimezone || DROP_LAUNCH_TIME_ZONE),
     launchTimezone: parsed.launchTimezone || DROP_LAUNCH_TIME_ZONE,
@@ -113,6 +142,8 @@ function publicDropErrorMessage(error: unknown) {
   const message = error instanceof Error ? error.message : String(error)
 
   if (/drop_sold_out/i.test(message)) return "Agotado"
+  if (/drop_archived/i.test(message)) return "Este drop ya no está disponible."
+  if (/reservation_cancelled_idempotency_key/i.test(message)) return "La preventa anterior estaba cancelada. Vamos a intentarlo de nuevo."
   if (/drop_not_prelaunch|drop_not_live/i.test(message)) return "Esta acción ya no está disponible para este drop."
   if (/missing_idempotency_key/i.test(message)) return "No se pudo confirmar la reserva. Inténtalo de nuevo."
 
@@ -138,7 +169,7 @@ export async function saveDrop(payload: z.input<typeof dropFormSchema>) {
       selectedId: saved.id,
     }
   } catch (error) {
-    if (error instanceof DropCtaMigrationRequiredError) {
+    if (error instanceof DropCtaMigrationRequiredError || error instanceof DropArchiveSizeStockMigrationRequiredError) {
       return {
         ok: false as const,
         error: error.message,
@@ -187,6 +218,54 @@ export async function reserveDropPrelaunch(payload: z.infer<typeof reserveDropSc
     return {
       ok: false as const,
       error: publicDropErrorMessage(error),
+      code: error instanceof Error && /reservation_cancelled_idempotency_key/i.test(error.message)
+        ? "reservation_cancelled_idempotency_key"
+        : undefined,
+    }
+  }
+}
+
+export async function archiveDropFromAdmin(payload: z.infer<typeof archiveDropSchema>) {
+  try {
+    const { user } = await requireAdminUser()
+    const parsed = archiveDropSchema.parse(payload)
+    const drop = await archiveDropRecord({
+      id: parsed.dropId,
+      actor: user.email ?? user.id,
+      reason: parsed.reason,
+    })
+    const drops = await listAdminDrops()
+
+    revalidateDropSurfaces(drop.slug)
+
+    return { ok: true as const, drop, drops, selectedId: drop.id }
+  } catch (error) {
+    return {
+      ok: false as const,
+      error: error instanceof Error ? error.message : "No se pudo archivar el drop",
+      code: error instanceof DropStorageUnavailableError || error instanceof DropArchiveSizeStockMigrationRequiredError ? error.code : undefined,
+    }
+  }
+}
+
+export async function unarchiveDropFromAdmin(payload: z.infer<typeof unarchiveDropSchema>) {
+  try {
+    const { user } = await requireAdminUser()
+    const parsed = unarchiveDropSchema.parse(payload)
+    const drop = await unarchiveDropRecord({
+      id: parsed.dropId,
+      actor: user.email ?? user.id,
+    })
+    const drops = await listAdminDrops()
+
+    revalidateDropSurfaces(drop.slug)
+
+    return { ok: true as const, drop, drops, selectedId: drop.id }
+  } catch (error) {
+    return {
+      ok: false as const,
+      error: error instanceof Error ? error.message : "No se pudo desarchivar el drop",
+      code: error instanceof DropStorageUnavailableError || error instanceof DropArchiveSizeStockMigrationRequiredError ? error.code : undefined,
     }
   }
 }

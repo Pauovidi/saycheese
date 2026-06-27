@@ -11,17 +11,29 @@ export type DropStockNumbers = {
   reservedUnits: number
   orderedUnits: number
   availableStock: number
+  sizeStock: DropSizeStockNumbers[]
+}
+
+export type DropSizeStockNumbers = {
+  size: string
+  stockTotal: number
+  orderedUnits: number
+  availableRaw: number
+  sellableNow: number
+  position: number
 }
 
 export type DropPhaseInput = {
   isActive: boolean
   isClosed?: boolean | null
+  archivedAt?: string | null
   launchAt: string | Date
   availableStock: number
 }
 
 export function getDropPublicStatus(input: DropPhaseInput, now: Date = new Date()): DropPublicStatus {
   if (!input.isActive) return "INACTIVE"
+  if (input.archivedAt) return "CLOSED"
   if (input.isClosed) return "CLOSED"
   if (input.availableStock <= 0) return "SOLD_OUT"
 
@@ -39,8 +51,84 @@ export function isDropPurchasable(input: DropPhaseInput, now: Date = new Date())
   return getDropPublicStatus(input, now) === "LIVE"
 }
 
-export function computeAvailableDropStock(stock: Omit<DropStockNumbers, "availableStock">) {
+export function computeAvailableDropStock(stock: { stockTotal: number; reservedUnits: number; orderedUnits: number }) {
   return Math.max(0, stock.stockTotal - stock.reservedUnits - stock.orderedUnits)
+}
+
+export function computeDropSizeSellableNow(input: {
+  sizeStockTotal: number
+  orderedUnitsBySize: number
+  globalAvailable: number
+}) {
+  const availableRaw = Math.max(0, input.sizeStockTotal - input.orderedUnitsBySize)
+  return Math.max(0, Math.min(availableRaw, input.globalAvailable))
+}
+
+export function buildDropSizeStockNumbers(input: {
+  sizes: string[]
+  sizeStockTotals?: Array<{ size: string; stockTotal: number; position?: number }>
+  orderedUnitsBySize?: Record<string, number>
+  globalAvailable: number
+}): DropSizeStockNumbers[] {
+  const configured = new Map(
+    (input.sizeStockTotals ?? []).map((entry, index) => [
+      entry.size.trim().toLocaleLowerCase("es"),
+      {
+        size: entry.size.trim(),
+        stockTotal: Math.max(0, Math.trunc(Number(entry.stockTotal) || 0)),
+        position: Number.isFinite(entry.position) ? Number(entry.position) : index,
+      },
+    ])
+  )
+  const sizes = input.sizes.length ? input.sizes : Array.from(configured.values()).sort((a, b) => a.position - b.position).map((entry) => entry.size)
+
+  return sizes.map((size, index) => {
+    const key = size.trim().toLocaleLowerCase("es")
+    const config = configured.get(key)
+    const stockTotal = config?.stockTotal ?? 0
+    const orderedUnits = Math.max(0, Math.trunc(Number(input.orderedUnitsBySize?.[key]) || 0))
+    const availableRaw = Math.max(0, stockTotal - orderedUnits)
+
+    return {
+      size,
+      stockTotal,
+      orderedUnits,
+      availableRaw,
+      sellableNow: Math.max(0, Math.min(availableRaw, input.globalAvailable)),
+      position: config?.position ?? index,
+    }
+  })
+}
+
+export function normalizeDropSizeStock(
+  sizesInput: string | string[] | null | undefined,
+  stockInput: Array<{ size?: string; stockTotal?: number | string; position?: number | string }> | null | undefined
+) {
+  const sizes = parseDropOptionList(sizesInput)
+  const seen = new Map<string, { size: string; stockTotal: number; position: number }>()
+
+  for (const [index, entry] of (stockInput ?? []).entries()) {
+    const size = String(entry.size ?? "").trim().replace(/\s+/g, " ")
+    if (!size) continue
+    const key = size.toLocaleLowerCase("es")
+    if (seen.has(key)) continue
+    const parsedStock = Number(entry.stockTotal ?? 0)
+    const parsedPosition = Number(entry.position ?? index)
+    seen.set(key, {
+      size,
+      stockTotal: Math.max(0, Math.trunc(Number.isFinite(parsedStock) ? parsedStock : 0)),
+      position: Number.isFinite(parsedPosition) ? Math.trunc(parsedPosition) : index,
+    })
+  }
+
+  for (const size of sizes) {
+    const key = size.toLocaleLowerCase("es")
+    if (!seen.has(key)) {
+      seen.set(key, { size, stockTotal: 0, position: seen.size })
+    }
+  }
+
+  return Array.from(seen.values()).sort((a, b) => a.position - b.position)
 }
 
 export function formatDropPrice(value: number) {

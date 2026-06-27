@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, useTransition, type FormEvent } from "react"
 import { toast } from "sonner"
 
-import { saveDrop } from "@/actions/drops"
+import { archiveDropFromAdmin, saveDrop, unarchiveDropFromAdmin } from "@/actions/drops"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -42,7 +42,7 @@ type DropFormState = {
   price: string
   imageUrls: string[]
   colors: string
-  sizes: string
+  sizeStock: Array<{ size: string; stockTotal: string; position: number }>
   stockTotal: string
   launchAtLocal: string
   launchTimezone: string
@@ -61,7 +61,12 @@ function emptyDropForm(): DropFormState {
     price: "25",
     imageUrls: [],
     colors: "Blanco\nNegro",
-    sizes: "S\nM\nL\nXL",
+    sizeStock: [
+      { size: "S", stockTotal: "5", position: 0 },
+      { size: "M", stockTotal: "10", position: 1 },
+      { size: "L", stockTotal: "10", position: 2 },
+      { size: "XL", stockTotal: "5", position: 3 },
+    ],
     stockTotal: "30",
     launchAtLocal: DEFAULT_DROP_LAUNCH_LOCAL,
     launchTimezone: DROP_LAUNCH_TIME_ZONE,
@@ -82,7 +87,15 @@ function dropToForm(drop: EditableDropRecord): DropFormState {
     price: String(drop.price),
     imageUrls: drop.imageUrls,
     colors: drop.colors.join("\n"),
-    sizes: drop.sizes.join("\n"),
+    sizeStock: (drop.stock.sizeStock.length ? drop.stock.sizeStock : drop.sizes.map((size, index) => ({
+      size,
+      stockTotal: "0",
+      position: index,
+    }))).map((entry, index) => ({
+      size: entry.size,
+      stockTotal: String(entry.stockTotal),
+      position: entry.position ?? index,
+    })),
     stockTotal: String(drop.stockTotal),
     launchAtLocal: utcIsoToDateTimeLocalInZone(drop.launchAt, drop.launchTimezone),
     launchTimezone: drop.launchTimezone,
@@ -129,6 +142,8 @@ export function DropAdminEditor({
   const [isPending, startTransition] = useTransition()
   const moduleReady = moduleAvailability === "READY"
   const selectedDrop = drops.find((drop) => drop.id === selectedId)
+  const visibleDrops = drops.filter((drop) => !drop.archivedAt)
+  const archivedDrops = drops.filter((drop) => Boolean(drop.archivedAt))
   const uploadSlug = form.slug.trim() || slugifyFlavorName(form.name) || "draft"
   const previewLaunchAt = useMemo(() => {
     try {
@@ -138,6 +153,9 @@ export function DropAdminEditor({
     }
   }, [form.launchAtLocal, form.launchTimezone])
   const previewAvailableStock = Math.max(0, Number(form.stockTotal) || 0)
+  const sizeStockTotal = form.sizeStock.reduce((sum, entry) => sum + Math.max(0, Number(entry.stockTotal) || 0), 0)
+  const stockMismatch = sizeStockTotal !== previewAvailableStock
+  const selectedOrderedSizes = new Set(selectedDrop?.stock.sizeStock.filter((entry) => entry.orderedUnits > 0).map((entry) => entry.size) ?? [])
   const previewStatus = getDropPublicStatus(
     {
       isActive: form.isActive,
@@ -151,7 +169,9 @@ export function DropAdminEditor({
   const activePrelaunchHidden = form.isActive && previewStatus === "PRELAUNCH" && !form.floatingEnabled
   const statusSummary = form.isClosed
     ? "Drop cerrado manualmente."
-    : !form.isActive
+    : selectedDrop?.archivedAt
+      ? "Drop archivado."
+      : !form.isActive
       ? "Drop inactivo."
       : previewStatus === "PRELAUNCH" && form.floatingEnabled
         ? "Preventa activa con flotante visible."
@@ -177,6 +197,37 @@ export function DropAdminEditor({
     }))
   }
 
+  function updateSizeStock(index: number, field: "size" | "stockTotal", value: string) {
+    if (!moduleReady) return
+    setForm((current) => ({
+      ...current,
+      sizeStock: current.sizeStock.map((entry, entryIndex) =>
+        entryIndex === index ? { ...entry, [field]: value } : entry
+      ),
+    }))
+  }
+
+  function addSizeStockRow() {
+    if (!moduleReady) return
+    setForm((current) => ({
+      ...current,
+      sizeStock: [...current.sizeStock, { size: "", stockTotal: "0", position: current.sizeStock.length }],
+    }))
+  }
+
+  function removeSizeStockRow(index: number) {
+    if (!moduleReady) return
+    const entry = form.sizeStock[index]
+    if (entry && selectedOrderedSizes.has(entry.size)) {
+      toast.error("No se puede eliminar una talla con pedidos existentes. Pon su stock a 0 si ya no quieres venderla.")
+      return
+    }
+    setForm((current) => ({
+      ...current,
+      sizeStock: current.sizeStock.filter((_, entryIndex) => entryIndex !== index).map((item, position) => ({ ...item, position })),
+    }))
+  }
+
   function selectDrop(drop: EditableDropRecord) {
     if (!moduleReady) return
     setSelectedId(drop.id)
@@ -198,6 +249,12 @@ export function DropAdminEditor({
         ...form,
         price: Number(form.price),
         stockTotal: Number(form.stockTotal),
+        sizes: form.sizeStock.map((entry) => entry.size),
+        sizeStock: form.sizeStock.map((entry, index) => ({
+          size: entry.size,
+          stockTotal: Number(entry.stockTotal),
+          position: index,
+        })),
       })
 
       if (!response.ok) {
@@ -209,6 +266,39 @@ export function DropAdminEditor({
       setSelectedId(response.selectedId)
       setForm(dropToForm(response.drop))
       toast.success("Drop guardado")
+    })
+  }
+
+  function handleArchive() {
+    if (!selectedDrop) return
+    const reason = window.prompt("Archivar ocultará el drop del front y bloqueará preventas/ventas, pero conservará reservas, pedidos e historial.\n\nMotivo opcional:") ?? undefined
+
+    startTransition(async () => {
+      const response = await archiveDropFromAdmin({ dropId: selectedDrop.id, reason })
+      if (!response.ok) {
+        toast.error(response.error)
+        return
+      }
+      setDrops(response.drops)
+      setSelectedId(response.selectedId)
+      setForm(dropToForm(response.drop))
+      toast.success("Drop archivado")
+    })
+  }
+
+  function handleUnarchive() {
+    if (!selectedDrop) return
+
+    startTransition(async () => {
+      const response = await unarchiveDropFromAdmin({ dropId: selectedDrop.id })
+      if (!response.ok) {
+        toast.error(response.error)
+        return
+      }
+      setDrops(response.drops)
+      setSelectedId(response.selectedId)
+      setForm(dropToForm(response.drop))
+      toast.success("Drop desarchivado")
     })
   }
 
@@ -249,33 +339,46 @@ export function DropAdminEditor({
               Crear drop
             </Button>
           </CardHeader>
-          <CardContent className="space-y-2">
-            {drops.map((drop) => (
-              <button
-                key={drop.id}
-                type="button"
-                onClick={() => selectDrop(drop)}
-                disabled={!moduleReady}
-                className={`w-full rounded-md border px-4 py-3 text-left transition-colors ${
-                  drop.id === selectedId ? "border-primary bg-primary/5" : "border-border bg-background hover:border-primary/40"
-                }`}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-semibold text-foreground">{drop.name}</p>
-                    <p className="mt-1 text-xs uppercase tracking-[0.16em] text-muted-foreground">/drops/{drop.slug}</p>
-                  </div>
-                  <span className="rounded-full bg-secondary px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.16em]">
-                    {getDropStatusLabel(drop.status)}
-                  </span>
-                </div>
-                <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-muted-foreground">
-                  <span>Total: {drop.stock.stockTotal}</span>
-                  <span>Disponible: {drop.stock.availableStock}</span>
-                  <span>Reservado: {drop.stock.reservedUnits}</span>
-                  <span>Pedido: {drop.stock.orderedUnits}</span>
-                </div>
-              </button>
+          <CardContent className="space-y-5">
+            {[
+              { title: "Activos / borradores / cerrados", items: visibleDrops },
+              { title: "Archivados", items: archivedDrops },
+            ].map((section) => (
+              <div key={section.title} className="space-y-2">
+                <p className="text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground">{section.title}</p>
+                {section.items.map((drop) => (
+                  <button
+                    key={drop.id}
+                    type="button"
+                    onClick={() => selectDrop(drop)}
+                    disabled={!moduleReady}
+                    className={`w-full rounded-md border px-4 py-3 text-left transition-colors ${
+                      drop.id === selectedId ? "border-primary bg-primary/5" : "border-border bg-background hover:border-primary/40"
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-foreground">{drop.name}</p>
+                        <p className="mt-1 text-xs uppercase tracking-[0.16em] text-muted-foreground">/drops/{drop.slug}</p>
+                      </div>
+                      <span className="rounded-full bg-secondary px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.16em]">
+                        {drop.archivedAt ? "Archivado" : getDropStatusLabel(drop.status)}
+                      </span>
+                    </div>
+                    <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-muted-foreground">
+                      <span>Total: {drop.stock.stockTotal}</span>
+                      <span>Disponible: {drop.stock.availableStock}</span>
+                      <span>Reservado: {drop.stock.reservedUnits}</span>
+                      <span>Pedido: {drop.stock.orderedUnits}</span>
+                    </div>
+                  </button>
+                ))}
+                {!section.items.length ? (
+                  <p className="rounded-md border border-dashed border-border px-4 py-3 text-xs text-muted-foreground">
+                    Sin elementos.
+                  </p>
+                ) : null}
+              </div>
             ))}
             {!drops.length ? (
               <div className="rounded-md border border-dashed border-border px-4 py-6 text-sm text-muted-foreground">
@@ -327,13 +430,64 @@ export function DropAdminEditor({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="drop-sizes">Tallas</Label>
-              <Textarea id="drop-sizes" rows={5} value={form.sizes} onChange={(event) => updateField("sizes", event.target.value)} disabled={!moduleReady} />
-            </div>
-
-            <div className="space-y-2">
               <Label htmlFor="drop-colors">Colores</Label>
               <Textarea id="drop-colors" rows={5} value={form.colors} onChange={(event) => updateField("colors", event.target.value)} disabled={!moduleReady} />
+            </div>
+
+            <div className="space-y-3 md:col-span-2">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-foreground">Stock por talla editable</p>
+                  <p className="text-xs text-muted-foreground">
+                    General: {previewAvailableStock}. Suma por talla: {sizeStockTotal}.
+                  </p>
+                </div>
+                <Button type="button" variant="outline" onClick={addSizeStockRow} disabled={!moduleReady}>
+                  Añadir talla
+                </Button>
+              </div>
+              {stockMismatch ? (
+                <p className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
+                  La suma del stock por talla debe coincidir con el stock general antes de publicar.
+                </p>
+              ) : null}
+              <div className="overflow-x-auto border border-border">
+                <table className="w-full min-w-[620px] text-sm">
+                  <thead className="bg-secondary text-left text-xs uppercase tracking-[0.14em] text-muted-foreground">
+                    <tr>
+                      <th className="px-3 py-2">Talla</th>
+                      <th className="px-3 py-2">Stock total</th>
+                      <th className="px-3 py-2">Pedido</th>
+                      <th className="px-3 py-2">Disponible por talla</th>
+                      <th className="px-3 py-2">Vendible ahora</th>
+                      <th className="px-3 py-2">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {form.sizeStock.map((entry, index) => {
+                      const saved = selectedDrop?.stock.sizeStock.find((item) => item.size === entry.size)
+                      return (
+                        <tr key={`${entry.position}-${index}`} className="border-t border-border">
+                          <td className="px-3 py-2">
+                            <Input value={entry.size} onChange={(event) => updateSizeStock(index, "size", event.target.value)} disabled={!moduleReady} />
+                          </td>
+                          <td className="px-3 py-2">
+                            <Input type="number" min="0" step="1" value={entry.stockTotal} onChange={(event) => updateSizeStock(index, "stockTotal", event.target.value)} disabled={!moduleReady} />
+                          </td>
+                          <td className="px-3 py-2 text-muted-foreground">{saved?.orderedUnits ?? 0}</td>
+                          <td className="px-3 py-2 text-muted-foreground">{saved?.availableRaw ?? Math.max(0, Number(entry.stockTotal) || 0)}</td>
+                          <td className="px-3 py-2 text-muted-foreground">{saved?.sellableNow ?? Math.min(Math.max(0, Number(entry.stockTotal) || 0), previewAvailableStock)}</td>
+                          <td className="px-3 py-2">
+                            <Button type="button" variant="outline" onClick={() => removeSizeStockRow(index)} disabled={!moduleReady || selectedOrderedSizes.has(entry.size)}>
+                              Quitar
+                            </Button>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
 
             <div className="space-y-2 md:col-span-2">
@@ -360,6 +514,11 @@ export function DropAdminEditor({
                   El drop está cerrado: no admite reservas ni pedidos.
                 </p>
               ) : null}
+              {selectedDrop?.archivedAt ? (
+                <p className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
+                  Este drop está archivado: no aparece en la web ni admite reservas o pedidos.
+                </p>
+              ) : null}
               <div className="grid gap-3 md:grid-cols-3">
                 <label className="flex min-h-28 flex-col justify-between gap-4 rounded-md border border-border p-4">
                   <span>
@@ -368,7 +527,7 @@ export function DropAdminEditor({
                       Permite que el drop entre en preventa o venta según la fecha configurada.
                     </span>
                   </span>
-                  <Switch checked={form.isActive} onCheckedChange={(checked) => updateField("isActive", checked)} disabled={!moduleReady} aria-label="Publicar drop" />
+                  <Switch checked={form.isActive} onCheckedChange={(checked) => updateField("isActive", checked)} disabled={!moduleReady || Boolean(selectedDrop?.archivedAt)} aria-label="Publicar drop" />
                 </label>
                 <label className="flex min-h-28 flex-col justify-between gap-4 rounded-md border border-border p-4">
                   <span>
@@ -377,7 +536,7 @@ export function DropAdminEditor({
                       Muestra el aviso en el hero solo antes del lanzamiento.
                     </span>
                   </span>
-                  <Switch checked={form.floatingEnabled} onCheckedChange={(checked) => updateField("floatingEnabled", checked)} disabled={!moduleReady} aria-label="Mostrar flotante de preventa" />
+                  <Switch checked={form.floatingEnabled} onCheckedChange={(checked) => updateField("floatingEnabled", checked)} disabled={!moduleReady || Boolean(selectedDrop?.archivedAt)} aria-label="Mostrar flotante de preventa" />
                 </label>
                 <label className="flex min-h-28 flex-col justify-between gap-4 rounded-md border border-border p-4">
                   <span>
@@ -386,7 +545,7 @@ export function DropAdminEditor({
                       Bloquea preventas y ventas aunque el drop siga publicado.
                     </span>
                   </span>
-                  <Switch checked={form.isClosed} onCheckedChange={(checked) => updateField("isClosed", checked)} disabled={!moduleReady} aria-label="Cerrar drop manualmente" />
+                  <Switch checked={form.isClosed} onCheckedChange={(checked) => updateField("isClosed", checked)} disabled={!moduleReady || Boolean(selectedDrop?.archivedAt)} aria-label="Cerrar drop manualmente" />
                 </label>
               </div>
             </div>
@@ -459,6 +618,16 @@ export function DropAdminEditor({
           <Button type="button" variant="outline" onClick={() => setForm(form.id && selectedDrop ? dropToForm(selectedDrop) : emptyDropForm())} disabled={isPending || !moduleReady}>
             Descartar cambios
           </Button>
+          {selectedDrop && !selectedDrop.archivedAt ? (
+            <Button type="button" variant="outline" onClick={handleArchive} disabled={isPending || !moduleReady}>
+              Archivar drop
+            </Button>
+          ) : null}
+          {selectedDrop?.archivedAt ? (
+            <Button type="button" variant="outline" onClick={handleUnarchive} disabled={isPending || !moduleReady}>
+              Desarchivar
+            </Button>
+          ) : null}
         </div>
       </form>
     </div>

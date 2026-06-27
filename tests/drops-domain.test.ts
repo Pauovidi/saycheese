@@ -5,6 +5,8 @@ import {
   DEFAULT_DROP_LAUNCH_AT_UTC,
   DEFAULT_DROP_PREORDER_CTA_TEXT,
   computeAvailableDropStock,
+  buildDropSizeStockNumbers,
+  computeDropSizeSellableNow,
   getDropPublicStatus,
   localDateTimeToUtcIso,
   normalizeDropPreorderCtaText,
@@ -60,6 +62,7 @@ test("estado público distingue inactivo, agotado y cerrado", () => {
   assert.equal(getDropPublicStatus({ isActive: false, launchAt, availableStock: 30 }), "INACTIVE")
   assert.equal(getDropPublicStatus({ isActive: true, launchAt, availableStock: 0 }), "SOLD_OUT")
   assert.equal(getDropPublicStatus({ isActive: true, isClosed: true, launchAt, availableStock: 30 }), "CLOSED")
+  assert.equal(getDropPublicStatus({ isActive: true, archivedAt: "2026-06-27T10:00:00.000Z", launchAt, availableStock: 30 }), "CLOSED")
 })
 
 test("Atlantic/Canary 01/07/2026 00:00 se almacena como UTC consistente", () => {
@@ -75,6 +78,27 @@ test("stock disponible descuenta preventas activas y pedidos", () => {
       orderedUnits: 2,
     }),
     26
+  )
+})
+
+test("stock por talla queda limitado por stock bruto y global disponible", () => {
+  assert.equal(computeDropSizeSellableNow({ sizeStockTotal: 10, orderedUnitsBySize: 0, globalAvailable: 23 }), 10)
+  assert.equal(computeDropSizeSellableNow({ sizeStockTotal: 10, orderedUnitsBySize: 0, globalAvailable: 2 }), 2)
+  assert.equal(computeDropSizeSellableNow({ sizeStockTotal: 10, orderedUnitsBySize: 10, globalAvailable: 23 }), 0)
+
+  assert.deepEqual(
+    buildDropSizeStockNumbers({
+      sizes: ["S", "M", "L", "XL"],
+      sizeStockTotals: [
+        { size: "S", stockTotal: 5, position: 0 },
+        { size: "M", stockTotal: 10, position: 1 },
+        { size: "L", stockTotal: 10, position: 2 },
+        { size: "XL", stockTotal: 5, position: 3 },
+      ],
+      orderedUnitsBySize: { m: 3 },
+      globalAvailable: 23,
+    }).map((entry) => [entry.size, entry.availableRaw, entry.sellableNow]),
+    [["S", 5, 5], ["M", 7, 7], ["L", 10, 10], ["XL", 5, 5]]
   )
 })
 

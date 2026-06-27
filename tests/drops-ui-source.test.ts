@@ -79,6 +79,9 @@ test("ficha live permite talla, color, cantidad y línea drop en carrito", async
   assert.match(source, /quantity/)
   assert.match(source, /format: "drop"/)
   assert.match(source, /dropId: drop\.id/)
+  assert.match(source, /sellableNow/)
+  assert.match(source, /Agotada/)
+  assert.match(source, /selectedSizeSellable/)
 })
 
 test("backoffice expone Drops y Camisetas con preventas y pedidos separados", async () => {
@@ -98,8 +101,36 @@ test("backoffice expone Drops y Camisetas con preventas y pedidos separados", as
   assert.match(editor, /Publicar drop/)
   assert.match(editor, /Mostrar flotante de preventa/)
   assert.match(editor, /Cerrar drop manualmente/)
+  assert.match(editor, /Archivar drop/)
+  assert.match(editor, /Desarchivar/)
+  assert.match(editor, /Archivados/)
+  assert.match(editor, /Stock por talla editable/)
+  assert.match(editor, /suma del stock por talla/i)
   assert.match(shirts, /Módulo no inicializado/)
   assert.match(shirts, /moduleReady/)
+})
+
+test("preventa rota idempotency key cancelada una sola vez", async () => {
+  const source = await readFile(resolve("src/components/drops/hero-drop-floating.tsx"), "utf8")
+
+  assert.match(source, /rotateBrowserIdempotencyKey/)
+  assert.match(source, /reservation_cancelled_idempotency_key/)
+  assert.match(source, /reserveDropPrelaunch[\s\S]*reserveDropPrelaunch/)
+})
+
+test("chatbot integra drops antes del flujo de tartas sin pedir camisetas por WhatsApp", async () => {
+  const engine = await readFile(resolve("lib/chatbot/engine.ts"), "utf8")
+  const drops = await readFile(resolve("lib/chatbot/drops.ts"), "utf8")
+
+  assert.match(engine, /buildDropsReplyIfIntent/)
+  assert.ok(engine.indexOf("const dropsReply") < engine.indexOf("const orderTurn"))
+  assert.match(engine, /WhatsApp no crea pedidos de camisetas/)
+  assert.match(drops, /listChatbotDrops/)
+  assert.match(drops, /sizeSellableNow|sellableNow/)
+  assert.match(drops, /quiero\|pedir\|comprar\|encargar/)
+  assert.match(drops, /camisa\|camiseta\|drop\|merch/)
+  assert.match(drops, /no puedo confirmar los drops/)
+  assert.doesNotMatch(drops, /createChatOrder|createOrderWithItems/)
 })
 
 test("backoffice gestiona imágenes sin textarea crudo de URLs", async () => {

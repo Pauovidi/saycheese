@@ -34,6 +34,7 @@ import {
   processOrderConversationTurn,
   type OrderState,
 } from "@/lib/chatbot/order-flow"
+import { buildDropsReplyIfIntent } from "@/lib/chatbot/drops"
 import { cancelChatOrder, createChatOrder } from "@/lib/chatbot/orders"
 import { sendWebOrderWhatsappConfirmation } from "@/lib/chatbot/whatsapp-confirmation"
 import {
@@ -73,6 +74,7 @@ const ORDER_STATE_PREFIX = "__ORDER_STATE__:"
 const SYSTEM_PROMPT = `Eres el asistente de Tentados by Néstor Pérez.
 Responde en español, claro y breve.
 No inventes datos de producto. Si faltan ingredientes o alérgenos confirmados, ofrece atención humana.
+No inventes drops, camisetas, tallas ni stock. Las camisetas/drops se responden con la fuente determinista de Drops; WhatsApp no crea pedidos de camisetas.
 Política obligatoria: ${PICKUP_ONLY_COPY}
 Dirección oficial obligatoria: ${STORE_ADDRESS || "sin dirección configurada"}. Nunca des una dirección distinta.
 Nunca uses "recogerte" ni "recibir" para pedidos; usa "recoger"/"recogida".
@@ -497,6 +499,11 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
 
   if (hasAllergensIntent(message)) {
     return saveAndReply(userId, await buildProductFactsReply(message, channel))
+  }
+
+  const dropsReply = await buildDropsReplyIfIntent(message)
+  if (dropsReply) {
+    return saveAndReply(userId, dropsReply, resetOrderState(state, channel))
   }
 
   const orderTurn = await processOrderConversationTurn({

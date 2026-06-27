@@ -22,19 +22,38 @@ El formulario admin propone `01/07/2026 00:00` en `Atlantic/Canary`. En base de 
 
 ## Stock
 
-El stock es global por drop, no por talla/color.
+El stock mantiene dos niveles: stock general del drop y stock por talla.
 
 ```
-stockDisponible = stockTotalConfigurado - reservasActivas - pedidosMerchNoCancelados
+globalAvailable = stockTotal - reservedUnits - orderedUnits
+sizeAvailableRaw[size] = sizeStockTotal[size] - orderedUnitsBySize[size]
+sizeSellableNow[size] = min(sizeAvailableRaw[size], globalAvailable)
 ```
 
-Las reservas activas consumen 1 unidad. Al cancelarlas, dejan de contar una sola vez. Los pedidos consumen stock cuando se crean como pedido normal; si el pedido está `cancelled`, deja de contar.
+En PRELAUNCH/preventa no se elige talla ni color. Las reservas activas consumen 1 unidad genérica del stock general. Al cancelarlas, dejan de contar una sola vez.
+
+En LIVE/venta el cliente elige talla, color y cantidad. Cada pedido consume stock global y disponibilidad de la talla seleccionada. El servidor valida que la cantidad no supere ni `globalAvailable` ni `sizeAvailableRaw` de esa talla. En UI y chatbot se muestra `sizeSellableNow`.
+
+El backoffice compara la suma del stock por talla con el stock general. Para publicar un drop activo, ambas cifras deben coincidir. Un borrador puede guardarse incompleto para terminarlo después, pero se muestra advertencia. Si una talla ya tiene pedidos, la UI no permite eliminarla para no confundir el histórico; se recomienda poner stock 0 si ya no debe venderse.
 
 Las operaciones críticas viven en RPC SQL con bloqueo de fila `FOR UPDATE`:
 
 - `create_drop_reservation`: preventa idempotente y atómica.
 - `cancel_drop_reservation`: cancelación idempotente.
 - `create_order_with_items`: creación de pedido y líneas `drop` en la misma transacción.
+
+## Archivado
+
+Archivar es la alternativa segura al borrado físico. Un drop archivado conserva reservas, pedidos y revisiones, pero queda fuera del front público, del flotante del hero, del menú/listado público y de cualquier operación de preventa o venta.
+
+Cerrar y archivar no significan lo mismo:
+
+- Cerrar bloquea preventas y ventas de un drop que puede seguir existiendo como registro operativo.
+- Archivar lo retira del circuito público y lo mueve a la sección `Archivados` del backoffice.
+
+Desde `/admin/drops` se puede usar `Archivar drop`. La confirmación avisa que archivar ocultará el drop del front y bloqueará preventas/ventas, conservando reservas, pedidos e historial. Al archivar se marca `archived_at`, se guarda `archived_by` y un motivo opcional, se apaga `is_active`, se apaga `floating_enabled` y queda cerrado para operaciones.
+
+`Desarchivar` lo recupera como borrador seguro: no lo publica automáticamente ni reactiva el flotante. No hay botón de borrado definitivo en esta iteración.
 
 ## Migración
 
@@ -50,6 +69,12 @@ La migración aditiva de refinamiento es:
 
 Añade `drops.preorder_cta_text` con default `Preventa`, constraint de texto no vacío y máximo 60 caracteres, y deja versionado el endurecimiento de permisos de las RPC para que solo `service_role` pueda ejecutarlas. No inserta drops, no modifica datos existentes y no debe ejecutarse automáticamente contra producción desde una terminal local.
 
+La migración aditiva de archivado y stock por talla es:
+
+`supabase/migrations/202606260001_archive_drops_size_stock_chatbot.sql`
+
+Añade `archived_at`, `archived_by`, `archive_reason`, crea `drop_size_stock`, actualiza filtros públicos mediante `archived_at is null`, actualiza `get_drop_stock_summary`, `create_drop_reservation` y `create_order_with_items`, y mantiene permisos de RPC cerrados a `anon`/`authenticated`. No ejecuta SQL remoto, no crea drops productivos y no activa ni archiva datos existentes.
+
 ## Despliegue de código antes de migración
 
 El código puede desplegarse antes de que la migración exista en el entorno remoto. Si Supabase devuelve un error de schema cache por tablas, columnas o RPC de Drops ausentes, la web pública degrada de forma segura:
@@ -63,6 +88,8 @@ Esta protección no ejecuta migraciones remotas, no cambia variables de entorno,
 
 Para `preorder_cta_text`, el código también puede desplegarse antes de aplicar la migración aditiva. Si PostgREST informa que falta esa columna, las lecturas públicas reintentan con columnas legacy y usan el CTA fallback `Preventa`. El backoffice muestra una actualización pendiente: permite leer y previsualizar, pero no finge que un CTA personalizado se ha guardado si la columna aún no existe.
 
+Para archivado y stock por talla, las lecturas públicas tienen fallback legacy cuando faltan columnas nuevas. Las mutaciones que dependen del modelo nuevo fallan cerrado con 503 controlado hasta aplicar la migración. No ejecutes SQL remoto ni `supabase db push` sin autorización explícita.
+
 ## Backoffice
 
 En `Admin > Drops` se puede crear o editar:
@@ -71,7 +98,8 @@ En `Admin > Drops` se puede crear o editar:
 - descripción;
 - precio;
 - imágenes;
-- colores y tallas;
+- colores;
+- stock por talla;
 - stock total;
 - fecha de lanzamiento;
 - `Publicar drop`: permite que el drop entre en preventa o venta según la fecha configurada;
@@ -109,6 +137,22 @@ Antes de `launchAt`, si el drop está activo, en `PRELAUNCH`, con flotante activ
 La preventa no pide talla, color ni cantidad, no abre checkout y no crea un pedido normal.
 
 Desde `launchAt`, el flotante desaparece, aparece `Drops` en el menú, `/drops` lista el producto y `/drops/[slug]` permite elegir talla, color y cantidad antes de añadir al carrito. El checkout existente crea el pedido y el servidor revalida stock.
+
+Si una preventa se cancela desde backoffice, el navegador puede conservar una idempotency key antigua. La RPC diferencia reserva activa y cancelada: si la key apunta a una cancelada devuelve `reservation_cancelled_idempotency_key`. El cliente rota la clave y reintenta una sola vez. Así se mantiene protección contra doble click y se permite reservar de nuevo después de una cancelación, sin falso éxito ni stock negativo.
+
+## Chatbot
+
+El chatbot conoce drops de forma determinista antes de caer al LLM. Responde a preguntas sobre drops, camisetas, merchandising, preventa, lanzamiento, colores, tallas y stock por talla usando la misma fuente de verdad segura del front.
+
+Ejemplos:
+
+- PRELAUNCH: informa nombre, precio, fecha de lanzamiento en `Atlantic/Canary`, stock global, tallas previstas, colores y aclara que la preventa reserva una unidad genérica sin talla/color.
+- LIVE: informa nombre, precio, stock global y tallas con disponibilidad vendible, por ejemplo `S (5), M (10), L (10), XL (5)`.
+- Talla concreta: responde si queda o está agotada usando `sizeSellableNow`.
+- Archivado o sin drops públicos: responde que ahora mismo no hay drops publicados.
+- Error de módulo: responde seguro sin SQL, tablas ni detalles internos.
+
+Limitación intencionada: WhatsApp no crea pedidos de camisetas en esta iteración. Si alguien escribe `quiero una camiseta`, el bot redirige a la sección Drops de la web para elegir talla, color y cantidad.
 
 ## Pruebas locales
 

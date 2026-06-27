@@ -73,3 +73,36 @@ test("migración aditiva del refinamiento añade CTA y endurece permisos RPC", a
     assert.match(source, new RegExp(`grant execute on function public\\.${fn} to service_role`))
   }
 })
+
+test("migración aditiva de archivado y stock por talla es segura y no destructiva", async () => {
+  const source = await readFile(resolve("supabase/migrations/202606260001_archive_drops_size_stock_chatbot.sql"), "utf8")
+
+  assert.match(source, /add column if not exists archived_at/)
+  assert.match(source, /add column if not exists archived_by/)
+  assert.match(source, /add column if not exists archive_reason/)
+  assert.match(source, /create table if not exists public\.drop_size_stock/)
+  assert.match(source, /drop_size_stock_total_non_negative/)
+  assert.match(source, /drop_size_stock_size_not_blank/)
+  assert.match(source, /drop_size_stock_drop_position_idx/)
+  assert.match(source, /archived_at is null/)
+  assert.match(source, /drop_archived/)
+  assert.match(source, /reservation_cancelled_idempotency_key/)
+  assert.match(source, /drop_size_sold_out/)
+  assert.match(source, /jsonb_agg/)
+  assert.match(source, /sellable_now/)
+  assert.doesNotMatch(source, /delete\s+from\s+public\.drops/i)
+  assert.doesNotMatch(source, /delete\s+from\s+public\.drop_reservations/i)
+  assert.doesNotMatch(source, /delete\s+from\s+public\.order_items/i)
+  assert.doesNotMatch(source, /insert into public\.drops/i)
+
+  for (const fn of [
+    "get_drop_stock_summary\\(uuid\\)",
+    "create_drop_reservation\\(uuid, text, text\\)",
+    "cancel_drop_reservation\\(uuid, text\\)",
+    "create_order_with_items\\(uuid, date, text, text, text, text, text, timestamptz, text, jsonb\\)",
+  ]) {
+    assert.match(source, new RegExp(`revoke all on function public\\.${fn} from anon`))
+    assert.match(source, new RegExp(`revoke all on function public\\.${fn} from authenticated`))
+    assert.match(source, new RegExp(`grant execute on function public\\.${fn} to service_role`))
+  }
+})
