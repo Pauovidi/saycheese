@@ -49,6 +49,7 @@ const dropRow = {
   colors: ["Blanco", "Negro"],
   sizes: ["S", "M", "L", "XL"],
   stock_total: 30,
+  size_stock_enabled: true,
   launch_at: "2026-06-30T23:00:00.000Z",
   launch_timezone: "Atlantic/Canary",
   is_active: true,
@@ -76,6 +77,15 @@ const sizeStockSummary = [
   { size: "L", stock_total: 10, ordered_units: 0, available_raw: 10, sellable_now: 10, position: 2 },
   { size: "XL", stock_total: 5, ordered_units: 0, available_raw: 5, sellable_now: 5, position: 3 },
 ]
+
+const noSizeDropRow = {
+  ...dropRow,
+  slug: "poster-tentados",
+  name: "Poster Tentados",
+  sizes: [],
+  stock_total: 12,
+  size_stock_enabled: false,
+}
 
 test.afterEach(() => {
   setDropStoreClientForTests(null)
@@ -119,6 +129,23 @@ test("chatbot no crea pedidos de camisetas por WhatsApp", async () => {
 
   assert.match(reply ?? "", /sección Drops/i)
   assert.match(reply ?? "", /talla, color y cantidad/i)
+})
+
+test("chatbot no inventa tallas cuando el drop se vende sin talla", async () => {
+  setMockClient({
+    drops: { data: [{ ...noSizeDropRow, launch_at: "2026-01-01T00:00:00.000Z" }], error: null },
+    stock: { data: { stock_total: 12, reserved_units: 0, ordered_units: 0, available_stock: 12 }, error: null },
+    sizeStock: { data: [], error: null },
+  })
+
+  const sizeReply = await buildDropsReplyIfIntent("¿queda talla M?")
+  assert.match(sizeReply ?? "", /sin selección de talla|sin talla/i)
+  assert.doesNotMatch(sizeReply ?? "", /quedan \d+ unidades vendibles/i)
+
+  const generalReply = await buildDropsReplyIfIntent("¿hay camisetas?")
+  assert.match(generalReply ?? "", /Poster Tentados/)
+  assert.match(generalReply ?? "", /12 unidades/)
+  assert.match(generalReply ?? "", /sin selección de talla/i)
 })
 
 test("chatbot responde seguro sin drops o con fallo del módulo", async () => {

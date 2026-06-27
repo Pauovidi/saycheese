@@ -35,6 +35,7 @@ export type DropRow = {
   colors: unknown
   sizes: unknown
   stock_total: number | null
+  size_stock_enabled?: boolean | null
   launch_at: string | null
   launch_timezone: string | null
   is_active: boolean
@@ -60,6 +61,7 @@ export type EditableDropRecord = {
   colors: string[]
   sizes: string[]
   stockTotal: number
+  sizeStockEnabled: boolean
   launchAt: string
   launchTimezone: string
   isActive: boolean
@@ -85,6 +87,7 @@ export type DropMutationInput = {
   colors: string[]
   sizes: string[]
   stockTotal: number
+  sizeStockEnabled: boolean
   launchAt: string
   launchTimezone?: string
   isActive: boolean
@@ -163,7 +166,7 @@ export type OrderWithItemsInput = {
         type: "drop"
         drop_id: string
         qty: number
-        selected_size: string
+        selected_size?: string | null
         selected_color: string
       }
   >
@@ -179,6 +182,7 @@ const LEGACY_DROP_COLUMNS = [
   "colors",
   "sizes",
   "stock_total",
+  "size_stock_enabled",
   "launch_at",
   "launch_timezone",
   "is_active",
@@ -368,6 +372,7 @@ async function getDropSizeStockSummary(dropId: string, sizes: string[], globalAv
 export function mapDropRow(row: DropRow, stock: DropStockNumbers, now: Date = new Date()): EditableDropRecord {
   const price = readNumber(row.price)
   const launchAt = row.launch_at ?? DEFAULT_DROP_LAUNCH_AT_UTC
+  const sizeStockEnabled = row.size_stock_enabled ?? stock.sizeStock.length > 0
 
   return {
     id: row.id,
@@ -379,7 +384,8 @@ export function mapDropRow(row: DropRow, stock: DropStockNumbers, now: Date = ne
     imageUrls: readStringArray(row.image_urls),
     colors: readStringArray(row.colors),
     sizes: readStringArray(row.sizes),
-    stockTotal: row.stock_total ?? stock.stockTotal,
+    stockTotal: sizeStockEnabled ? stock.stockTotal : row.stock_total ?? stock.stockTotal,
+    sizeStockEnabled,
     launchAt,
     launchTimezone: row.launch_timezone ?? DROP_LAUNCH_TIME_ZONE,
     isActive: Boolean(row.is_active),
@@ -415,7 +421,10 @@ function mutationRow(input: DropMutationInput) {
     image_urls: input.imageUrls,
     colors: input.colors,
     sizes: input.sizes,
-    stock_total: input.stockTotal,
+    stock_total: input.sizeStockEnabled
+      ? input.sizeStock.reduce((sum, entry) => sum + Math.max(0, Math.trunc(entry.stockTotal)), 0)
+      : input.stockTotal,
+    size_stock_enabled: input.sizeStockEnabled,
     launch_at: input.launchAt,
     launch_timezone: input.launchTimezone ?? DROP_LAUNCH_TIME_ZONE,
     is_active: input.isActive,
@@ -440,6 +449,7 @@ function buildRevisionSnapshot(drop: EditableDropRecord) {
     colors: drop.colors,
     sizes: drop.sizes,
     stockTotal: drop.stockTotal,
+    sizeStockEnabled: drop.sizeStockEnabled,
     launchAt: drop.launchAt,
     launchTimezone: drop.launchTimezone,
     isActive: drop.isActive,
@@ -595,7 +605,7 @@ function dedupeSizeStockInput(sizeStock: DropMutationInput["sizeStock"]) {
 
 async function assertDropArchiveSizeStockSchemaReady(operation: string) {
   const supabase = getDropClient()
-  const archiveCheck = await supabase.from("drops").select("archived_at, archived_by, archive_reason").limit(1)
+  const archiveCheck = await supabase.from("drops").select("archived_at, archived_by, archive_reason, size_stock_enabled").limit(1)
   if (archiveCheck.error) throw toDropMutationError(archiveCheck.error, `${operation}.archiveSchema`)
 
   const sizeCheck = await supabase.from("drop_size_stock").select("id, size, stock_total, position, is_active, archived_at, archived_by").limit(1)

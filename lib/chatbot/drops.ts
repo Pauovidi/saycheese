@@ -66,17 +66,25 @@ function formatConfiguredSizes(drop: EditableDropRecord) {
   return drop.sizes.join(", ")
 }
 
+function asksForSizes(message: string) {
+  return /\btallas?\b/.test(normalize(message))
+}
+
 function buildNoDropsReply() {
   return "Ahora mismo no tenemos drops publicados. Si quieres, te avisamos cuando salga el próximo."
 }
 
 function buildDropOrderRedirect(drop: EditableDropRecord) {
   if (drop.status === "PRELAUNCH") {
-    return `Ahora puedes hacer la preventa de ${drop.name} desde la web; talla y color se eligen cuando esté en venta.`
+    return drop.sizeStockEnabled
+      ? `Ahora puedes hacer la preventa de ${drop.name} desde la web; las tallas se eligen desde el lanzamiento.`
+      : `Ahora puedes hacer la preventa de ${drop.name} desde la web; reservas una unidad genérica sin talla.`
   }
 
   if (drop.status === "LIVE") {
-    return `Para camisetas, hazlo desde la sección Drops de la web para elegir talla, color y cantidad: /drops/${drop.slug}`
+    return drop.sizeStockEnabled
+      ? `Para camisetas, hazlo desde la sección Drops de la web para elegir talla, color y cantidad: /drops/${drop.slug}`
+      : `Para camisetas, hazlo desde la sección Drops de la web; este drop se pide sin talla: /drops/${drop.slug}`
   }
 
   return "Ahora mismo el drop está agotado."
@@ -97,7 +105,15 @@ function buildDropReply(drop: EditableDropRecord, message: string) {
     return drop.colors.length ? `Colores disponibles: ${drop.colors.join(", ")}.` : "Ahora mismo no tengo colores configurados para este drop."
   }
 
+  if (!drop.sizeStockEnabled && asksForSizes(message)) {
+    return `Este drop se vende sin selección de talla ahora mismo. Puedes pedirlo sin talla desde la sección Drops: /drops/${drop.slug}`
+  }
+
   if (requestedSize) {
+    if (!drop.sizeStockEnabled) {
+      return `Este drop no tiene tallas activas/configuradas ahora mismo; se pide sin talla desde la sección Drops.`
+    }
+
     const stock = drop.stock.sizeStock.find((entry) => entry.size === requestedSize)
     if (drop.status === "PRELAUNCH") {
       return `La talla ${requestedSize} está prevista para ${drop.name}. En preventa reservas una unidad genérica; talla y color se eligen cuando esté en venta.`
@@ -111,11 +127,17 @@ function buildDropReply(drop: EditableDropRecord, message: string) {
   }
 
   if (drop.status === "PRELAUNCH") {
-    return `Sí, tenemos drop: ${drop.name}. Está en preventa hasta el ${formatLaunchDate(drop.launchAt)}. Quedan ${drop.stock.availableStock} unidades. Precio: ${drop.priceText}. Tallas previstas: ${formatConfiguredSizes(drop)}. Colores: ${drop.colors.join(", ")}. En preventa reservas una unidad; talla y color se eligen cuando esté en venta.`
+    const sizeCopy = drop.sizeStockEnabled
+      ? ` Tallas previstas: ${formatConfiguredSizes(drop)}. En preventa reservas una unidad genérica; las tallas se eligen desde el lanzamiento.`
+      : " Se reserva una unidad genérica sin talla."
+    return `Sí, tenemos drop: ${drop.name}. Está en preventa hasta el ${formatLaunchDate(drop.launchAt)}. Quedan ${drop.stock.availableStock} unidades. Precio: ${drop.priceText}.${sizeCopy} Colores: ${drop.colors.join(", ")}.`
   }
 
   if (drop.status === "LIVE") {
-    return `Sí, tenemos en venta ${drop.name}. Precio: ${drop.priceText}. Quedan ${drop.stock.availableStock} unidades en total. Tallas: ${formatSizeStock(drop)}. Colores: ${drop.colors.join(", ")}. Puedes pedirla en la sección Drops: /drops/${drop.slug}`
+    const sizeCopy = drop.sizeStockEnabled
+      ? ` Tallas: ${formatSizeStock(drop)}.`
+      : " Este drop se vende sin selección de talla."
+    return `Sí, tenemos en venta ${drop.name}. Precio: ${drop.priceText}. Quedan ${drop.stock.availableStock} unidades en total.${sizeCopy} Colores: ${drop.colors.join(", ")}. Puedes pedirla en la sección Drops: /drops/${drop.slug}`
   }
 
   if (drop.status === "SOLD_OUT") {

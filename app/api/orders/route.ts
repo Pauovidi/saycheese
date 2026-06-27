@@ -31,7 +31,7 @@ const orderPayloadSchema = z.object({
           type: z.literal("drop"),
           flavor: z.string().min(1).optional(),
           drop_id: z.string().uuid(),
-          selected_size: z.string().min(1),
+          selected_size: z.string().min(1).optional().nullable(),
           selected_color: z.string().min(1),
           qty: z.number().int().positive(),
         }),
@@ -138,7 +138,7 @@ export async function POST(request: Request) {
               ? {
                   type: "drop",
                   drop_id: item.drop_id,
-                  selected_size: item.selected_size,
+                  selected_size: item.selected_size ?? null,
                   selected_color: item.selected_color,
                   qty: item.qty,
                 }

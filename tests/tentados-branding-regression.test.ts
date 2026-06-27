@@ -75,7 +75,8 @@ test("chatbot conserva sabores y copy de recogida en Zona Telde", () => {
 test("hero elimina claim secundario y overlay rojo", () => {
   const hero = readSource("src/components/home/hero-section.tsx")
 
-  assert.match(hero, /Nuestra mejor obra de arte/i)
+  assert.match(hero, /¡CAERÁS EN LA TENTACIÓN!/)
+  assert.doesNotMatch(hero, /Nuestra mejor obra de arte/i)
   assert.match(hero, /Ver tartas/i)
   assert.doesNotMatch(hero, oldAwardClaimPattern)
   assert.doesNotMatch(hero, /bg-\[#601116\]\/50/)

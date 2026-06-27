@@ -71,23 +71,39 @@ test("card publica de drops sigue la composicion de producto y enlaza al detalle
   assert.doesNotMatch(source, /addItem/)
 })
 
-test("ficha live permite talla, color, cantidad y línea drop en carrito", async () => {
+test("ficha live soporta drops con y sin tallas y no muestra conteos en botones", async () => {
   const source = await readFile(resolve("src/components/drops/drop-product-detail.tsx"), "utf8")
 
+  assert.match(source, /usesSizeStock/)
   assert.match(source, /selectedSize/)
   assert.match(source, /selectedColor/)
   assert.match(source, /quantity/)
   assert.match(source, /format: "drop"/)
   assert.match(source, /dropId: drop\.id/)
   assert.match(source, /sellableNow/)
-  assert.match(source, /Agotada/)
-  assert.match(source, /selectedSizeSellable/)
+  assert.match(source, /agotada/i)
+  assert.match(source, /selectedSellable/)
+  assert.match(source, /usesSizeStock \? selectedSize : undefined/)
+  assert.doesNotMatch(source, /\{stock\?\.sellableNow\}/)
+  assert.doesNotMatch(source, /quedan \$\{stock\?\.sellableNow/)
+})
+
+test("carrito y checkout omiten talla cuando el drop se vende sin talla", async () => {
+  const drawer = await readFile(resolve("src/components/cart-drawer.tsx"), "utf8")
+  const checkout = await readFile(resolve("src/components/checkout-summary.tsx"), "utf8")
+  const api = await readFile(resolve("app/api/orders/route.ts"), "utf8")
+
+  assert.match(drawer, /\[item\.product\.selectedSize, item\.product\.selectedColor\]\.filter\(Boolean\)/)
+  assert.match(checkout, /selected_size: item\.product\.selectedSize \?\? null/)
+  assert.match(checkout, /\[item\.product\.selectedSize, item\.product\.selectedColor\]\.filter\(Boolean\)/)
+  assert.match(api, /selected_size: z\.string\(\)\.min\(1\)\.optional\(\)\.nullable\(\)/)
 })
 
 test("backoffice expone Drops y Camisetas con preventas y pedidos separados", async () => {
   const nav = await readFile(resolve("src/components/admin/admin-nav.tsx"), "utf8")
   const editor = await readFile(resolve("src/components/admin/drops/drop-admin-editor.tsx"), "utf8")
   const shirts = await readFile(resolve("src/components/admin/drops/shirts-admin.tsx"), "utf8")
+  const actions = await readFile(resolve("actions/drops.ts"), "utf8")
 
   assert.match(nav, /\/admin\/drops/)
   assert.match(nav, /\/admin\/camisetas/)
@@ -104,8 +120,15 @@ test("backoffice expone Drops y Camisetas con preventas y pedidos separados", as
   assert.match(editor, /Archivar drop/)
   assert.match(editor, /Desarchivar/)
   assert.match(editor, /Archivados/)
-  assert.match(editor, /Stock por talla editable/)
-  assert.match(editor, /suma del stock por talla/i)
+  assert.match(editor, /Usar tallas y stock por talla/)
+  assert.match(editor, /El stock total se calcula automáticamente sumando las tallas activas/)
+  assert.match(editor, /no afectan al stock ni a la venta/)
+  assert.doesNotMatch(editor, /La suma del stock por talla debe coincidir/)
+  assert.match(actions, /sizeStockEnabled/)
+  assert.match(actions, /Antes de activar un drop debes configurar al menos un color/)
+  assert.match(actions, /Antes de publicar con tallas debes configurar al menos una talla con stock/)
+  assert.doesNotMatch(actions, /Antes de activar un drop debes configurar al menos una talla y un color/)
+  assert.doesNotMatch(actions, /La suma del stock por talla debe coincidir/)
   assert.match(shirts, /Módulo no inicializado/)
   assert.match(shirts, /moduleReady/)
 })

@@ -158,7 +158,7 @@ export function ShirtsAdmin({
                   <p className="text-muted-foreground">Fecha pedido: {formatDate(order.createdAt)}</p>
                   <p className="text-muted-foreground">Recogida: {order.deliveryDate}</p>
                   <p className="text-muted-foreground">{order.customerName ?? "Sin nombre"} · {order.phone ?? "Sin teléfono"}</p>
-                  <p className="text-muted-foreground">Talla: {order.size} · Color: {order.color}</p>
+                  <p className="text-muted-foreground">Talla: {order.size || "Sin talla"} · Color: {order.color}</p>
                 </div>
                 <div className="text-left text-sm md:text-right">
                   <p className="font-semibold">

@@ -48,7 +48,7 @@ export function CheckoutSummary({ leadDays, shopTimeZone }: CheckoutSummaryProps
             type: "drop" as const,
             flavor: item.product.name,
             drop_id: item.product.dropId,
-            selected_size: item.product.selectedSize,
+            selected_size: item.product.selectedSize ?? null,
             selected_color: item.product.selectedColor,
             qty: item.quantity,
           }
@@ -250,7 +250,7 @@ export function CheckoutSummary({ leadDays, shopTimeZone }: CheckoutSummaryProps
               </p>
               <p className="mt-1 text-xs text-muted-foreground">
                 {getCustomerFacingFormatLabel(item.product.format)} · Cantidad: {item.quantity}
-                {item.product.format === "drop" ? ` · ${item.product.selectedSize} · ${item.product.selectedColor}` : ""}
+                {item.product.format === "drop" ? ` · ${[item.product.selectedSize, item.product.selectedColor].filter(Boolean).join(" · ")}` : ""}
               </p>
             </div>
             <p className="text-sm font-medium text-foreground">

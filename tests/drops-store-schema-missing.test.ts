@@ -116,6 +116,7 @@ const dropInput: DropMutationInput = {
   imageUrls: [],
   colors: ["Burdeos"],
   sizes: ["M"],
+  sizeStockEnabled: true,
   sizeStock: [{ size: "M", stockTotal: 30, position: 0 }],
   stockTotal: 30,
   launchAt: "2026-06-30T23:00:00.000Z",

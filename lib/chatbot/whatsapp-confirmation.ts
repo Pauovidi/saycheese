@@ -37,8 +37,8 @@ type WebOrderConfirmationItem =
       type: "drop"
       flavor?: string
       qty: number
-      selected_size?: string
-      selected_color?: string
+      selected_size?: string | null
+      selected_color?: string | null
     }
 
 type ConfirmationSendInput =

@@ -35,6 +35,7 @@ const dropFormSchema = z.object({
   price: z.coerce.number().min(0, "El precio no puede ser negativo"),
   imageUrls: z.union([z.string(), z.array(z.string())]).default(""),
   colors: z.union([z.string(), z.array(z.string())]).default(""),
+  sizeStockEnabled: z.boolean().default(false),
   sizes: z.union([z.string(), z.array(z.string())]).default(""),
   sizeStock: z.array(z.object({
     size: z.string().trim().min(1),
@@ -75,26 +76,23 @@ function normalizeDropForm(input: z.input<typeof dropFormSchema>) {
   const slug = parsed.slug?.trim() ? slugifyFlavorName(parsed.slug) : slugifyFlavorName(parsed.name)
   const imageUrls = parseDropImageList(parsed.imageUrls)
   const colors = parseDropOptionList(parsed.colors)
-  const sizes = parseDropOptionList(parsed.sizes)
-  const sizeStock = normalizeDropSizeStock(sizes, parsed.sizeStock)
+  const sizeStockEnabled = parsed.sizeStockEnabled
+  const sizes = sizeStockEnabled ? parseDropOptionList(parsed.sizes) : []
+  const sizeStock = sizeStockEnabled ? normalizeDropSizeStock(sizes, parsed.sizeStock) : []
   const preorderCtaText = normalizeDropPreorderCtaText(parsed.preorderCtaText)
 
   if (!slug) {
     throw new Error("No se pudo generar el identificador del drop")
   }
 
-  if (parsed.isActive && (!colors.length || !sizes.length)) {
-    throw new Error("Antes de activar un drop debes configurar al menos una talla y un color")
+  if (parsed.isActive && !colors.length) {
+    throw new Error("Antes de activar un drop debes configurar al menos un color")
   }
 
   const sizeStockBySize = new Set(sizeStock.map((entry) => entry.size.toLocaleLowerCase("es")))
   const sizeStockTotal = sizeStock.reduce((sum, entry) => sum + entry.stockTotal, 0)
-  if (parsed.isActive && (!sizeStock.length || sizes.some((size) => !sizeStockBySize.has(size.toLocaleLowerCase("es"))))) {
-    throw new Error("Antes de publicar un drop debes configurar stock para cada talla")
-  }
-
-  if (parsed.isActive && sizeStockTotal !== parsed.stockTotal) {
-    throw new Error("Para publicar, la suma del stock por talla debe coincidir con el stock general")
+  if (parsed.isActive && sizeStockEnabled && (!sizeStock.length || sizes.some((size) => !sizeStockBySize.has(size.toLocaleLowerCase("es"))) || sizeStockTotal <= 0)) {
+    throw new Error("Antes de publicar con tallas debes configurar al menos una talla con stock")
   }
 
   if (parsed.isActive && imageUrls.length === 0) {
@@ -115,7 +113,8 @@ function normalizeDropForm(input: z.input<typeof dropFormSchema>) {
     colors,
     sizes,
     sizeStock,
-    stockTotal: parsed.stockTotal,
+    stockTotal: sizeStockEnabled ? sizeStockTotal : parsed.stockTotal,
+    sizeStockEnabled,
     launchAt: localDateTimeToUtcIso(parsed.launchAtLocal, parsed.launchTimezone || DROP_LAUNCH_TIME_ZONE),
     launchTimezone: parsed.launchTimezone || DROP_LAUNCH_TIME_ZONE,
     isActive: parsed.isActive,

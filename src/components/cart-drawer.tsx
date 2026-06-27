@@ -86,7 +86,7 @@ export function CartDrawer() {
                         </span>
                         {item.product.format === "drop" ? (
                           <p className="mt-1 text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
-                            {item.product.selectedSize} · {item.product.selectedColor}
+                            {[item.product.selectedSize, item.product.selectedColor].filter(Boolean).join(" · ")}
                           </p>
                         ) : null}
                       </div>

@@ -42,6 +42,7 @@ type DropFormState = {
   price: string
   imageUrls: string[]
   colors: string
+  sizeStockEnabled: boolean
   sizeStock: Array<{ size: string; stockTotal: string; position: number }>
   stockTotal: string
   launchAtLocal: string
@@ -61,12 +62,8 @@ function emptyDropForm(): DropFormState {
     price: "25",
     imageUrls: [],
     colors: "Blanco\nNegro",
-    sizeStock: [
-      { size: "S", stockTotal: "5", position: 0 },
-      { size: "M", stockTotal: "10", position: 1 },
-      { size: "L", stockTotal: "10", position: 2 },
-      { size: "XL", stockTotal: "5", position: 3 },
-    ],
+    sizeStockEnabled: false,
+    sizeStock: [],
     stockTotal: "30",
     launchAtLocal: DEFAULT_DROP_LAUNCH_LOCAL,
     launchTimezone: DROP_LAUNCH_TIME_ZONE,
@@ -87,6 +84,7 @@ function dropToForm(drop: EditableDropRecord): DropFormState {
     price: String(drop.price),
     imageUrls: drop.imageUrls,
     colors: drop.colors.join("\n"),
+    sizeStockEnabled: drop.sizeStockEnabled,
     sizeStock: (drop.stock.sizeStock.length ? drop.stock.sizeStock : drop.sizes.map((size, index) => ({
       size,
       stockTotal: "0",
@@ -152,9 +150,9 @@ export function DropAdminEditor({
       return new Date().toISOString()
     }
   }, [form.launchAtLocal, form.launchTimezone])
-  const previewAvailableStock = Math.max(0, Number(form.stockTotal) || 0)
   const sizeStockTotal = form.sizeStock.reduce((sum, entry) => sum + Math.max(0, Number(entry.stockTotal) || 0), 0)
-  const stockMismatch = sizeStockTotal !== previewAvailableStock
+  const previewAvailableStock = form.sizeStockEnabled ? sizeStockTotal : Math.max(0, Number(form.stockTotal) || 0)
+  const sizeStockHasSellable = sizeStockTotal > 0 && form.sizeStock.some((entry) => entry.size.trim() && Math.max(0, Number(entry.stockTotal) || 0) > 0)
   const selectedOrderedSizes = new Set(selectedDrop?.stock.sizeStock.filter((entry) => entry.orderedUnits > 0).map((entry) => entry.size) ?? [])
   const previewStatus = getDropPublicStatus(
     {
@@ -193,6 +191,16 @@ export function DropAdminEditor({
     setForm((current) => ({
       ...current,
       [field]: value,
+      ...(field === "sizeStockEnabled" && value === true && current.sizeStock.length === 0
+        ? {
+            sizeStock: [
+              { size: "S", stockTotal: "0", position: 0 },
+              { size: "M", stockTotal: "0", position: 1 },
+              { size: "L", stockTotal: "0", position: 2 },
+              { size: "XL", stockTotal: "0", position: 3 },
+            ],
+          }
+        : {}),
       ...(field === "name" && !current.id ? { slug: slugifyFlavorName(String(value)) } : {}),
     }))
   }
@@ -249,12 +257,13 @@ export function DropAdminEditor({
         ...form,
         price: Number(form.price),
         stockTotal: Number(form.stockTotal),
-        sizes: form.sizeStock.map((entry) => entry.size),
-        sizeStock: form.sizeStock.map((entry, index) => ({
+        sizeStockEnabled: form.sizeStockEnabled,
+        sizes: form.sizeStockEnabled ? form.sizeStock.map((entry) => entry.size) : [],
+        sizeStock: form.sizeStockEnabled ? form.sizeStock.map((entry, index) => ({
           size: entry.size,
           stockTotal: Number(entry.stockTotal),
           position: index,
-        })),
+        })) : [],
       })
 
       if (!response.ok) {
@@ -415,7 +424,21 @@ export function DropAdminEditor({
 
             <div className="space-y-2">
               <Label htmlFor="drop-stock">Stock total</Label>
-              <Input id="drop-stock" type="number" min="0" step="1" value={form.stockTotal} onChange={(event) => updateField("stockTotal", event.target.value)} required disabled={!moduleReady} />
+              <Input
+                id="drop-stock"
+                type="number"
+                min="0"
+                step="1"
+                value={form.sizeStockEnabled ? String(sizeStockTotal) : form.stockTotal}
+                onChange={(event) => updateField("stockTotal", event.target.value)}
+                required
+                disabled={!moduleReady || form.sizeStockEnabled}
+              />
+              <p className="text-xs text-muted-foreground">
+                {form.sizeStockEnabled
+                  ? "El stock total se calcula automáticamente sumando las tallas activas."
+                  : "Editable cuando el drop se vende sin tallas."}
+              </p>
             </div>
 
             <div className="space-y-2">
@@ -435,23 +458,39 @@ export function DropAdminEditor({
             </div>
 
             <div className="space-y-3 md:col-span-2">
+              <label className="flex items-start justify-between gap-4 rounded-md border border-border p-4">
+                <span>
+                  <span className="block text-sm font-semibold text-foreground">Usar tallas y stock por talla</span>
+                  <span className="mt-1 block text-xs leading-relaxed text-muted-foreground">
+                    Si está desactivado, el drop se vende sin tallas y usa el stock general. Si está activado, el stock general se calcula desde las tallas.
+                  </span>
+                </span>
+                <Switch
+                  checked={form.sizeStockEnabled}
+                  onCheckedChange={(checked) => updateField("sizeStockEnabled", checked)}
+                  disabled={!moduleReady}
+                  aria-label="Usar tallas y stock por talla"
+                />
+              </label>
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <p className="text-sm font-semibold text-foreground">Stock por talla editable</p>
+                  <p className="text-sm font-semibold text-foreground">Stock por talla</p>
                   <p className="text-xs text-muted-foreground">
-                    General: {previewAvailableStock}. Suma por talla: {sizeStockTotal}.
+                    {form.sizeStockEnabled
+                      ? `Stock calculado desde tallas activas: ${sizeStockTotal}.`
+                      : "Desactivado: estas tallas no afectan al stock ni a la venta."}
                   </p>
                 </div>
-                <Button type="button" variant="outline" onClick={addSizeStockRow} disabled={!moduleReady}>
+                <Button type="button" variant="outline" onClick={addSizeStockRow} disabled={!moduleReady || !form.sizeStockEnabled}>
                   Añadir talla
                 </Button>
               </div>
-              {stockMismatch ? (
+              {form.sizeStockEnabled && !sizeStockHasSellable ? (
                 <p className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
-                  La suma del stock por talla debe coincidir con el stock general antes de publicar.
+                  Si activas el modo por talla, configura al menos una talla con stock antes de publicar o vender.
                 </p>
               ) : null}
-              <div className="overflow-x-auto border border-border">
+              <div className={`overflow-x-auto border border-border ${form.sizeStockEnabled ? "" : "opacity-60"}`}>
                 <table className="w-full min-w-[620px] text-sm">
                   <thead className="bg-secondary text-left text-xs uppercase tracking-[0.14em] text-muted-foreground">
                     <tr>
@@ -469,16 +508,16 @@ export function DropAdminEditor({
                       return (
                         <tr key={`${entry.position}-${index}`} className="border-t border-border">
                           <td className="px-3 py-2">
-                            <Input value={entry.size} onChange={(event) => updateSizeStock(index, "size", event.target.value)} disabled={!moduleReady} />
+                            <Input value={entry.size} onChange={(event) => updateSizeStock(index, "size", event.target.value)} disabled={!moduleReady || !form.sizeStockEnabled} />
                           </td>
                           <td className="px-3 py-2">
-                            <Input type="number" min="0" step="1" value={entry.stockTotal} onChange={(event) => updateSizeStock(index, "stockTotal", event.target.value)} disabled={!moduleReady} />
+                            <Input type="number" min="0" step="1" value={entry.stockTotal} onChange={(event) => updateSizeStock(index, "stockTotal", event.target.value)} disabled={!moduleReady || !form.sizeStockEnabled} />
                           </td>
                           <td className="px-3 py-2 text-muted-foreground">{saved?.orderedUnits ?? 0}</td>
                           <td className="px-3 py-2 text-muted-foreground">{saved?.availableRaw ?? Math.max(0, Number(entry.stockTotal) || 0)}</td>
                           <td className="px-3 py-2 text-muted-foreground">{saved?.sellableNow ?? Math.min(Math.max(0, Number(entry.stockTotal) || 0), previewAvailableStock)}</td>
                           <td className="px-3 py-2">
-                            <Button type="button" variant="outline" onClick={() => removeSizeStockRow(index)} disabled={!moduleReady || selectedOrderedSizes.has(entry.size)}>
+                            <Button type="button" variant="outline" onClick={() => removeSizeStockRow(index)} disabled={!moduleReady || !form.sizeStockEnabled || selectedOrderedSizes.has(entry.size)}>
                               Quitar
                             </Button>
                           </td>

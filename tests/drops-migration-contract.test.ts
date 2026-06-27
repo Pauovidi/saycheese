@@ -142,3 +142,43 @@ test("store sincroniza stock por talla sin borrado masivo ni pérdida de tallas 
   assert.doesNotMatch(source, /deleteError/)
   assert.doesNotMatch(source, /replaceDropSizeStock/)
 })
+
+test("migración aditiva de tallas opcionales mantiene contratos y permisos seguros", async () => {
+  const source = await readFile(resolve("supabase/migrations/202606270001_optional_drop_sizes_and_hero_claim.sql"), "utf8")
+  const globalStockRpc = source.match(/create or replace function public\.get_drop_stock_summary[\s\S]*?end;\s*\$\$;/i)?.[0] ?? ""
+  const sizeStockRpc = source.match(/create or replace function public\.get_drop_size_stock_summary[\s\S]*?end;\s*\$\$;/i)?.[0] ?? ""
+  const orderRpc = source.match(/create or replace function public\.create_order_with_items[\s\S]*?end;\s*\$\$;/i)?.[0] ?? ""
+  const orderItemsConstraint = source.match(/add constraint order_items_drop_fields_check check \([\s\S]*?\n  \);/i)?.[0] ?? ""
+
+  assert.match(source, /add column if not exists size_stock_enabled boolean not null default false/)
+  assert.match(source, /drop constraint if exists order_items_drop_fields_check/)
+  assert.doesNotMatch(orderItemsConstraint, /selected_size/)
+  assert.match(
+    globalStockRpc,
+    /returns table \(\s*stock_total integer,\s*reserved_units integer,\s*ordered_units integer,\s*available_stock integer\s*\)/i
+  )
+  assert.doesNotMatch(globalStockRpc, /size_stock jsonb/i)
+  assert.match(globalStockRpc, /when coalesce\(drops\.size_stock_enabled, false\)[\s\S]*sum\(s\.stock_total\)::integer/)
+  assert.match(globalStockRpc, /else drops\.stock_total/)
+  assert.match(sizeStockRpc, /if not v_size_stock_enabled then\s*return;/i)
+  assert.match(sizeStockRpc, /s\.is_active = true[\s\S]*s\.archived_at is null/)
+  assert.match(sizeStockRpc, /"position" integer/)
+  assert.match(orderRpc, /if coalesce\(v_drop\.size_stock_enabled, false\) then[\s\S]*invalid_drop_size/)
+  assert.match(orderRpc, /v_size := nullif\(btrim\(coalesce\(v_item ->> 'selected_size', ''\)\), ''\)/)
+  assert.match(orderRpc, /v_summary\.available_stock/)
+  assert.match(orderRpc, /v_has_phone_normalized boolean/)
+  assert.match(source, /notify pgrst, 'reload schema'/)
+  assert.doesNotMatch(source, /drop_name/i)
+  assert.doesNotMatch(source, /delete\s+from\s+public\.(?:drops|drop_reservations|order_items|drop_size_stock)/i)
+  assert.doesNotMatch(source, /insert into public\.drops/i)
+
+  for (const fn of [
+    "get_drop_stock_summary\\(uuid\\)",
+    "get_drop_size_stock_summary\\(uuid\\)",
+    "create_order_with_items\\(uuid, date, text, text, text, text, text, timestamptz, text, jsonb\\)",
+  ]) {
+    assert.match(source, new RegExp(`revoke all on function public\\.${fn} from anon`))
+    assert.match(source, new RegExp(`revoke all on function public\\.${fn} from authenticated`))
+    assert.match(source, new RegExp(`grant execute on function public\\.${fn} to service_role`))
+  }
+})

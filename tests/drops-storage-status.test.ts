@@ -53,6 +53,12 @@ test("detecta variaciones de schema cache para columnas y RPC de drops", () => {
   }
   assert.equal(isDropSchemaMissingError(sizeStockRpcError), true)
   assert.equal(isDropArchiveOrSizeStockMissingError(sizeStockRpcError), true)
+  const sizeModeColumnError = {
+    code: "PGRST204",
+    message: "Could not find the 'size_stock_enabled' column of 'drops' in the schema cache",
+  }
+  assert.equal(isDropSchemaMissingError(sizeModeColumnError), true)
+  assert.equal(isDropArchiveOrSizeStockMissingError(sizeModeColumnError), true)
 })
 
 test("no clasifica permisos ni timeouts como schema no inicializado", () => {
