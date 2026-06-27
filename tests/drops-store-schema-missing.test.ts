@@ -78,6 +78,11 @@ const ctaColumnMissingError = {
   message: "Could not find the 'preorder_cta_text' column of 'drops' in the schema cache",
 }
 
+const archiveColumnMissingError = {
+  code: "PGRST204",
+  message: "Could not find the 'archived_at' column of 'drops' in the schema cache",
+}
+
 const legacyDropRow = {
   id: "00000000-0000-0000-0000-000000000010",
   slug: "camiseta-tentados",
@@ -256,6 +261,27 @@ test("columna preorder_cta_text ausente reintenta lectura legacy con CTA fallbac
   assert.equal(state.preorderCtaTextMigrated, false)
   assert.match(state.capabilityMessage ?? "", /CTA/)
   assert.equal(state.data[0]?.preorderCtaText, "Preventa")
+})
+
+test("migración de archivado y stock pendiente muestra mensaje específico en backoffice", async () => {
+  setMockClient({
+    from: {
+      drops: [
+        { data: null, error: archiveColumnMissingError },
+        { data: [legacyDropRow], error: null },
+      ],
+    },
+    rpc: {
+      get_drop_stock_summary: { data: { stock_total: 30, reserved_units: 0, ordered_units: 0, available_stock: 30 }, error: null },
+    },
+  })
+
+  const state = await listAdminDropsWithAvailability()
+  assert.equal(state.availability, "READY")
+  assert.equal(state.preorderCtaTextMigrated, false)
+  assert.match(state.capabilityMessage ?? "", /archivado y stock por talla/i)
+  assert.doesNotMatch(state.capabilityMessage ?? "", /CTA configurable/i)
+  assert.equal(state.data[0]?.archivedAt, null)
 })
 
 test("schema antiguo no devuelve falso éxito al guardar CTA personalizado", async () => {

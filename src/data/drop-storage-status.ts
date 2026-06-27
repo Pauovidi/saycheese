@@ -48,7 +48,7 @@ export function isDropSchemaMissingError(error: unknown) {
 
   const text = getSearchableErrorText(error)
   return [
-    /could\s+not\s+find\s+the\s+(?:table|function|column).*?(?:drops|drop_reservations|drop_revisions|drop_size_stock|drop_id|selected_size|selected_color|archived_at|archived_by|archive_reason).*?schema\s+cache/i,
+    /could\s+not\s+find\s+the\s+(?:table|function|column).*?(?:drops|drop_reservations|drop_revisions|drop_size_stock|drop_id|selected_size|selected_color|archived_at|archived_by|archive_reason|is_active).*?schema\s+cache/i,
     /(?:relation|table)\s+["']?(?:public\.)?(?:drops|drop_reservations|drop_revisions|drop_size_stock)["']?\s+does\s+not\s+exist/i,
     /function\s+(?:public\.)?(?:get_drop_stock_summary|create_drop_reservation|cancel_drop_reservation|create_order_with_items)\b.*does\s+not\s+exist/i,
     /column\s+["']?(?:drop_id|product_name|unit_price|selected_size|selected_color)["']?\s+(?:of\s+relation\s+["']?order_items["']?\s+)?does\s+not\s+exist/i,
@@ -63,7 +63,7 @@ export function isDropPreorderCtaColumnMissingError(error: unknown) {
 
 export function isDropArchiveOrSizeStockMissingError(error: unknown) {
   const text = getSearchableErrorText(error)
-  return /archived_at|archived_by|archive_reason|drop_size_stock|size_stock/i.test(text) && /schema\s+cache|does\s+not\s+exist|not\s+found/i.test(text)
+  return /archived_at|archived_by|archive_reason|drop_size_stock|size_stock|is_active/i.test(text) && /schema\s+cache|does\s+not\s+exist|not\s+found/i.test(text)
 }
 
 export function classifyDropStorageError(error: unknown): Exclude<DropModuleAvailability, "READY"> {

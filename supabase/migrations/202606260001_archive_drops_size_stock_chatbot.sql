@@ -9,6 +9,9 @@ create table if not exists public.drop_size_stock (
   size text not null,
   stock_total integer not null default 0,
   position integer not null default 0,
+  is_active boolean not null default true,
+  archived_at timestamptz null,
+  archived_by text null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint drop_size_stock_size_not_blank check (length(btrim(size)) > 0),
@@ -123,6 +126,8 @@ begin
           group by order_items.selected_size
         ) o on lower(btrim(o.selected_size)) = lower(btrim(s.size))
         where s.drop_id = p_drop_id
+          and s.is_active = true
+          and s.archived_at is null
       ),
       '[]'::jsonb
     );
@@ -251,6 +256,8 @@ declare
   v_size_requested integer;
   v_summary record;
   v_size_row record;
+  v_has_phone_normalized boolean;
+  v_phone_normalized_generated boolean;
 begin
   if jsonb_typeof(p_items) <> 'array' or jsonb_array_length(p_items) = 0 then
     raise exception 'invalid_items' using errcode = '22023';
@@ -334,29 +341,75 @@ begin
     end loop;
   end loop;
 
-  insert into public.orders (
-    user_id,
-    delivery_date,
-    status,
-    customer_name,
-    customer_email,
-    phone,
-    notes,
-    reminder_at,
-    reminder_status
+  select exists (
+    select 1
+    from pg_attribute
+    where attrelid = 'public.orders'::regclass
+      and attname = 'phone_normalized'
+      and not attisdropped
   )
-  values (
-    p_user_id,
-    p_delivery_date,
-    p_status,
-    p_customer_name,
-    p_customer_email,
-    p_phone,
-    p_notes,
-    p_reminder_at,
-    p_reminder_status
-  )
-  returning id into v_order_id;
+    into v_has_phone_normalized;
+
+  select coalesce((
+    select attgenerated <> ''
+    from pg_attribute
+    where attrelid = 'public.orders'::regclass
+      and attname = 'phone_normalized'
+      and not attisdropped
+  ), false)
+    into v_phone_normalized_generated;
+
+  if v_has_phone_normalized and not v_phone_normalized_generated then
+    insert into public.orders (
+      user_id,
+      delivery_date,
+      status,
+      customer_name,
+      customer_email,
+      phone,
+      phone_normalized,
+      notes,
+      reminder_at,
+      reminder_status
+    )
+    values (
+      p_user_id,
+      p_delivery_date,
+      coalesce(nullif(p_status, ''), 'pending'),
+      p_customer_name,
+      p_customer_email,
+      p_phone,
+      regexp_replace(coalesce(p_phone, ''), '\D', '', 'g'),
+      p_notes,
+      p_reminder_at,
+      p_reminder_status
+    )
+    returning id into v_order_id;
+  else
+    insert into public.orders (
+      user_id,
+      delivery_date,
+      status,
+      customer_name,
+      customer_email,
+      phone,
+      notes,
+      reminder_at,
+      reminder_status
+    )
+    values (
+      p_user_id,
+      p_delivery_date,
+      coalesce(nullif(p_status, ''), 'pending'),
+      p_customer_name,
+      p_customer_email,
+      p_phone,
+      p_notes,
+      p_reminder_at,
+      p_reminder_status
+    )
+    returning id into v_order_id;
+  end if;
 
   for v_item in select value from jsonb_array_elements(p_items)
   loop
@@ -385,7 +438,6 @@ begin
         product_name,
         flavor,
         drop_id,
-        drop_name,
         unit_price,
         selected_size,
         selected_color,
@@ -397,7 +449,6 @@ begin
         v_drop.name,
         v_drop.name,
         v_drop.id,
-        v_drop.name,
         v_drop.price,
         v_size,
         v_color,
@@ -444,3 +495,5 @@ revoke all on function public.create_order_with_items(uuid, date, text, text, te
 revoke all on function public.create_order_with_items(uuid, date, text, text, text, text, text, timestamptz, text, jsonb) from anon;
 revoke all on function public.create_order_with_items(uuid, date, text, text, text, text, text, timestamptz, text, jsonb) from authenticated;
 grant execute on function public.create_order_with_items(uuid, date, text, text, text, text, text, timestamptz, text, jsonb) to service_role;
+
+notify pgrst, 'reload schema';

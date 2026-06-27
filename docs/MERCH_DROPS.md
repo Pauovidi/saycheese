@@ -34,7 +34,9 @@ En PRELAUNCH/preventa no se elige talla ni color. Las reservas activas consumen 
 
 En LIVE/venta el cliente elige talla, color y cantidad. Cada pedido consume stock global y disponibilidad de la talla seleccionada. El servidor valida que la cantidad no supere ni `globalAvailable` ni `sizeAvailableRaw` de esa talla. En UI y chatbot se muestra `sizeSellableNow`.
 
-El backoffice compara la suma del stock por talla con el stock general. Para publicar un drop activo, ambas cifras deben coincidir. Un borrador puede guardarse incompleto para terminarlo después, pero se muestra advertencia. Si una talla ya tiene pedidos, la UI no permite eliminarla para no confundir el histórico; se recomienda poner stock 0 si ya no debe venderse.
+El backoffice compara la suma del stock por talla con el stock general. Para publicar un drop activo, ambas cifras deben coincidir. Un borrador puede guardarse incompleto para terminarlo después, pero se muestra advertencia. La migración inicializa las tallas existentes con `stock_total = 0` para no inventar reparto: en PRELAUNCH el stock general sigue funcionando, pero antes de pasar a LIVE hay que configurar el stock por talla. Si una talla queda a 0, aparecerá agotada.
+
+Cuando se quita una talla desde el editor, el sistema no borra físicamente su fila de `drop_size_stock`: la marca inactiva, con stock 0 y `archived_at`. Es más conservador que borrar solo si no hay pedidos, evita perder tallas históricas y permite reactivar la misma talla más tarde de forma idempotente.
 
 Las operaciones críticas viven en RPC SQL con bloqueo de fila `FOR UPDATE`:
 
@@ -75,6 +77,8 @@ La migración aditiva de archivado y stock por talla es:
 
 Añade `archived_at`, `archived_by`, `archive_reason`, crea `drop_size_stock`, actualiza filtros públicos mediante `archived_at is null`, actualiza `get_drop_stock_summary`, `create_drop_reservation` y `create_order_with_items`, y mantiene permisos de RPC cerrados a `anon`/`authenticated`. No ejecuta SQL remoto, no crea drops productivos y no activa ni archiva datos existentes.
 
+La RPC `create_order_with_items` usa `order_items.product_name` como snapshot del nombre del drop. No existe ni se añade una columna redundante `drop_name`. También conserva la lógica defensiva de `orders.phone_normalized`: detecta si la columna existe, detecta si es generada y solo escribe `regexp_replace(coalesce(p_phone, ''), '\D', '', 'g')` cuando la columna existe y no es generada.
+
 ## Despliegue de código antes de migración
 
 El código puede desplegarse antes de que la migración exista en el entorno remoto. Si Supabase devuelve un error de schema cache por tablas, columnas o RPC de Drops ausentes, la web pública degrada de forma segura:
@@ -88,7 +92,7 @@ Esta protección no ejecuta migraciones remotas, no cambia variables de entorno,
 
 Para `preorder_cta_text`, el código también puede desplegarse antes de aplicar la migración aditiva. Si PostgREST informa que falta esa columna, las lecturas públicas reintentan con columnas legacy y usan el CTA fallback `Preventa`. El backoffice muestra una actualización pendiente: permite leer y previsualizar, pero no finge que un CTA personalizado se ha guardado si la columna aún no existe.
 
-Para archivado y stock por talla, las lecturas públicas tienen fallback legacy cuando faltan columnas nuevas. Las mutaciones que dependen del modelo nuevo fallan cerrado con 503 controlado hasta aplicar la migración. No ejecutes SQL remoto ni `supabase db push` sin autorización explícita.
+Para archivado y stock por talla, las lecturas públicas tienen fallback legacy cuando faltan columnas nuevas. El backoffice muestra explícitamente que la migración de archivado y stock por talla está pendiente. Las mutaciones que dependen del modelo nuevo hacen una comprobación previa de schema y fallan cerrado con 503 controlado hasta aplicar la migración, evitando falsos éxitos o actualizaciones parciales si `drop_size_stock` todavía no existe. No ejecutes SQL remoto ni `supabase db push` sin autorización explícita.
 
 ## Backoffice
 

@@ -214,6 +214,15 @@ const DROP_COLUMNS = [
 ].join(",")
 
 type DropStoreClient = ReturnType<typeof getAdminClient>
+type DropSizeStockRow = {
+  id: string
+  drop_id: string
+  size: string
+  stock_total: number | string | null
+  position: number | string | null
+  is_active?: boolean | null
+  archived_at?: string | null
+}
 
 let dropStoreClientForTests: DropStoreClient | null = null
 
@@ -275,14 +284,15 @@ function dropUnavailableState<T>(
   }
 }
 
-function dropReadyState<T>(data: T, preorderCtaTextMigrated = true): DropAdminModuleState<T> {
+function dropReadyState<T>(data: T, preorderCtaTextMigrated = true, capabilityMessage?: string): DropAdminModuleState<T> {
   return {
     availability: "READY",
     data,
     preorderCtaTextMigrated,
     capabilityMessage: preorderCtaTextMigrated
       ? undefined
-      : "La columna del CTA de preventa todavía no está migrada. Puedes previsualizar con fallback, pero no guardar un CTA personalizado.",
+      : capabilityMessage ??
+        "La columna del CTA de preventa todavía no está migrada. Puedes previsualizar con fallback, pero no guardar un CTA personalizado.",
   }
 }
 
@@ -456,7 +466,7 @@ async function readDropRowsWithCtaFallback(
 ) {
   const result = await runQuery(DROP_COLUMNS)
 
-  if (result.error && (isDropPreorderCtaColumnMissingError(result.error) || isDropArchiveOrSizeStockMissingError(result.error))) {
+  if (result.error && isDropPreorderCtaColumnMissingError(result.error)) {
     logDropStorageIssueOnce({ operation, availability: "UNAVAILABLE", error: result.error })
     const legacyResult = await runQuery(LEGACY_DROP_COLUMNS)
     if (legacyResult.error) throw toDropStorageUnavailableError(legacyResult.error, operation)
@@ -464,6 +474,21 @@ async function readDropRowsWithCtaFallback(
       data: legacyResult.data,
       count: legacyResult.count,
       preorderCtaTextMigrated: false,
+      capabilityMessage:
+        "La columna del CTA de preventa todavía no está migrada. Puedes previsualizar con fallback, pero no guardar un CTA personalizado.",
+    }
+  }
+
+  if (result.error && isDropArchiveOrSizeStockMissingError(result.error)) {
+    logDropStorageIssueOnce({ operation, availability: "UNAVAILABLE", error: result.error })
+    const legacyResult = await runQuery(LEGACY_DROP_COLUMNS)
+    if (legacyResult.error) throw toDropStorageUnavailableError(legacyResult.error, operation)
+    return {
+      data: legacyResult.data,
+      count: legacyResult.count,
+      preorderCtaTextMigrated: false,
+      capabilityMessage:
+        "La migración de archivado y stock por talla todavía no está aplicada. Las lecturas usan fallback legacy; guardar, archivar o editar stock falla cerrado hasta migrar.",
     }
   }
 
@@ -473,6 +498,7 @@ async function readDropRowsWithCtaFallback(
     data: result.data,
     count: result.count,
     preorderCtaTextMigrated: true,
+    capabilityMessage: undefined,
   }
 }
 
@@ -490,32 +516,103 @@ export async function listAdminDropsWithCapabilities(now: Date = new Date()) {
   return {
     drops: await mapRowsWithStock((result.data ?? []) as unknown as DropRow[], now),
     preorderCtaTextMigrated: result.preorderCtaTextMigrated,
+    capabilityMessage: result.capabilityMessage,
   }
 }
 
-async function replaceDropSizeStock(dropId: string, sizeStock: DropMutationInput["sizeStock"]) {
+function normalizeDropSizeKey(size: string) {
+  return size.trim().toLocaleLowerCase("es")
+}
+
+function dedupeSizeStockInput(sizeStock: DropMutationInput["sizeStock"]) {
+  const desired = new Map<string, { size: string; stockTotal: number; position: number }>()
+  for (const [index, entry] of sizeStock.entries()) {
+    const size = entry.size.trim()
+    if (!size) continue
+    const key = normalizeDropSizeKey(size)
+    if (desired.has(key)) throw new Error(`Talla duplicada en el stock del drop: ${size}`)
+    desired.set(key, {
+      size,
+      stockTotal: Math.max(0, Math.trunc(entry.stockTotal)),
+      position: Math.max(0, Math.trunc(entry.position ?? index)),
+    })
+  }
+  return desired
+}
+
+async function assertDropArchiveSizeStockSchemaReady(operation: string) {
   const supabase = getDropClient()
-  const { error: deleteError } = await supabase.from("drop_size_stock").delete().eq("drop_id", dropId)
-  if (deleteError) throw toDropMutationError(deleteError, "replaceDropSizeStock.delete")
+  const archiveCheck = await supabase.from("drops").select("archived_at, archived_by, archive_reason").limit(1)
+  if (archiveCheck.error) throw toDropMutationError(archiveCheck.error, `${operation}.archiveSchema`)
 
-  if (!sizeStock.length) return
+  const sizeCheck = await supabase.from("drop_size_stock").select("id, size, stock_total, position, is_active, archived_at, archived_by").limit(1)
+  if (sizeCheck.error) throw toDropMutationError(sizeCheck.error, `${operation}.sizeStockSchema`)
+}
 
-  const { error } = await supabase.from("drop_size_stock").insert(
-    sizeStock.map((entry, index) => ({
+async function syncDropSizeStock(dropId: string, sizeStock: DropMutationInput["sizeStock"]) {
+  const supabase = getDropClient()
+  const desired = dedupeSizeStockInput(sizeStock)
+  const { data, error: readError } = await supabase
+    .from("drop_size_stock")
+    .select("id, drop_id, size, stock_total, position, is_active, archived_at")
+    .eq("drop_id", dropId)
+
+  if (readError) throw toDropMutationError(readError, "syncDropSizeStock.read")
+
+  const existingRows = ((data ?? []) as unknown as DropSizeStockRow[]).filter((row) => row.id && row.size)
+  const existingBySize = new Map(existingRows.map((row) => [normalizeDropSizeKey(row.size), row]))
+
+  for (const [key, entry] of desired.entries()) {
+    const existing = existingBySize.get(key)
+    if (existing) {
+      const { error } = await supabase
+        .from("drop_size_stock")
+        .update({
+          size: entry.size,
+          stock_total: entry.stockTotal,
+          position: entry.position,
+          is_active: true,
+          archived_at: null,
+          archived_by: null,
+        })
+        .eq("id", existing.id)
+      if (error) throw toDropMutationError(error, "syncDropSizeStock.update")
+      continue
+    }
+
+    const { error } = await supabase.from("drop_size_stock").insert({
       drop_id: dropId,
       size: entry.size,
       stock_total: entry.stockTotal,
-      position: entry.position ?? index,
-    }))
-  )
+      position: entry.position,
+      is_active: true,
+      archived_at: null,
+      archived_by: null,
+    })
+    if (error) throw toDropMutationError(error, "syncDropSizeStock.insert")
+  }
 
-  if (error) throw toDropMutationError(error, "replaceDropSizeStock.insert")
+  const archivedAt = new Date().toISOString()
+  for (const row of existingRows) {
+    const key = normalizeDropSizeKey(row.size)
+    if (desired.has(key) || row.archived_at) continue
+
+    const { error } = await supabase
+      .from("drop_size_stock")
+      .update({
+        stock_total: 0,
+        is_active: false,
+        archived_at: archivedAt,
+      })
+      .eq("id", row.id)
+    if (error) throw toDropMutationError(error, "syncDropSizeStock.archive")
+  }
 }
 
 export async function listAdminDropsWithAvailability(now: Date = new Date()): Promise<DropAdminModuleState<EditableDropRecord[]>> {
   try {
     const result = await listAdminDropsWithCapabilities(now)
-    return dropReadyState(result.drops, result.preorderCtaTextMigrated)
+    return dropReadyState(result.drops, result.preorderCtaTextMigrated, result.capabilityMessage)
   } catch (error) {
     const availability = logDropCaughtError(error, "listAdminDropsWithAvailability")
     return dropUnavailableState(availability, [])
@@ -623,6 +720,7 @@ export async function getPublicDropBySlug(slug: string, now: Date = new Date()) 
 
 export async function createDropRecord(input: DropMutationInput, actor?: string | null) {
   const supabase = getDropClient()
+  await assertDropArchiveSizeStockSchemaReady("createDropRecord")
   let { data, error } = await supabase.from("drops").insert(mutationRow(input)).select(DROP_COLUMNS).single()
 
   if (error && isDropPreorderCtaColumnMissingError(error)) {
@@ -631,7 +729,7 @@ export async function createDropRecord(input: DropMutationInput, actor?: string 
   }
 
   if (error) throw toDropMutationError(error, "createDropRecord")
-  await replaceDropSizeStock((data as unknown as DropRow).id, input.sizeStock)
+  await syncDropSizeStock((data as unknown as DropRow).id, input.sizeStock)
   const stock = await getDropStockSummary((data as unknown as DropRow).id, readStringArray((data as unknown as DropRow).sizes))
   const drop = mapDropRow(data as unknown as DropRow, stock)
   await insertRevision({ drop, action: "create", actor })
@@ -640,6 +738,7 @@ export async function createDropRecord(input: DropMutationInput, actor?: string 
 
 export async function updateDropRecord(id: string, input: DropMutationInput, actor?: string | null) {
   const supabase = getDropClient()
+  await assertDropArchiveSizeStockSchemaReady("updateDropRecord")
   let { data, error } = await supabase
     .from("drops")
     .update(mutationRow(input))
@@ -653,7 +752,7 @@ export async function updateDropRecord(id: string, input: DropMutationInput, act
   }
 
   if (error) throw toDropMutationError(error, "updateDropRecord")
-  await replaceDropSizeStock((data as unknown as DropRow).id, input.sizeStock)
+  await syncDropSizeStock((data as unknown as DropRow).id, input.sizeStock)
   const stock = await getDropStockSummary((data as unknown as DropRow).id, readStringArray((data as unknown as DropRow).sizes))
   const drop = mapDropRow(data as unknown as DropRow, stock)
   await insertRevision({ drop, action: "update", actor })
