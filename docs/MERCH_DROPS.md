@@ -9,7 +9,7 @@ El módulo de Drops permite publicar merchandising con dos fases: preventa sin p
 La fase se calcula en servidor con `getDropPublicStatus`:
 
 - `INACTIVE`: el drop no está activo públicamente.
-- `PRELAUNCH`: el drop está activo, no cerrado, tiene stock y `now < launchAt`.
+- `PRELAUNCH`: el drop está activo, no cerrado y `now < launchAt`; la preventa bajo pedido no depende del stock de venta normal.
 - `LIVE`: el drop está activo, no cerrado, tiene stock y `now >= launchAt`.
 - `SOLD_OUT`: no queda stock disponible.
 - `CLOSED`: el drop está cerrado manualmente.
@@ -30,7 +30,7 @@ Las tallas son opcionales. Cada drop tiene un modo explícito `size_stock_enable
 Cuando el modo por talla está desactivado:
 
 ```
-globalAvailable = stockTotal - reservedUnits - orderedUnits
+globalAvailable = stockTotal - orderedUnits
 ```
 
 La ficha pública no muestra selector de talla, el carrito y checkout envían el pedido sin `selected_size`, y la RPC de pedido valida el stock global efectivo sin exigir talla.
@@ -38,14 +38,14 @@ La ficha pública no muestra selector de talla, el carrito y checkout envían el
 Cuando el modo por talla está activado:
 
 ```
-globalAvailable = stockTotal - reservedUnits - orderedUnits
+globalAvailable = stockTotal - orderedUnits
 sizeAvailableRaw[size] = sizeStockTotal[size] - orderedUnitsBySize[size]
 sizeSellableNow[size] = min(sizeAvailableRaw[size], globalAvailable)
 ```
 
 En este modo `stockTotal` se obtiene desde la suma de `drop_size_stock.stock_total` de tallas activas y no archivadas. El campo superior deja de mandar y no hay validación manual de coincidencia entre stock general y suma por talla.
 
-En PRELAUNCH/preventa no se elige talla ni color en ninguno de los dos modos. Las reservas activas consumen 1 unidad genérica del stock efectivo. Al cancelarlas, dejan de contar una sola vez.
+En PRELAUNCH/preventa el cliente abre la ficha del drop, elige talla y color e introduce nombre, apellidos y teléfono. La preventa se fabrica bajo pedido: no está limitada por `stock_total`, no entra en el carrito y no descuenta stock de la venta normal. Al cancelarla se conserva el historial, sin modificar stock.
 
 En LIVE/venta sin tallas el cliente elige color y cantidad. En LIVE/venta con tallas el cliente elige talla, color y cantidad. Cada pedido consume stock global efectivo y, si el modo por talla está activado, disponibilidad de la talla seleccionada. El servidor valida que la cantidad no supere ni `globalAvailable` ni `sizeAvailableRaw` de esa talla. La ficha pública muestra solo el nombre de la talla en los botones, sin conteos numéricos; el chatbot sí puede informar conteos cuando se pregunta por stock.
 
@@ -55,7 +55,7 @@ Cuando se quita una talla desde el editor, el sistema no borra físicamente su f
 
 Las operaciones críticas viven en RPC SQL con bloqueo de fila `FOR UPDATE`:
 
-- `create_drop_reservation`: preventa idempotente y atómica.
+- `create_drop_preorder`: preventa identificada, idempotente y atómica.
 - `cancel_drop_reservation`: cancelación idempotente.
 - `create_order_with_items`: creación de pedido y líneas `drop` en la misma transacción.
 
@@ -98,6 +98,12 @@ La migración aditiva de tallas opcionales es:
 
 Añade `drops.size_stock_enabled`, conserva en modo sin tallas los drops existentes salvo que ya tengan stock por talla positivo en filas activas/no archivadas de `drop_size_stock`, relaja la constraint de `order_items` para permitir `selected_size` vacío en drops sin talla, mantiene estable el retorno de `get_drop_stock_summary`, actualiza `get_drop_size_stock_summary` para devolver lista vacía si el modo por talla está desactivado, y actualiza `create_order_with_items` para exigir talla solo cuando `size_stock_enabled = true`. Las filas de tallas con `stock_total = 0` no activan automáticamente el modo por talla: el administrador lo activa explícitamente desde backoffice. No borra drops, reservas, pedidos, revisiones ni stock histórico, no inserta seeds productivos y no debe ejecutarse automáticamente contra producción desde una terminal local.
 
+La migración aditiva de preventa identificada y separación de stock es:
+
+`supabase/migrations/202607120001_preorder_details_and_stock_separation.sql`
+
+Añade nombre, teléfono, talla y color a `drop_reservations`, crea `create_drop_preorder` y actualiza `get_drop_stock_summary` para que las preventas bajo pedido sean informativas y solo los pedidos de venta normal descuenten stock. Conserva las reservas históricas, no crea drops ni aplica cambios directamente a entornos remotos.
+
 La RPC `create_order_with_items` usa `order_items.product_name` como snapshot del nombre del drop. No existe ni se añade una columna redundante `drop_name`. También conserva la lógica defensiva de `orders.phone_normalized`: detecta si la columna existe, detecta si es generada y solo escribe `regexp_replace(coalesce(p_phone, ''), '\D', '', 'g')` cuando la columna existe y no es generada.
 
 ## Despliegue de código antes de migración
@@ -135,7 +141,7 @@ En `Admin > Drops` se puede crear o editar:
 - texto del botón de preventa;
 - imágenes principales y secundarias.
 
-Con `Usar tallas y stock por talla` desactivado, `Stock total` es editable y el bloque de tallas queda como configuración inactiva: esas tallas no afectan al stock ni a la venta. Con el modo activado, `Stock total` se muestra calculado desde la suma de tallas activas y el administrador debe configurar al menos una talla con stock antes de publicar. Ya no se exige que una suma manual coincida con el campo superior, porque el campo superior no manda en ese modo.
+Con `Usar tallas y stock por talla` desactivado, `Stock total` es editable y las tallas configuradas siguen disponibles para la preventa, pero sus cantidades no afectan al stock de venta. Con el modo activado, `Stock total` se muestra calculado desde la suma de tallas activas y el administrador debe configurar al menos una talla con stock antes de publicar. Ya no se exige que una suma manual coincida con el campo superior, porque el campo superior no manda en ese modo.
 
 La preview privada de `Admin > Drops` reutiliza la misma capa visual del flotante público, usa los valores actuales del formulario y no publica cambios. El CTA de la preview está desactivado: no crea reservas, no consume stock y no llama a `reserveDropPrelaunch`.
 
@@ -148,23 +154,23 @@ El backoffice permite reemplazar o quitar la principal en borradores, añadir se
 
 En `Admin > Camisetas` hay dos pestañas:
 
-- `Preventas`: lista reservas y permite cancelarlas.
+- `Preventas`: lista nombre, teléfono, talla, color y estado de cada encargo, y permite cancelarlo.
 - `Pedidos`: lista líneas de pedido de tipo `drop` con talla, color, cantidad y precio.
 
 Desactivar el flotante no desactiva el drop, no elimina reservas y no cambia stock ni fecha.
 
 ## Flujo público
 
-Antes de `launchAt`, si el drop está activo, en `PRELAUNCH`, con flotante activo y stock disponible, el hero muestra:
+Antes de `launchAt`, si el drop está activo, en `PRELAUNCH` y con flotante activo, el hero muestra:
 
 - el mensaje exacto del administrador;
 - cuenta atrás;
-- stock disponible;
+- la indicación `Preventa bajo pedido`;
 - CTA `preorder_cta_text`, con fallback `Preventa`.
 
-La preventa no pide talla, color ni cantidad, no abre checkout y no crea un pedido normal.
+El CTA lleva a `/drops/[slug]`. La sección Drops y su enlace de navegación permanecen visibles durante la preventa. La ficha pide talla, color, nombre y apellidos y teléfono; registra una unidad bajo pedido, sin abrir checkout ni crear un pedido normal.
 
-Desde `launchAt`, el flotante desaparece, aparece `Drops` en el menú, `/drops` lista el producto y `/drops/[slug]` permite comprar según el modo configurado. Si el modo por talla está desactivado, la ficha no muestra bloque de talla y permite añadir al carrito con color y cantidad. Si está activado, muestra selector de talla, color y cantidad. El checkout existente crea el pedido y el servidor revalida stock contra la base, sin confiar en el cliente.
+Desde `launchAt`, el flotante desaparece y `/drops/[slug]` cambia automáticamente a venta normal. Si el modo por talla está desactivado, la ficha permite añadir al carrito con color y cantidad usando el stock general. Si está activado, muestra selector de talla, color y cantidad con el stock real restante. El checkout existente crea el pedido y el servidor revalida stock contra la base, sin confiar en el cliente.
 
 Si una preventa se cancela desde backoffice, el navegador puede conservar una idempotency key antigua. La RPC diferencia reserva activa y cancelada: si la key apunta a una cancelada devuelve `reservation_cancelled_idempotency_key`. El cliente rota la clave y reintenta una sola vez. Así se mantiene protección contra doble click y se permite reservar de nuevo después de una cancelación, sin falso éxito ni stock negativo.
 
@@ -174,8 +180,8 @@ El chatbot conoce drops de forma determinista antes de caer al LLM. Responde a p
 
 Ejemplos:
 
-- PRELAUNCH con tallas: informa nombre, precio, fecha de lanzamiento en `Atlantic/Canary`, stock global, tallas previstas, colores y aclara que la preventa reserva una unidad genérica sin talla/color.
-- PRELAUNCH sin tallas: informa nombre, precio, fecha de lanzamiento, stock global y colores sin inventar tallas.
+- PRELAUNCH con tallas: informa nombre, precio, fecha de lanzamiento en `Atlantic/Canary`, tallas y colores, y enlaza a la ficha para registrar el encargo bajo pedido.
+- PRELAUNCH sin tallas configuradas: informa nombre, precio, fecha y colores sin inventar tallas.
 - LIVE sin tallas: informa nombre, precio, stock general y aclara que el drop se vende sin selección de talla.
 - LIVE con tallas: informa nombre, precio, stock global y tallas con disponibilidad vendible, por ejemplo `S (5), M (10), L (10), XL (5)`.
 - Talla concreta con modo activo: responde si queda o está agotada usando `sizeSellableNow`.

@@ -52,6 +52,23 @@ test("documentación cubre despliegue de código antes de migración", async () 
   assert.match(source, /no ejecuta migraciones remotas/i)
 })
 
+test("migración de preventa guarda datos completos sin consumir stock live", async () => {
+  const source = await readFile(resolve("supabase/migrations/202607120001_preorder_details_and_stock_separation.sql"), "utf8")
+
+  assert.match(source, /add column if not exists customer_name/)
+  assert.match(source, /add column if not exists phone/)
+  assert.match(source, /add column if not exists selected_size/)
+  assert.match(source, /add column if not exists selected_color/)
+  assert.match(source, /create or replace function public\.create_drop_preorder/)
+  assert.match(source, /now\(\) >= v_drop\.launch_at/)
+  assert.match(source, /jsonb_array_elements_text\(v_drop\.sizes\)/)
+  assert.match(source, /jsonb_array_elements_text\(v_drop\.colors\)/)
+  assert.match(source, /v_available := greatest\(0, v_stock_total - v_ordered\)/)
+  assert.doesNotMatch(source, /v_stock_total - v_reserved - v_ordered/)
+  assert.match(source, /grant execute on function public\.create_drop_preorder\(uuid, text, text, text, text, text\) to service_role/)
+  assert.doesNotMatch(source, /insert into public\.drops/i)
+})
+
 test("migración aditiva del refinamiento añade CTA y endurece permisos RPC", async () => {
   const source = await readFile(resolve("supabase/migrations/202606250001_refine_merch_drop_admin.sql"), "utf8")
 

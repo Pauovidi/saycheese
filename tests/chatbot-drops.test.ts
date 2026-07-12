@@ -50,7 +50,7 @@ const dropRow = {
   sizes: ["S", "M", "L", "XL"],
   stock_total: 30,
   size_stock_enabled: true,
-  launch_at: "2026-06-30T23:00:00.000Z",
+  launch_at: "2099-06-30T23:00:00.000Z",
   launch_timezone: "Atlantic/Canary",
   is_active: true,
   floating_enabled: true,
@@ -91,18 +91,18 @@ test.afterEach(() => {
   setDropStoreClientForTests(null)
 })
 
-test("chatbot responde drops en preventa con fecha, precio, stock global, tallas y colores", async () => {
+test("chatbot responde preventa bajo pedido con fecha, precio, tallas, colores y enlace", async () => {
   setMockClient({ drops: { data: [dropRow], error: null }, stock: { data: stockSummary, error: null }, sizeStock: { data: sizeStockSummary, error: null } })
 
   const reply = await buildDropsReplyIfIntent("¿tenéis drops?")
 
   assert.match(reply ?? "", /Camiseta Tentados/)
   assert.match(reply ?? "", /preventa/i)
-  assert.match(reply ?? "", /30 unidades/)
+  assert.match(reply ?? "", /bajo pedido/i)
   assert.match(reply ?? "", /25/)
   assert.match(reply ?? "", /S, M, L, XL/)
   assert.match(reply ?? "", /Blanco, Negro/)
-  assert.match(reply ?? "", /unidad genérica|unidad; talla/i)
+  assert.match(reply ?? "", /\/drops\/camiseta-tentados/)
 })
 
 test("chatbot responde disponibilidad real de talla concreta en LIVE", async () => {

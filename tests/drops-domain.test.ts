@@ -70,14 +70,24 @@ test("Atlantic/Canary 01/07/2026 00:00 se almacena como UTC consistente", () => 
   assert.equal(utcIsoToDateTimeLocalInZone(DEFAULT_DROP_LAUNCH_AT_UTC, "Atlantic/Canary"), "2026-07-01T00:00")
 })
 
-test("stock disponible descuenta preventas activas y pedidos", () => {
+test("stock disponible ignora preventas bajo pedido y descuenta solo pedidos live", () => {
   assert.equal(
     computeAvailableDropStock({
       stockTotal: 30,
       reservedUnits: 2,
       orderedUnits: 2,
     }),
-    26
+    28
+  )
+})
+
+test("la preventa sigue disponible aunque el stock de venta normal sea cero", () => {
+  assert.equal(
+    getDropPublicStatus(
+      { isActive: true, launchAt, availableStock: 0 },
+      new Date("2026-06-30T22:59:59.999Z")
+    ),
+    "PRELAUNCH"
   )
 })
 

@@ -63,7 +63,12 @@ function emptyDropForm(): DropFormState {
     imageUrls: [],
     colors: "Blanco\nNegro",
     sizeStockEnabled: false,
-    sizeStock: [],
+    sizeStock: [
+      { size: "S", stockTotal: "0", position: 0 },
+      { size: "M", stockTotal: "0", position: 1 },
+      { size: "L", stockTotal: "0", position: 2 },
+      { size: "XL", stockTotal: "0", position: 3 },
+    ],
     stockTotal: "30",
     launchAtLocal: DEFAULT_DROP_LAUNCH_LOCAL,
     launchTimezone: DROP_LAUNCH_TIME_ZONE,
@@ -258,12 +263,12 @@ export function DropAdminEditor({
         price: Number(form.price),
         stockTotal: Number(form.stockTotal),
         sizeStockEnabled: form.sizeStockEnabled,
-        sizes: form.sizeStockEnabled ? form.sizeStock.map((entry) => entry.size) : [],
-        sizeStock: form.sizeStockEnabled ? form.sizeStock.map((entry, index) => ({
+        sizes: form.sizeStock.map((entry) => entry.size),
+        sizeStock: form.sizeStock.map((entry, index) => ({
           size: entry.size,
-          stockTotal: Number(entry.stockTotal),
+          stockTotal: form.sizeStockEnabled ? Number(entry.stockTotal) : 0,
           position: index,
-        })) : [],
+        })),
       })
 
       if (!response.ok) {
@@ -462,7 +467,7 @@ export function DropAdminEditor({
                 <span>
                   <span className="block text-sm font-semibold text-foreground">Usar tallas y stock por talla</span>
                   <span className="mt-1 block text-xs leading-relaxed text-muted-foreground">
-                    Si está desactivado, el drop se vende sin tallas y usa el stock general. Si está activado, el stock general se calcula desde las tallas.
+                    Las tallas siempre se usan durante la preventa. Al activarlo, también controlan el stock disponible por talla en la venta normal.
                   </span>
                 </span>
                 <Switch
@@ -474,14 +479,14 @@ export function DropAdminEditor({
               </label>
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <p className="text-sm font-semibold text-foreground">Stock por talla</p>
+                  <p className="text-sm font-semibold text-foreground">Tallas de preventa y stock de venta</p>
                   <p className="text-xs text-muted-foreground">
                     {form.sizeStockEnabled
                       ? `Stock calculado desde tallas activas: ${sizeStockTotal}.`
-                      : "Desactivado: estas tallas no afectan al stock ni a la venta."}
+                      : "Las tallas se pueden pedir en preventa; sus cantidades no afectan al stock de la venta normal."}
                   </p>
                 </div>
-                <Button type="button" variant="outline" onClick={addSizeStockRow} disabled={!moduleReady || !form.sizeStockEnabled}>
+                <Button type="button" variant="outline" onClick={addSizeStockRow} disabled={!moduleReady}>
                   Añadir talla
                 </Button>
               </div>
@@ -490,7 +495,7 @@ export function DropAdminEditor({
                   Si activas el modo por talla, configura al menos una talla con stock antes de publicar o vender.
                 </p>
               ) : null}
-              <div className={`overflow-x-auto border border-border ${form.sizeStockEnabled ? "" : "opacity-60"}`}>
+              <div className="overflow-x-auto border border-border">
                 <table className="w-full min-w-[620px] text-sm">
                   <thead className="bg-secondary text-left text-xs uppercase tracking-[0.14em] text-muted-foreground">
                     <tr>
@@ -508,7 +513,7 @@ export function DropAdminEditor({
                       return (
                         <tr key={`${entry.position}-${index}`} className="border-t border-border">
                           <td className="px-3 py-2">
-                            <Input value={entry.size} onChange={(event) => updateSizeStock(index, "size", event.target.value)} disabled={!moduleReady || !form.sizeStockEnabled} />
+                            <Input value={entry.size} onChange={(event) => updateSizeStock(index, "size", event.target.value)} disabled={!moduleReady} />
                           </td>
                           <td className="px-3 py-2">
                             <Input type="number" min="0" step="1" value={entry.stockTotal} onChange={(event) => updateSizeStock(index, "stockTotal", event.target.value)} disabled={!moduleReady || !form.sizeStockEnabled} />
@@ -517,7 +522,7 @@ export function DropAdminEditor({
                           <td className="px-3 py-2 text-muted-foreground">{saved?.availableRaw ?? Math.max(0, Number(entry.stockTotal) || 0)}</td>
                           <td className="px-3 py-2 text-muted-foreground">{saved?.sellableNow ?? Math.min(Math.max(0, Number(entry.stockTotal) || 0), previewAvailableStock)}</td>
                           <td className="px-3 py-2">
-                            <Button type="button" variant="outline" onClick={() => removeSizeStockRow(index)} disabled={!moduleReady || !form.sizeStockEnabled || selectedOrderedSizes.has(entry.size)}>
+                            <Button type="button" variant="outline" onClick={() => removeSizeStockRow(index)} disabled={!moduleReady || selectedOrderedSizes.has(entry.size)}>
                               Quitar
                             </Button>
                           </td>
@@ -621,7 +626,7 @@ export function DropAdminEditor({
           <Card>
             <CardHeader>
               <CardTitle>Stock</CardTitle>
-              <CardDescription>El stock disponible se calcula con reservas activas y pedidos no anulados.</CardDescription>
+            <CardDescription>Las preventas son bajo pedido y no descuentan stock. Solo descuentan los pedidos de la venta normal.</CardDescription>
             </CardHeader>
             <CardContent className="grid gap-3 text-sm sm:grid-cols-4">
               <div>Total: {selectedDrop.stock.stockTotal}</div>
@@ -642,9 +647,7 @@ export function DropAdminEditor({
             <HeroDropFloatingCard
               message={form.floatingMessage || "NUEVO DROP MUY PRONTO"}
               countdown={previewCountdown}
-              availableStock={previewAvailableStock}
               ctaText={normalizeDropPreorderCtaText(form.preorderCtaText)}
-              soldOut={previewStatus === "SOLD_OUT" || previewAvailableStock <= 0}
               preview
             />
           </CardContent>

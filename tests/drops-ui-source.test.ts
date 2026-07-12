@@ -3,14 +3,15 @@ import { readFile } from "node:fs/promises"
 import { resolve } from "node:path"
 import test from "node:test"
 
-test("flotante usa texto exacto seguro, stock y CTA Preventa", async () => {
+test("flotante usa texto exacto seguro y enlaza la preventa a la ficha", async () => {
   const source = await readFile(resolve("src/components/drops/hero-drop-floating.tsx"), "utf8")
 
   assert.match(source, /drop\.floatingMessage/)
   assert.match(source, /drop\.preorderCtaText/)
-  assert.match(source, /Quedan \$\{availableStock\} unidades/)
+  assert.match(source, /Preventa bajo pedido/)
   assert.match(source, /visibleCta/)
-  assert.match(source, /reserveDropPrelaunch/)
+  assert.match(source, /href=\{`\/drops\/\$\{drop\.slug\}`\}/)
+  assert.doesNotMatch(source, /reserveDropPrelaunch/)
   assert.match(source, /HeroDropFloatingCard/)
   assert.match(source, /bg-\[rgba\(96,17,22,0\.7\)\]/)
   assert.match(source, /md:text-4xl/)
@@ -28,10 +29,16 @@ test("flotante aparece sobre el titular del hero y no anclado abajo", async () =
   assert.match(hero, /gap-7/)
 })
 
-test("preventa no muestra talla, color, cantidad ni checkout normal", async () => {
-  const source = await readFile(resolve("src/components/drops/hero-drop-floating.tsx"), "utf8")
+test("preventa recoge cliente, teléfono, talla y color en la ficha sin carrito", async () => {
+  const source = await readFile(resolve("src/components/drops/drop-product-detail.tsx"), "utf8")
 
-  assert.doesNotMatch(source, /selectedSize|selectedColor|quantity|checkout/i)
+  assert.match(source, /customerName/)
+  assert.match(source, /phone/)
+  assert.match(source, /selectedSize/)
+  assert.match(source, /selectedColor/)
+  assert.match(source, /reserveDropPrelaunch/)
+  assert.match(source, /isPreorder \?/)
+  assert.match(source, /La preventa se fabrica bajo pedido y no consume el stock/)
 })
 
 test("Drops aparece en navegación solo si el servidor lo habilita", async () => {
@@ -122,7 +129,7 @@ test("backoffice expone Drops y Camisetas con preventas y pedidos separados", as
   assert.match(editor, /Archivados/)
   assert.match(editor, /Usar tallas y stock por talla/)
   assert.match(editor, /El stock total se calcula automáticamente sumando las tallas activas/)
-  assert.match(editor, /no afectan al stock ni a la venta/)
+  assert.match(editor, /no afectan al stock de la venta normal/)
   assert.doesNotMatch(editor, /La suma del stock por talla debe coincidir/)
   assert.match(actions, /sizeStockEnabled/)
   assert.match(actions, /Antes de activar un drop debes configurar al menos un color/)
@@ -134,7 +141,7 @@ test("backoffice expone Drops y Camisetas con preventas y pedidos separados", as
 })
 
 test("preventa rota idempotency key cancelada una sola vez", async () => {
-  const source = await readFile(resolve("src/components/drops/hero-drop-floating.tsx"), "utf8")
+  const source = await readFile(resolve("src/components/drops/drop-product-detail.tsx"), "utf8")
 
   assert.match(source, /rotateBrowserIdempotencyKey/)
   assert.match(source, /reservation_cancelled_idempotency_key/)

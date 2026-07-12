@@ -37,6 +37,7 @@ function createQueryBuilder(response: MockResponse) {
     eq: () => builder,
     is: () => builder,
     lte: () => builder,
+    gt: () => builder,
     order: () => builder,
     limit: () => builder,
     insert: () => builder,
@@ -175,7 +176,7 @@ test("mutaciones de drops fallan con 503 controlado cuando el schema no está ap
       drops: { data: null, error: schemaCacheError },
     },
     rpc: {
-      create_drop_reservation: { data: null, error: schemaCacheError },
+      create_drop_preorder: { data: null, error: schemaCacheError },
       cancel_drop_reservation: { data: null, error: schemaCacheError },
       create_order_with_items: { data: null, error: schemaCacheError },
     },
@@ -183,7 +184,14 @@ test("mutaciones de drops fallan con 503 controlado cuando el schema no está ap
 
   for (const operation of [
     () => createDropRecord(dropInput),
-    () => reserveDrop({ dropId: "00000000-0000-0000-0000-000000000001", idempotencyKey: "test-key-123" }),
+    () => reserveDrop({
+      dropId: "00000000-0000-0000-0000-000000000001",
+      idempotencyKey: "test-key-123",
+      customerName: "Cliente Prueba",
+      phone: "600123123",
+      selectedSize: "M",
+      selectedColor: "Burdeos",
+    }),
     () => cancelDropReservation({ reservationId: "00000000-0000-0000-0000-000000000002" }),
     () =>
       createOrderWithItems({

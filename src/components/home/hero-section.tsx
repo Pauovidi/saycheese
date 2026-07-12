@@ -2,14 +2,10 @@ import { HeroDropFloating } from "@/src/components/drops/hero-drop-floating"
 
 type HeroSectionProps = {
   dropPromo?: {
-    id: string
     slug: string
-    name: string
     launchAt: string
     floatingMessage: string
     preorderCtaText?: string
-    availableStock: number
-    status: "PRELAUNCH" | "SOLD_OUT"
   } | null
 }
 

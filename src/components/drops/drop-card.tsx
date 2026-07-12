@@ -19,9 +19,12 @@ type DropCardProps = {
 }
 
 export function DropCard({ drop }: DropCardProps) {
+  const isPreorder = drop.status === "PRELAUNCH"
   const hasSellableSize = drop.stock.sizeStock?.some((entry) => entry.sellableNow > 0) ?? true
-  const soldOut = drop.status === "SOLD_OUT" || drop.stock.availableStock <= 0 || !hasSellableSize
-  const stockLabel = soldOut
+  const soldOut = !isPreorder && (drop.status === "SOLD_OUT" || drop.stock.availableStock <= 0 || !hasSellableSize)
+  const stockLabel = isPreorder
+    ? "Preventa · Bajo pedido"
+    : soldOut
     ? "Agotado"
     : `${getDropStatusLabel(drop.status)} \u00b7 Quedan ${drop.stock.availableStock}`
 
@@ -70,7 +73,7 @@ export function DropCard({ drop }: DropCardProps) {
             href={`/drops/${drop.slug}`}
             className="mt-4 w-full bg-primary px-4 py-2.5 text-center text-[10px] font-bold uppercase tracking-[0.15em] text-primary-foreground transition-opacity hover:opacity-80 sm:py-3 sm:text-xs sm:tracking-[0.2em]"
           >
-            Hacer pedido
+            {isPreorder ? "Reservar en preventa" : "Hacer pedido"}
           </Link>
         )}
       </div>

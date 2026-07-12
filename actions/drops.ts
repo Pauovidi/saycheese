@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache"
 import { z } from "zod"
 
 import { requireAdminUser } from "@/lib/admin-auth"
+import { normalizePhone } from "@/lib/phone"
 import {
   DEFAULT_DROP_LAUNCH_LOCAL,
   DEFAULT_DROP_PREORDER_CTA_TEXT,
@@ -55,6 +56,10 @@ const dropFormSchema = z.object({
 const reserveDropSchema = z.object({
   dropId: z.string().uuid(),
   idempotencyKey: z.string().trim().min(8).max(160),
+  customerName: z.string().trim().min(3, "Escribe tu nombre y apellidos").max(160),
+  phone: z.string().trim().max(40).refine((value) => normalizePhone(value).length >= 6, "Escribe un teléfono válido"),
+  selectedSize: z.string().trim().max(80).optional().nullable(),
+  selectedColor: z.string().trim().min(1, "Selecciona un color").max(80),
 })
 
 const cancelReservationSchema = z.object({
@@ -77,8 +82,11 @@ function normalizeDropForm(input: z.input<typeof dropFormSchema>) {
   const imageUrls = parseDropImageList(parsed.imageUrls)
   const colors = parseDropOptionList(parsed.colors)
   const sizeStockEnabled = parsed.sizeStockEnabled
-  const sizes = sizeStockEnabled ? parseDropOptionList(parsed.sizes) : []
-  const sizeStock = sizeStockEnabled ? normalizeDropSizeStock(sizes, parsed.sizeStock) : []
+  const sizes = parseDropOptionList(parsed.sizes)
+  const sizeStock = normalizeDropSizeStock(sizes, parsed.sizeStock).map((entry) => ({
+    ...entry,
+    stockTotal: sizeStockEnabled ? entry.stockTotal : 0,
+  }))
   const preorderCtaText = normalizeDropPreorderCtaText(parsed.preorderCtaText)
 
   if (!slug) {
@@ -142,6 +150,10 @@ function publicDropErrorMessage(error: unknown) {
 
   if (/drop_sold_out/i.test(message)) return "Agotado"
   if (/drop_archived/i.test(message)) return "Este drop ya no está disponible."
+  if (/invalid_preorder_customer_name/i.test(message)) return "Escribe tu nombre y apellidos."
+  if (/invalid_preorder_phone/i.test(message)) return "Escribe un teléfono válido."
+  if (/invalid_drop_size/i.test(message)) return "Selecciona una talla válida."
+  if (/invalid_drop_color/i.test(message)) return "Selecciona un color válido."
   if (/reservation_cancelled_idempotency_key/i.test(message)) return "La preventa anterior estaba cancelada. Vamos a intentarlo de nuevo."
   if (/drop_not_prelaunch|drop_not_live/i.test(message)) return "Esta acción ya no está disponible para este drop."
   if (/missing_idempotency_key/i.test(message)) return "No se pudo confirmar la reserva. Inténtalo de nuevo."
@@ -197,6 +209,10 @@ export async function reserveDropPrelaunch(payload: z.infer<typeof reserveDropSc
     const reservation = await reserveDrop({
       dropId: parsed.dropId,
       idempotencyKey: parsed.idempotencyKey,
+      customerName: parsed.customerName,
+      phone: normalizePhone(parsed.phone),
+      selectedSize: parsed.selectedSize,
+      selectedColor: parsed.selectedColor,
     })
 
     revalidateDropSurfaces()
