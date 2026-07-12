@@ -2,49 +2,16 @@
 
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { useEffect, useMemo, useState, useTransition } from "react"
-import { Check, Loader2 } from "lucide-react"
-import { toast } from "sonner"
+import { useEffect, useMemo, useState } from "react"
 
-import { reserveDropPrelaunch } from "@/actions/drops"
 import { DEFAULT_DROP_PREORDER_CTA_TEXT, normalizeDropPreorderCtaText } from "@/src/data/drops"
 
 type HeroDropFloatingProps = {
   drop: {
-    id: string
     slug: string
-    name: string
     launchAt: string
     floatingMessage: string
     preorderCtaText?: string
-    availableStock: number
-    status: "PRELAUNCH" | "SOLD_OUT"
-  }
-}
-
-function createBrowserIdempotencyKey(dropId: string) {
-  const storageKey = `tentados-drop-preorder-${dropId}`
-
-  try {
-    const current = window.localStorage.getItem(storageKey)
-    if (current) return current
-    const next = crypto.randomUUID()
-    window.localStorage.setItem(storageKey, next)
-    return next
-  } catch {
-    return `${dropId}-${Date.now()}-${Math.random().toString(36).slice(2)}`
-  }
-}
-
-function rotateBrowserIdempotencyKey(dropId: string) {
-  const storageKey = `tentados-drop-preorder-${dropId}`
-
-  try {
-    const next = crypto.randomUUID()
-    window.localStorage.setItem(storageKey, next)
-    return next
-  } catch {
-    return `${dropId}-${Date.now()}-${Math.random().toString(36).slice(2)}`
   }
 }
 
@@ -61,30 +28,21 @@ function formatCountdown(ms: number) {
 export type HeroDropFloatingCardProps = {
   message: string
   countdown: string
-  availableStock: number
   ctaText?: string
-  soldOut?: boolean
-  isPending?: boolean
-  reservationDone?: boolean
+  href?: string
   preview?: boolean
-  onCtaClick?: () => void
 }
 
 export function HeroDropFloatingCard({
   message,
   countdown,
-  availableStock,
   ctaText = DEFAULT_DROP_PREORDER_CTA_TEXT,
-  soldOut = false,
-  isPending = false,
-  reservationDone = false,
+  href = "/drops",
   preview = false,
-  onCtaClick,
 }: HeroDropFloatingCardProps) {
   const visibleCta = normalizeDropPreorderCtaText(ctaText)
-
-  return (
-    <aside className="bg-[rgba(96,17,22,0.7)] p-6 text-[#f4eed4] shadow-2xl backdrop-blur-md sm:p-7 md:p-8">
+  const card = (
+    <aside className="bg-[rgba(96,17,22,0.7)] p-6 text-[#f4eed4] shadow-2xl backdrop-blur-md transition-colors sm:p-7 md:p-8">
       <div className="grid gap-6 md:grid-cols-[minmax(0,1fr)_auto] md:items-center md:gap-8">
         <div className="min-w-0 space-y-4 text-left">
           <p className="whitespace-pre-line text-base font-semibold leading-relaxed text-[#fffdf8] md:text-lg">
@@ -96,44 +54,41 @@ export function HeroDropFloatingCard({
             </span>
             <span className="sr-only">Cuenta atrás hasta el lanzamiento.</span>
             <span className="block text-xs font-bold uppercase tracking-[0.18em] text-[#f4eed4]/90 md:text-sm">
-              {soldOut ? "Agotado" : `Quedan ${availableStock} unidades`}
+              Preventa bajo pedido
             </span>
           </div>
         </div>
 
-        {reservationDone ? (
-          <Link
-            href="/"
-            className="inline-flex min-h-14 items-center justify-center gap-2 bg-white px-7 py-4 text-sm font-bold uppercase tracking-[0.22em] text-[#601116] md:min-w-48"
-          >
-            <Check className="h-4 w-4" aria-hidden="true" />
-            Reservado
-          </Link>
-        ) : (
+        {preview ? (
           <button
             type="button"
-            onClick={preview ? undefined : onCtaClick}
-            disabled={preview || soldOut || isPending}
-            className="inline-flex min-h-14 w-full items-center justify-center gap-2 bg-white px-7 py-4 text-sm font-bold uppercase tracking-[0.22em] text-[#601116] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60 md:w-auto md:min-w-48"
+            disabled
+            className="inline-flex min-h-14 w-full items-center justify-center bg-white px-7 py-4 text-sm font-bold uppercase tracking-[0.22em] text-[#601116] opacity-60 md:w-auto md:min-w-48"
           >
-            {isPending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}
-            {soldOut ? "Agotado" : visibleCta}
+            {visibleCta}
           </button>
+        ) : (
+          <span className="inline-flex min-h-14 w-full items-center justify-center bg-white px-7 py-4 text-sm font-bold uppercase tracking-[0.22em] text-[#601116] md:w-auto md:min-w-48">
+            {visibleCta}
+          </span>
         )}
       </div>
     </aside>
+  )
+
+  if (preview) return card
+
+  return (
+    <Link href={href} aria-label={`${visibleCta}: abrir el drop`} className="block transition-opacity hover:opacity-95">
+      {card}
+    </Link>
   )
 }
 
 export function HeroDropFloating({ drop }: HeroDropFloatingProps) {
   const router = useRouter()
   const [remainingMs, setRemainingMs] = useState(() => new Date(drop.launchAt).getTime() - Date.now())
-  const [availableStock, setAvailableStock] = useState(drop.availableStock)
-  const [reservationDone, setReservationDone] = useState(false)
-  const [isPending, startTransition] = useTransition()
-  const soldOut = drop.status === "SOLD_OUT" || availableStock <= 0
   const countdown = useMemo(() => formatCountdown(remainingMs), [remainingMs])
-  const ctaText = normalizeDropPreorderCtaText(drop.preorderCtaText)
 
   useEffect(() => {
     const launchTime = new Date(drop.launchAt).getTime()
@@ -152,46 +107,13 @@ export function HeroDropFloating({ drop }: HeroDropFloatingProps) {
     return () => window.clearInterval(interval)
   }, [drop.launchAt, router])
 
-  function handleReserve() {
-    startTransition(async () => {
-      let idempotencyKey = createBrowserIdempotencyKey(drop.id)
-      let response = await reserveDropPrelaunch({
-        dropId: drop.id,
-        idempotencyKey,
-      })
-
-      if (!response.ok && response.code === "reservation_cancelled_idempotency_key") {
-        idempotencyKey = rotateBrowserIdempotencyKey(drop.id)
-        response = await reserveDropPrelaunch({
-          dropId: drop.id,
-          idempotencyKey,
-        })
-      }
-
-      if (!response.ok) {
-        toast.error(response.error)
-        router.refresh()
-        return
-      }
-
-      setAvailableStock(response.reservation.availableStock)
-      setReservationDone(true)
-      toast.success(response.reservation.reusedExisting ? "Tu preventa ya estaba registrada" : "Preventa registrada")
-      router.refresh()
-    })
-  }
-
   return (
     <div className="w-full max-w-4xl">
       <HeroDropFloatingCard
         message={drop.floatingMessage}
         countdown={countdown}
-        availableStock={availableStock}
-        ctaText={ctaText}
-        soldOut={soldOut}
-        isPending={isPending}
-        reservationDone={reservationDone}
-        onCtaClick={handleReserve}
+        ctaText={drop.preorderCtaText}
+        href={`/drops/${drop.slug}`}
       />
     </div>
   )

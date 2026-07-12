@@ -107,6 +107,10 @@ export type DropReservationListItem = {
   status: string
   quantity: number
   customerReference: string | null
+  customerName: string | null
+  phone: string | null
+  selectedSize: string | null
+  selectedColor: string | null
   idempotencyKey: string
   cancelledAt: string | null
   cancellationReason: string | null
@@ -203,6 +207,7 @@ const DROP_COLUMNS = [
   "colors",
   "sizes",
   "stock_total",
+  "size_stock_enabled",
   "launch_at",
   "launch_timezone",
   "is_active",
@@ -691,6 +696,8 @@ export async function getHeroDrop(now: Date = new Date()) {
         .select(columns)
         .eq("is_active", true)
         .eq("is_closed", false)
+        .eq("floating_enabled", true)
+        .gt("launch_at", now.toISOString())
         .order("launch_at", { ascending: true })
         .limit(1)
       return columns === LEGACY_DROP_COLUMNS ? query.maybeSingle() : query.is("archived_at", null).maybeSingle()
@@ -706,7 +713,7 @@ export async function getHeroDrop(now: Date = new Date()) {
   }
 }
 
-export async function hasPublicDropsNav(now: Date = new Date()) {
+export async function hasPublicDropsNav(_now: Date = new Date()) {
   try {
     const supabase = getDropClient()
     const { count, error } = await supabase
@@ -715,7 +722,6 @@ export async function hasPublicDropsNav(now: Date = new Date()) {
       .eq("is_active", true)
       .eq("is_closed", false)
       .is("archived_at", null)
-      .lte("launch_at", now.toISOString())
 
     if (error && isDropArchiveOrSizeStockMissingError(error)) {
       const legacy = await supabase
@@ -723,7 +729,6 @@ export async function hasPublicDropsNav(now: Date = new Date()) {
         .select("id", { count: "exact", head: true })
         .eq("is_active", true)
         .eq("is_closed", false)
-        .lte("launch_at", now.toISOString())
       if (legacy.error) throw toDropStorageUnavailableError(legacy.error, "hasPublicDropsNav")
       return (legacy.count ?? 0) > 0
     }
@@ -745,7 +750,6 @@ export async function listPublicDrops(now: Date = new Date()) {
         .select(columns)
         .eq("is_active", true)
         .eq("is_closed", false)
-        .lte("launch_at", now.toISOString())
         .order("launch_at", { ascending: false })
       return columns === LEGACY_DROP_COLUMNS ? query : query.is("archived_at", null)
     })
@@ -774,7 +778,7 @@ export async function getPublicDropBySlug(slug: string, now: Date = new Date()) 
 
     const stock = await getDropStockSummary((data as unknown as DropRow).id, readStringArray((data as unknown as DropRow).sizes))
     const drop = mapDropRow(data as unknown as DropRow, stock, now)
-    return drop.status === "LIVE" || drop.status === "SOLD_OUT" ? drop : null
+    return drop.status === "PRELAUNCH" || drop.status === "LIVE" || drop.status === "SOLD_OUT" ? drop : null
   } catch (error) {
     logDropCaughtError(error, "getPublicDropBySlug")
     return null
@@ -911,14 +915,20 @@ export async function unarchiveDropRecord(input: { id: string; actor?: string | 
 export async function reserveDrop(input: {
   dropId: string
   idempotencyKey: string
-  customerReference?: string | null
+  customerName: string
+  phone: string
+  selectedSize?: string | null
+  selectedColor: string
 }) {
   const supabase = getDropClient()
   const { data, error } = await supabase
-    .rpc("create_drop_reservation", {
+    .rpc("create_drop_preorder", {
       p_drop_id: input.dropId,
       p_idempotency_key: input.idempotencyKey,
-      p_customer_reference: input.customerReference ?? null,
+      p_customer_name: input.customerName,
+      p_phone: input.phone,
+      p_selected_size: input.selectedSize ?? null,
+      p_selected_color: input.selectedColor,
     })
     .single()
 
@@ -989,7 +999,7 @@ export async function listDropReservations(): Promise<DropReservationListItem[]>
   const supabase = getDropClient()
   const { data, error } = await supabase
     .from("drop_reservations")
-    .select("id, created_at, drop_id, quantity, status, idempotency_key, customer_reference, cancelled_at, cancellation_reason, drops(name, slug)")
+    .select("id, created_at, drop_id, quantity, status, idempotency_key, customer_reference, customer_name, phone, selected_size, selected_color, cancelled_at, cancellation_reason, drops(name, slug)")
     .order("created_at", { ascending: false })
     .limit(100)
 
@@ -1008,10 +1018,14 @@ export async function listDropReservations(): Promise<DropReservationListItem[]>
       status,
       quantity: readNumber(row.quantity as number | string | null, 1),
       customerReference: row.customer_reference ? String(row.customer_reference) : null,
+      customerName: row.customer_name ? String(row.customer_name) : null,
+      phone: row.phone ? String(row.phone) : null,
+      selectedSize: row.selected_size ? String(row.selected_size) : null,
+      selectedColor: row.selected_color ? String(row.selected_color) : null,
       idempotencyKey: String(row.idempotency_key ?? ""),
       cancelledAt: row.cancelled_at ? String(row.cancelled_at) : null,
       cancellationReason: row.cancellation_reason ? String(row.cancellation_reason) : null,
-      stockEffect: status === "active" ? "-1 unidad" : "Sin consumo",
+      stockEffect: "Bajo pedido · no descuenta stock",
     }
   })
 }

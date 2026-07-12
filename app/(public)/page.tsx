@@ -9,16 +9,12 @@ import { getCatalogFlavors } from "@/src/data/products-store"
 export default async function HomePage() {
   const [flavors, heroDrop] = await Promise.all([getCatalogFlavors(), getHeroDrop()])
   const dropPromo =
-    heroDrop && heroDrop.floatingEnabled && (heroDrop.status === "PRELAUNCH" || heroDrop.status === "SOLD_OUT")
+    heroDrop && heroDrop.floatingEnabled && heroDrop.status === "PRELAUNCH"
       ? {
-          id: heroDrop.id,
           slug: heroDrop.slug,
-          name: heroDrop.name,
           launchAt: heroDrop.launchAt,
           floatingMessage: heroDrop.floatingMessage,
           preorderCtaText: heroDrop.preorderCtaText,
-          availableStock: heroDrop.stock.availableStock,
-          status: heroDrop.status,
         }
       : null
 

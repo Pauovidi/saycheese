@@ -35,12 +35,12 @@ export function getDropPublicStatus(input: DropPhaseInput, now: Date = new Date(
   if (!input.isActive) return "INACTIVE"
   if (input.archivedAt) return "CLOSED"
   if (input.isClosed) return "CLOSED"
-  if (input.availableStock <= 0) return "SOLD_OUT"
 
   const launchAt = input.launchAt instanceof Date ? input.launchAt : new Date(input.launchAt)
   if (!Number.isFinite(launchAt.getTime())) return "INACTIVE"
 
-  return now.getTime() < launchAt.getTime() ? "PRELAUNCH" : "LIVE"
+  if (now.getTime() < launchAt.getTime()) return "PRELAUNCH"
+  return input.availableStock <= 0 ? "SOLD_OUT" : "LIVE"
 }
 
 export function isDropPrelaunch(input: DropPhaseInput, now: Date = new Date()) {
@@ -52,7 +52,7 @@ export function isDropPurchasable(input: DropPhaseInput, now: Date = new Date())
 }
 
 export function computeAvailableDropStock(stock: { stockTotal: number; reservedUnits: number; orderedUnits: number }) {
-  return Math.max(0, stock.stockTotal - stock.reservedUnits - stock.orderedUnits)
+  return Math.max(0, stock.stockTotal - stock.orderedUnits)
 }
 
 export function computeDropSizeSellableNow(input: {

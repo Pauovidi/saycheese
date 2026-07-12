@@ -69,7 +69,7 @@ export function ShirtsAdmin({
                 status: "cancelled",
                 cancelledAt: new Date().toISOString(),
                 cancellationReason: "Cancelada desde backoffice",
-                stockEffect: "Sin consumo",
+                stockEffect: "Bajo pedido · no descuenta stock",
               }
             : reservation
         )
@@ -106,7 +106,9 @@ export function ShirtsAdmin({
                   <p className="text-muted-foreground">ID: {reservation.id}</p>
                   <p className="text-muted-foreground">Fecha: {formatDate(reservation.createdAt)}</p>
                   <p className="text-muted-foreground">Cantidad: {reservation.quantity}</p>
-                  <p className="text-muted-foreground">Referencia: {reservation.customerReference ?? "Sin referencia"}</p>
+                  <p className="text-muted-foreground">Cliente: {reservation.customerName ?? reservation.customerReference ?? "Sin nombre"}</p>
+                  <p className="text-muted-foreground">Teléfono: {reservation.phone ?? "Sin teléfono"}</p>
+                  <p className="text-muted-foreground">Talla: {reservation.selectedSize ?? "Sin talla"} · Color: {reservation.selectedColor ?? "Sin color"}</p>
                   <p className="text-muted-foreground">Efecto stock: {reservation.stockEffect}</p>
                 </div>
                 <div className="flex flex-col items-start gap-3 md:items-end">
@@ -124,7 +126,7 @@ export function ShirtsAdmin({
                         <AlertDialogHeader>
                           <AlertDialogTitle>¿Cancelar esta preventa?</AlertDialogTitle>
                           <AlertDialogDescription>
-                            La cancelación devolverá una unidad al stock una sola vez. No se creará ningún pedido.
+                            La preventa quedará cancelada y conservará su historial. Como es bajo pedido, no modifica el stock de la venta normal.
                           </AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>
