@@ -15,6 +15,7 @@ import { HeroDropFloatingCard } from "@/src/components/drops/hero-drop-floating"
 import {
   DEFAULT_DROP_LAUNCH_LOCAL,
   DEFAULT_DROP_PREORDER_CTA_TEXT,
+  DEFAULT_DROP_PREORDER_LIMIT,
   DROP_LAUNCH_TIME_ZONE,
   getDropStatusLabel,
   getDropPublicStatus,
@@ -51,6 +52,7 @@ type DropFormState = {
   floatingEnabled: boolean
   floatingMessage: string
   preorderCtaText: string
+  preorderLimit: string
   isClosed: boolean
 }
 
@@ -76,6 +78,7 @@ function emptyDropForm(): DropFormState {
     floatingEnabled: false,
     floatingMessage: "",
     preorderCtaText: DEFAULT_DROP_PREORDER_CTA_TEXT,
+    preorderLimit: String(DEFAULT_DROP_PREORDER_LIMIT),
     isClosed: false,
   }
 }
@@ -106,6 +109,7 @@ function dropToForm(drop: EditableDropRecord): DropFormState {
     floatingEnabled: drop.floatingEnabled,
     floatingMessage: drop.floatingMessage,
     preorderCtaText: drop.preorderCtaText,
+    preorderLimit: String(drop.preorderLimit),
     isClosed: drop.isClosed,
   }
 }
@@ -262,6 +266,7 @@ export function DropAdminEditor({
         ...form,
         price: Number(form.price),
         stockTotal: Number(form.stockTotal),
+        preorderLimit: Number(form.preorderLimit),
         sizeStockEnabled: form.sizeStockEnabled,
         sizes: form.sizeStock.map((entry) => entry.size),
         sizeStock: form.sizeStock.map((entry, index) => ({
@@ -383,6 +388,7 @@ export function DropAdminEditor({
                       <span>Total: {drop.stock.stockTotal}</span>
                       <span>Disponible: {drop.stock.availableStock}</span>
                       <span>Reservado: {drop.stock.reservedUnits}</span>
+                      <span>Preventa: {drop.preorderRemaining}/{drop.preorderLimit}</span>
                       <span>Pedido: {drop.stock.orderedUnits}</span>
                     </div>
                   </button>
@@ -595,6 +601,23 @@ export function DropAdminEditor({
             </div>
 
             <div className="space-y-2 md:col-span-2">
+              <Label htmlFor="drop-preorder-limit">Unidades disponibles en preventa</Label>
+              <Input
+                id="drop-preorder-limit"
+                type="number"
+                min="0"
+                step="1"
+                value={form.preorderLimit}
+                onChange={(event) => updateField("preorderLimit", event.target.value)}
+                required
+                disabled={!moduleReady}
+              />
+              <p className="text-xs text-muted-foreground">
+                Es un cupo global: cada preventa resta una unidad sin importar talla o color. No afecta al stock de venta normal.
+              </p>
+            </div>
+
+            <div className="space-y-2 md:col-span-2">
               <Label htmlFor="drop-floating-message">Mensaje exacto del flotante</Label>
               <Textarea
                 id="drop-floating-message"
@@ -631,6 +654,7 @@ export function DropAdminEditor({
             <CardContent className="grid gap-3 text-sm sm:grid-cols-4">
               <div>Total: {selectedDrop.stock.stockTotal}</div>
               <div>Reservado: {selectedDrop.stock.reservedUnits}</div>
+              <div>Preventa disponible: {selectedDrop.preorderRemaining}/{selectedDrop.preorderLimit}</div>
               <div>Pedido: {selectedDrop.stock.orderedUnits}</div>
               <div>Disponible: {selectedDrop.stock.availableStock}</div>
               <div className="sm:col-span-4">Lanzamiento: {formatAdminDate(selectedDrop.launchAt)} ({selectedDrop.launchTimezone})</div>
@@ -648,6 +672,7 @@ export function DropAdminEditor({
               message={form.floatingMessage || "NUEVO DROP MUY PRONTO"}
               countdown={previewCountdown}
               ctaText={normalizeDropPreorderCtaText(form.preorderCtaText)}
+              preorderRemaining={Math.max(0, Number(form.preorderLimit) - (selectedDrop?.stock.reservedUnits ?? 0))}
               preview
             />
           </CardContent>

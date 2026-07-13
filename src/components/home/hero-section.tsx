@@ -6,6 +6,7 @@ type HeroSectionProps = {
     launchAt: string
     floatingMessage: string
     preorderCtaText?: string
+    preorderRemaining: number
   } | null
 }
 

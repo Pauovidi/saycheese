@@ -5,6 +5,7 @@ import {
   DEFAULT_DROP_LAUNCH_AT_UTC,
   DEFAULT_DROP_PREORDER_CTA_TEXT,
   computeAvailableDropStock,
+  computePreorderRemaining,
   buildDropSizeStockNumbers,
   computeDropSizeSellableNow,
   getDropPublicStatus,
@@ -79,6 +80,13 @@ test("stock disponible ignora preventas bajo pedido y descuenta solo pedidos liv
     }),
     28
   )
+})
+
+test("cupo de preventa descuenta reservas activas sin depender de tallas o stock live", () => {
+  assert.equal(computePreorderRemaining(30, 0), 30)
+  assert.equal(computePreorderRemaining(30, 12), 18)
+  assert.equal(computePreorderRemaining(30, 30), 0)
+  assert.equal(computePreorderRemaining(30, 31), 0)
 })
 
 test("la preventa sigue disponible aunque el stock de venta normal sea cero", () => {

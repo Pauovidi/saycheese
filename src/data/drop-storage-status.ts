@@ -48,7 +48,7 @@ export function isDropSchemaMissingError(error: unknown) {
 
   const text = getSearchableErrorText(error)
   return [
-    /could\s+not\s+find\s+the\s+(?:table|function|column).*?(?:drops|drop_reservations|drop_revisions|drop_size_stock|drop_id|customer_name|phone|selected_size|selected_color|archived_at|archived_by|archive_reason|size_stock_enabled|is_active).*?schema\s+cache/i,
+    /could\s+not\s+find\s+the\s+(?:table|function|column).*?(?:drops|drop_reservations|drop_revisions|drop_size_stock|drop_id|customer_name|phone|selected_size|selected_color|archived_at|archived_by|archive_reason|size_stock_enabled|preorder_limit|is_active).*?schema\s+cache/i,
     /(?:relation|table)\s+["']?(?:public\.)?(?:drops|drop_reservations|drop_revisions|drop_size_stock)["']?\s+does\s+not\s+exist/i,
     /function\s+(?:public\.)?(?:get_drop_stock_summary|get_drop_size_stock_summary|create_drop_reservation|create_drop_preorder|cancel_drop_reservation|create_order_with_items)\b.*does\s+not\s+exist/i,
     /column\s+["']?(?:drop_id|product_name|unit_price|selected_size|selected_color)["']?\s+(?:of\s+relation\s+["']?order_items["']?\s+)?does\s+not\s+exist/i,
@@ -59,6 +59,11 @@ export function isDropSchemaMissingError(error: unknown) {
 export function isDropPreorderCtaColumnMissingError(error: unknown) {
   const text = getSearchableErrorText(error)
   return /preorder_cta_text/i.test(text) && /schema\s+cache|does\s+not\s+exist|not\s+found/i.test(text)
+}
+
+export function isDropPreorderLimitColumnMissingError(error: unknown) {
+  const text = getSearchableErrorText(error)
+  return /preorder_limit/i.test(text) && /schema\s+cache|does\s+not\s+exist|not\s+found/i.test(text)
 }
 
 export function isDropArchiveOrSizeStockMissingError(error: unknown) {

@@ -2,6 +2,7 @@ export const DROP_LAUNCH_TIME_ZONE = "Atlantic/Canary"
 export const DEFAULT_DROP_LAUNCH_LOCAL = "2026-07-01T00:00"
 export const DEFAULT_DROP_LAUNCH_AT_UTC = "2026-06-30T23:00:00.000Z"
 export const DEFAULT_DROP_PREORDER_CTA_TEXT = "Preventa"
+export const DEFAULT_DROP_PREORDER_LIMIT = 30
 export const MAX_DROP_PREORDER_CTA_LENGTH = 60
 
 export type DropPublicStatus = "INACTIVE" | "PRELAUNCH" | "LIVE" | "SOLD_OUT" | "CLOSED"
@@ -53,6 +54,10 @@ export function isDropPurchasable(input: DropPhaseInput, now: Date = new Date())
 
 export function computeAvailableDropStock(stock: { stockTotal: number; reservedUnits: number; orderedUnits: number }) {
   return Math.max(0, stock.stockTotal - stock.orderedUnits)
+}
+
+export function computePreorderRemaining(preorderLimit: number, reservedUnits: number) {
+  return Math.max(0, Math.trunc(preorderLimit) - Math.max(0, Math.trunc(reservedUnits)))
 }
 
 export function computeDropSizeSellableNow(input: {

@@ -45,7 +45,7 @@ sizeSellableNow[size] = min(sizeAvailableRaw[size], globalAvailable)
 
 En este modo `stockTotal` se obtiene desde la suma de `drop_size_stock.stock_total` de tallas activas y no archivadas. El campo superior deja de mandar y no hay validación manual de coincidencia entre stock general y suma por talla.
 
-En PRELAUNCH/preventa el cliente abre la ficha del drop, elige talla y color e introduce nombre, apellidos y teléfono. La preventa se fabrica bajo pedido: no está limitada por `stock_total`, no entra en el carrito y no descuenta stock de la venta normal. Al cancelarla se conserva el historial, sin modificar stock.
+En PRELAUNCH/preventa el cliente abre la ficha del drop, elige talla y color e introduce nombre, apellidos y teléfono. La preventa se fabrica bajo pedido: no está limitada por `stock_total`, no entra en el carrito y no descuenta stock de la venta normal. Sí tiene un cupo global propio, `preorder_limit`, que descuenta una unidad por preventa activa sin distinguir talla ni color. Al llegar a cero, la RPC bloquea nuevas preventas; al cancelar una, se libera una plaza sin modificar el stock de venta normal.
 
 En LIVE/venta sin tallas el cliente elige color y cantidad. En LIVE/venta con tallas el cliente elige talla, color y cantidad. Cada pedido consume stock global efectivo y, si el modo por talla está activado, disponibilidad de la talla seleccionada. El servidor valida que la cantidad no supere ni `globalAvailable` ni `sizeAvailableRaw` de esa talla. La ficha pública muestra solo el nombre de la talla en los botones, sin conteos numéricos; el chatbot sí puede informar conteos cuando se pregunta por stock.
 
@@ -103,6 +103,10 @@ La migración aditiva de preventa identificada y separación de stock es:
 `supabase/migrations/202607120001_preorder_details_and_stock_separation.sql`
 
 Añade nombre, teléfono, talla y color a `drop_reservations`, crea `create_drop_preorder` y actualiza `get_drop_stock_summary` para que las preventas bajo pedido sean informativas y solo los pedidos de venta normal descuenten stock. Conserva las reservas históricas, no crea drops ni aplica cambios directamente a entornos remotos.
+
+`supabase/migrations/202607130001_limited_drop_preorders.sql`
+
+Añade `drops.preorder_limit` con valor inicial 30 y un máximo configurable independiente del stock de venta. `create_drop_preorder` bloquea la fila del drop antes de contar preventas activas, por lo que dos solicitudes simultáneas no pueden consumir la misma última plaza. Las cancelaciones liberan cupo porque solo cuentan reservas activas. No inserta drops ni cambia su estado público.
 
 La RPC `create_order_with_items` usa `order_items.product_name` como snapshot del nombre del drop. No existe ni se añade una columna redundante `drop_name`. También conserva la lógica defensiva de `orders.phone_normalized`: detecta si la columna existe, detecta si es generada y solo escribe `regexp_replace(coalesce(p_phone, ''), '\D', '', 'g')` cuando la columna existe y no es generada.
 

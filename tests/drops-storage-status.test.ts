@@ -8,6 +8,7 @@ import {
   classifyDropStorageError,
   isDropArchiveOrSizeStockMissingError,
   isDropPreorderCtaColumnMissingError,
+  isDropPreorderLimitColumnMissingError,
   isDropSchemaMissingError,
   toDropStorageUnavailableError,
 } from "../src/data/drop-storage-status"
@@ -107,6 +108,22 @@ test("detecta solo la columna preorder_cta_text ausente como migración CTA pend
   assert.equal(
     isDropPreorderCtaColumnMissingError({
       message: "fetch failed because the connection timed out",
+    }),
+    false
+  )
+})
+
+test("detecta el límite de preventa ausente como migración pendiente", () => {
+  assert.equal(
+    isDropPreorderLimitColumnMissingError({
+      message: "Could not find the 'preorder_limit' column of 'drops' in the schema cache",
+    }),
+    true
+  )
+  assert.equal(
+    isDropPreorderLimitColumnMissingError({
+      code: "42501",
+      message: "permission denied for column preorder_limit",
     }),
     false
   )

@@ -1,10 +1,12 @@
 import { getAdminClient } from "@/lib/supabase/admin"
 import {
   DEFAULT_DROP_LAUNCH_AT_UTC,
+  DEFAULT_DROP_PREORDER_LIMIT,
   DEFAULT_DROP_PREORDER_CTA_TEXT,
   DROP_LAUNCH_TIME_ZONE,
   formatDropPrice,
   buildDropSizeStockNumbers,
+  computePreorderRemaining,
   getDropPublicStatus,
   normalizeDropPreorderCtaText,
   type DropPublicStatus,
@@ -21,6 +23,7 @@ import {
   getDropStorageErrorMessage,
   isDropArchiveOrSizeStockMissingError,
   isDropPreorderCtaColumnMissingError,
+  isDropPreorderLimitColumnMissingError,
   logDropStorageIssueOnce,
   toDropStorageUnavailableError,
 } from "@/src/data/drop-storage-status"
@@ -42,6 +45,7 @@ export type DropRow = {
   floating_enabled: boolean
   floating_message: string | null
   preorder_cta_text?: string | null
+  preorder_limit?: number | null
   is_closed: boolean
   archived_at?: string | null
   archived_by?: string | null
@@ -68,6 +72,8 @@ export type EditableDropRecord = {
   floatingEnabled: boolean
   floatingMessage: string
   preorderCtaText: string
+  preorderLimit: number
+  preorderRemaining: number
   isClosed: boolean
   archivedAt: string | null
   archivedBy: string | null
@@ -94,6 +100,7 @@ export type DropMutationInput = {
   floatingEnabled: boolean
   floatingMessage: string
   preorderCtaText: string
+  preorderLimit: number
   isClosed: boolean
   sizeStock: Array<{ size: string; stockTotal: number; position: number }>
 }
@@ -214,6 +221,7 @@ const DROP_COLUMNS = [
   "floating_enabled",
   "floating_message",
   "preorder_cta_text",
+  "preorder_limit",
   "is_closed",
   "archived_at",
   "archived_by",
@@ -221,6 +229,11 @@ const DROP_COLUMNS = [
   "created_at",
   "updated_at",
 ].join(",")
+
+const PREORDER_LIMIT_LEGACY_DROP_COLUMNS = DROP_COLUMNS
+  .split(",")
+  .filter((column) => column !== "preorder_limit")
+  .join(",")
 
 type DropStoreClient = ReturnType<typeof getAdminClient>
 type DropStockSummaryResult = {
@@ -378,6 +391,7 @@ export function mapDropRow(row: DropRow, stock: DropStockNumbers, now: Date = ne
   const price = readNumber(row.price)
   const launchAt = row.launch_at ?? DEFAULT_DROP_LAUNCH_AT_UTC
   const sizeStockEnabled = row.size_stock_enabled ?? stock.sizeStock.length > 0
+  const preorderLimit = Math.max(0, Math.trunc(readNumber(row.preorder_limit, DEFAULT_DROP_PREORDER_LIMIT)))
 
   return {
     id: row.id,
@@ -397,6 +411,8 @@ export function mapDropRow(row: DropRow, stock: DropStockNumbers, now: Date = ne
     floatingEnabled: Boolean(row.floating_enabled),
     floatingMessage: row.floating_message ?? "",
     preorderCtaText: normalizeDropPreorderCtaText(row.preorder_cta_text),
+    preorderLimit,
+    preorderRemaining: computePreorderRemaining(preorderLimit, stock.reservedUnits),
     isClosed: Boolean(row.is_closed),
     archivedAt: row.archived_at ?? null,
     archivedBy: row.archived_by ?? null,
@@ -436,6 +452,7 @@ function mutationRow(input: DropMutationInput) {
     floating_enabled: input.floatingEnabled,
     floating_message: input.floatingMessage,
     preorder_cta_text: normalizeDropPreorderCtaText(input.preorderCtaText),
+    preorder_limit: input.preorderLimit,
     is_closed: input.isClosed,
   }
 }
@@ -461,6 +478,8 @@ function buildRevisionSnapshot(drop: EditableDropRecord) {
     floatingEnabled: drop.floatingEnabled,
     floatingMessage: drop.floatingMessage,
     preorderCtaText: drop.preorderCtaText,
+    preorderLimit: drop.preorderLimit,
+    preorderRemaining: drop.preorderRemaining,
     isClosed: drop.isClosed,
     archivedAt: drop.archivedAt,
     archivedBy: drop.archivedBy,
@@ -528,7 +547,14 @@ async function readDropRowsWithCtaFallback(
   operation: string,
   runQuery: (columns: string) => PromiseLike<{ data: unknown; error: unknown; count?: number | null }>
 ) {
-  const result = await runQuery(DROP_COLUMNS)
+  let result = await runQuery(DROP_COLUMNS)
+  let preorderLimitMigrated = true
+
+  if (result.error && isDropPreorderLimitColumnMissingError(result.error)) {
+    logDropStorageIssueOnce({ operation, availability: "UNAVAILABLE", error: result.error })
+    result = await runQuery(PREORDER_LIMIT_LEGACY_DROP_COLUMNS)
+    preorderLimitMigrated = false
+  }
 
   if (result.error && isDropPreorderCtaColumnMissingError(result.error)) {
     logDropStorageIssueOnce({ operation, availability: "UNAVAILABLE", error: result.error })
@@ -561,8 +587,10 @@ async function readDropRowsWithCtaFallback(
   return {
     data: result.data,
     count: result.count,
-    preorderCtaTextMigrated: true,
-    capabilityMessage: undefined,
+    preorderCtaTextMigrated: preorderLimitMigrated,
+    capabilityMessage: preorderLimitMigrated
+      ? undefined
+      : "El límite configurable de preventa todavía no está migrado. Las lecturas usan 30 unidades por defecto y guardar cambios queda bloqueado hasta migrar.",
   }
 }
 
@@ -610,7 +638,7 @@ function dedupeSizeStockInput(sizeStock: DropMutationInput["sizeStock"]) {
 
 async function assertDropArchiveSizeStockSchemaReady(operation: string) {
   const supabase = getDropClient()
-  const archiveCheck = await supabase.from("drops").select("archived_at, archived_by, archive_reason, size_stock_enabled").limit(1)
+  const archiveCheck = await supabase.from("drops").select("archived_at, archived_by, archive_reason, size_stock_enabled, preorder_limit").limit(1)
   if (archiveCheck.error) throw toDropMutationError(archiveCheck.error, `${operation}.archiveSchema`)
 
   const sizeCheck = await supabase.from("drop_size_stock").select("id, size, stock_total, position, is_active, archived_at, archived_by").limit(1)

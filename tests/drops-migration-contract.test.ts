@@ -69,6 +69,19 @@ test("migración de preventa guarda datos completos sin consumir stock live", as
   assert.doesNotMatch(source, /insert into public\.drops/i)
 })
 
+test("migración limita preventas globalmente y serializa la última unidad", async () => {
+  const source = await readFile(resolve("supabase/migrations/202607130001_limited_drop_preorders.sql"), "utf8")
+
+  assert.match(source, /add column if not exists preorder_limit integer not null default 30/)
+  assert.match(source, /drops_preorder_limit_non_negative/)
+  assert.match(source, /where id = p_drop_id\s+for update/i)
+  assert.match(source, /status = 'active'/)
+  assert.match(source, /v_active_preorders >= v_drop\.preorder_limit/)
+  assert.match(source, /preorder_sold_out/)
+  assert.match(source, /grant execute on function public\.create_drop_preorder\(uuid, text, text, text, text, text\) to service_role/)
+  assert.doesNotMatch(source, /insert into public\.drops/i)
+})
+
 test("migración aditiva del refinamiento añade CTA y endurece permisos RPC", async () => {
   const source = await readFile(resolve("supabase/migrations/202606250001_refine_merch_drop_admin.sql"), "utf8")
 

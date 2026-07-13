@@ -125,6 +125,7 @@ const dropInput: DropMutationInput = {
   floatingEnabled: false,
   floatingMessage: "",
   preorderCtaText: "Preventa",
+  preorderLimit: 30,
   isClosed: false,
 }
 
