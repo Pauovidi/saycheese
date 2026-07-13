@@ -13,6 +13,7 @@ type HeroDropFloatingProps = {
     floatingMessage: string
     preorderCtaText?: string
     preorderRemaining: number
+    initialNow: string
   }
 }
 
@@ -95,7 +96,9 @@ export function HeroDropFloatingCard({
 
 export function HeroDropFloating({ drop }: HeroDropFloatingProps) {
   const router = useRouter()
-  const [remainingMs, setRemainingMs] = useState(() => new Date(drop.launchAt).getTime() - Date.now())
+  const [remainingMs, setRemainingMs] = useState(
+    () => new Date(drop.launchAt).getTime() - new Date(drop.initialNow).getTime()
+  )
   const countdown = useMemo(() => formatCountdown(remainingMs), [remainingMs])
 
   useEffect(() => {

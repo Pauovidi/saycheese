@@ -29,6 +29,15 @@ test("flotante aparece sobre el titular del hero y no anclado abajo", async () =
   assert.match(hero, /gap-7/)
 })
 
+test("contador del hero hidrata desde una referencia temporal estable del servidor", async () => {
+  const page = await readFile(resolve("app/(public)/page.tsx"), "utf8")
+  const floating = await readFile(resolve("src/components/drops/hero-drop-floating.tsx"), "utf8")
+
+  assert.match(page, /initialNow: now\.toISOString\(\)/)
+  assert.match(floating, /new Date\(drop\.initialNow\)\.getTime\(\)/)
+  assert.doesNotMatch(floating, /useState\(\(\) => new Date\(drop\.launchAt\)\.getTime\(\) - Date\.now\(\)\)/)
+})
+
 test("preventa recoge cliente, teléfono, talla y color en la ficha sin carrito", async () => {
   const source = await readFile(resolve("src/components/drops/drop-product-detail.tsx"), "utf8")
 
