@@ -12,6 +12,7 @@ type HeroDropFloatingProps = {
     launchAt: string
     floatingMessage: string
     preorderCtaText?: string
+    preorderRemaining: number
   }
 }
 
@@ -31,6 +32,7 @@ export type HeroDropFloatingCardProps = {
   ctaText?: string
   href?: string
   preview?: boolean
+  preorderRemaining?: number
 }
 
 export function HeroDropFloatingCard({
@@ -39,6 +41,7 @@ export function HeroDropFloatingCard({
   ctaText = DEFAULT_DROP_PREORDER_CTA_TEXT,
   href = "/drops",
   preview = false,
+  preorderRemaining,
 }: HeroDropFloatingCardProps) {
   const visibleCta = normalizeDropPreorderCtaText(ctaText)
   const card = (
@@ -56,6 +59,11 @@ export function HeroDropFloatingCard({
             <span className="block text-xs font-bold uppercase tracking-[0.18em] text-[#f4eed4]/90 md:text-sm">
               Preventa bajo pedido
             </span>
+            {typeof preorderRemaining === "number" ? (
+              <span className="block text-sm font-bold uppercase tracking-[0.12em] text-white md:text-base">
+                {preorderRemaining > 0 ? `Solo quedan ${preorderRemaining} unidades en preventa` : "Preventa agotada"}
+              </span>
+            ) : null}
           </div>
         </div>
 
@@ -114,6 +122,7 @@ export function HeroDropFloating({ drop }: HeroDropFloatingProps) {
         countdown={countdown}
         ctaText={drop.preorderCtaText}
         href={`/drops/${drop.slug}`}
+        preorderRemaining={drop.preorderRemaining}
       />
     </div>
   )

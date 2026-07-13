@@ -69,7 +69,7 @@ export function ShirtsAdmin({
                 status: "cancelled",
                 cancelledAt: new Date().toISOString(),
                 cancellationReason: "Cancelada desde backoffice",
-                stockEffect: "Bajo pedido · no descuenta stock",
+                stockEffect: "Cupo de preventa devuelto · no cambia stock de venta",
               }
             : reservation
         )

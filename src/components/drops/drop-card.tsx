@@ -11,6 +11,7 @@ type DropCardProps = {
     priceText: string
     imageUrls: string[]
     status: DropPublicStatus
+    preorderRemaining: number
     stock: {
       availableStock: number
       sizeStock?: Array<{ sellableNow: number }>
@@ -22,8 +23,11 @@ export function DropCard({ drop }: DropCardProps) {
   const isPreorder = drop.status === "PRELAUNCH"
   const hasSellableSize = drop.stock.sizeStock?.some((entry) => entry.sellableNow > 0) ?? true
   const soldOut = !isPreorder && (drop.status === "SOLD_OUT" || drop.stock.availableStock <= 0 || !hasSellableSize)
+  const preorderSoldOut = isPreorder && drop.preorderRemaining <= 0
   const stockLabel = isPreorder
-    ? "Preventa · Bajo pedido"
+    ? preorderSoldOut
+      ? "Preventa agotada"
+      : `Preventa · Quedan ${drop.preorderRemaining}`
     : soldOut
     ? "Agotado"
     : `${getDropStatusLabel(drop.status)} \u00b7 Quedan ${drop.stock.availableStock}`
@@ -61,12 +65,12 @@ export function DropCard({ drop }: DropCardProps) {
         <p className="mt-2 flex-1 text-[11px] leading-relaxed text-muted-foreground line-clamp-2 sm:text-xs sm:line-clamp-3">
           {drop.description}
         </p>
-        {soldOut ? (
+        {soldOut || preorderSoldOut ? (
           <span
             aria-disabled="true"
             className="mt-4 w-full bg-primary px-4 py-2.5 text-center text-[10px] font-bold uppercase tracking-[0.15em] text-primary-foreground opacity-50 sm:py-3 sm:text-xs sm:tracking-[0.2em]"
           >
-            Agotado
+            {preorderSoldOut ? "Preventa agotada" : "Agotado"}
           </span>
         ) : (
           <Link

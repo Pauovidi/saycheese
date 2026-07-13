@@ -7,6 +7,7 @@ import { requireAdminUser } from "@/lib/admin-auth"
 import { normalizePhone } from "@/lib/phone"
 import {
   DEFAULT_DROP_LAUNCH_LOCAL,
+  DEFAULT_DROP_PREORDER_LIMIT,
   DEFAULT_DROP_PREORDER_CTA_TEXT,
   DROP_LAUNCH_TIME_ZONE,
   MAX_DROP_PREORDER_CTA_LENGTH,
@@ -50,6 +51,7 @@ const dropFormSchema = z.object({
   floatingEnabled: z.boolean().default(false),
   floatingMessage: z.string().max(600, "El mensaje puede tener como máximo 600 caracteres").default(""),
   preorderCtaText: z.string().max(MAX_DROP_PREORDER_CTA_LENGTH, `El CTA puede tener como máximo ${MAX_DROP_PREORDER_CTA_LENGTH} caracteres`).default(DEFAULT_DROP_PREORDER_CTA_TEXT),
+  preorderLimit: z.coerce.number().int().min(0, "El límite de preventa no puede ser negativo").max(1_000_000).default(DEFAULT_DROP_PREORDER_LIMIT),
   isClosed: z.boolean().default(false),
 })
 
@@ -129,6 +131,7 @@ function normalizeDropForm(input: z.input<typeof dropFormSchema>) {
     floatingEnabled: parsed.floatingEnabled,
     floatingMessage: parsed.floatingMessage,
     preorderCtaText,
+    preorderLimit: parsed.preorderLimit,
     isClosed: parsed.isClosed,
   }
 }
@@ -149,6 +152,7 @@ function publicDropErrorMessage(error: unknown) {
   const message = error instanceof Error ? error.message : String(error)
 
   if (/drop_sold_out/i.test(message)) return "Agotado"
+  if (/preorder_sold_out/i.test(message)) return "La preventa está agotada."
   if (/drop_archived/i.test(message)) return "Este drop ya no está disponible."
   if (/invalid_preorder_customer_name/i.test(message)) return "Escribe tu nombre y apellidos."
   if (/invalid_preorder_phone/i.test(message)) return "Escribe un teléfono válido."

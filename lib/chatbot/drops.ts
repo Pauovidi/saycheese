@@ -76,7 +76,9 @@ function buildNoDropsReply() {
 
 function buildDropOrderRedirect(drop: EditableDropRecord) {
   if (drop.status === "PRELAUNCH") {
-    return `Puedes reservar ${drop.name} en preventa desde la web y elegir ahora talla y color: /drops/${drop.slug}`
+    return drop.preorderRemaining > 0
+      ? `Puedes reservar ${drop.name} en preventa. Quedan ${drop.preorderRemaining} unidades y puedes elegir ahora talla y color: /drops/${drop.slug}`
+      : `La preventa de ${drop.name} está agotada.`
   }
 
   if (drop.status === "LIVE") {
@@ -125,8 +127,9 @@ function buildDropReply(drop: EditableDropRecord, message: string) {
   }
 
   if (drop.status === "PRELAUNCH") {
+    if (drop.preorderRemaining <= 0) return `La preventa de ${drop.name} está agotada.`
     const sizeCopy = drop.sizes.length ? ` Tallas: ${formatConfiguredSizes(drop)}.` : ""
-    return `Sí, tenemos drop: ${drop.name}. Está en preventa bajo pedido hasta el ${formatLaunchDate(drop.launchAt)}. Precio: ${drop.priceText}.${sizeCopy} Colores: ${drop.colors.join(", ")}. Puedes elegir talla y color en /drops/${drop.slug}.`
+    return `Sí, tenemos drop: ${drop.name}. Quedan ${drop.preorderRemaining} unidades en preventa bajo pedido hasta el ${formatLaunchDate(drop.launchAt)}. Precio: ${drop.priceText}.${sizeCopy} Colores: ${drop.colors.join(", ")}. Puedes elegir talla y color en /drops/${drop.slug}.`
   }
 
   if (drop.status === "LIVE") {

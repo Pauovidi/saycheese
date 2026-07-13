@@ -83,11 +83,13 @@ export function DropProductDetail({ drop }: { drop: EditableDropRecord }) {
   const [phone, setPhone] = useState("")
   const [quantity, setQuantity] = useState(1)
   const [reservationDone, setReservationDone] = useState(false)
+  const [preorderRemaining, setPreorderRemaining] = useState(drop.preorderRemaining)
   const [isPending, startTransition] = useTransition()
   const availableStock = drop.stock.availableStock
   const selectedSizeStock = drop.stock.sizeStock.find((entry) => entry.size === selectedSize)
   const selectedSellable = usesSizeStock ? selectedSizeStock?.sellableNow ?? 0 : availableStock
   const soldOut = !isPreorder && (drop.status === "SOLD_OUT" || availableStock <= 0 || (usesSizeStock && !drop.stock.sizeStock.some((entry) => entry.sellableNow > 0)))
+  const preorderSoldOut = isPreorder && preorderRemaining <= 0
   const cappedQuantity = Math.min(quantity, Math.max(1, selectedSellable))
 
   const cartProduct = useMemo<Product>(
@@ -120,6 +122,10 @@ export function DropProductDetail({ drop }: { drop: EditableDropRecord }) {
 
   function submitPreorder(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    if (preorderSoldOut) {
+      toast.error("La preventa está agotada")
+      return
+    }
     if (drop.sizes.length && !selectedSize) {
       toast.error("Selecciona una talla")
       return
@@ -158,6 +164,9 @@ export function DropProductDetail({ drop }: { drop: EditableDropRecord }) {
       }
 
       setReservationDone(true)
+      if (!response.reservation.reusedExisting) {
+        setPreorderRemaining((current) => Math.max(0, current - 1))
+      }
       toast.success(response.reservation.reusedExisting ? "Tu preventa ya estaba registrada" : "Preventa registrada")
     })
   }
@@ -184,7 +193,13 @@ export function DropProductDetail({ drop }: { drop: EditableDropRecord }) {
             <h1 className="text-2xl font-bold uppercase tracking-[0.1em] text-foreground md:text-3xl">{drop.name}</h1>
             <p className="text-lg font-semibold text-primary">{drop.priceText}</p>
             <p className="text-sm text-muted-foreground">
-              {isPreorder ? "Elige libremente talla y color antes del lanzamiento." : soldOut ? "Agotado" : `Quedan ${availableStock} unidades`}
+              {isPreorder
+                ? preorderSoldOut
+                  ? "Preventa agotada"
+                  : `Quedan ${preorderRemaining} unidades en preventa. Elige libremente talla y color.`
+                : soldOut
+                  ? "Agotado"
+                  : `Quedan ${availableStock} unidades`}
             </p>
             {!isPreorder && usesSizeStock && drop.stock.sizeStock.length ? (
               <p className="text-sm text-muted-foreground">Tallas: {drop.stock.sizeStock.map((entry) => entry.size).join(", ")}</p>
@@ -192,7 +207,11 @@ export function DropProductDetail({ drop }: { drop: EditableDropRecord }) {
             <p className="max-w-2xl whitespace-pre-line text-sm leading-relaxed text-muted-foreground">{drop.description}</p>
           </div>
 
-          {isPreorder ? (
+          {isPreorder && preorderSoldOut ? (
+            <div className="mt-8 bg-secondary p-5 text-sm font-semibold text-foreground">
+              Se han reservado todas las unidades disponibles en preventa.
+            </div>
+          ) : isPreorder ? (
             <form className="mt-8 space-y-5" onSubmit={submitPreorder}>
               <OptionButtons label="Talla" options={drop.sizes} selected={selectedSize} onSelect={setSelectedSize} />
               <OptionButtons label="Color" options={drop.colors} selected={selectedColor} onSelect={setSelectedColor} />
@@ -214,7 +233,7 @@ export function DropProductDetail({ drop }: { drop: EditableDropRecord }) {
 
               <button
                 type="submit"
-                disabled={isPending || reservationDone || !customerName.trim() || !phone.trim() || !selectedColor || (drop.sizes.length > 0 && !selectedSize)}
+                disabled={isPending || preorderSoldOut || reservationDone || !customerName.trim() || !phone.trim() || !selectedColor || (drop.sizes.length > 0 && !selectedSize)}
                 className="inline-flex min-h-12 w-full items-center justify-center gap-2 bg-primary px-6 py-3 text-xs font-bold uppercase tracking-[0.2em] text-primary-foreground transition-opacity hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {isPending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}
