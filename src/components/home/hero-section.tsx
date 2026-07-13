@@ -7,6 +7,7 @@ type HeroSectionProps = {
     floatingMessage: string
     preorderCtaText?: string
     preorderRemaining: number
+    initialNow: string
   } | null
 }
 
