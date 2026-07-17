@@ -131,8 +131,8 @@ function buildDisabledError(provider: ConfirmationProvider, missing: string[]) {
 
 function buildTwilioTemplateMissingError(missing: string[], hasMetaTemplateName: boolean) {
   const hint = hasMetaTemplateName
-    ? "WHATSAPP_TEMPLATE_ORDER_CONFIRMATION_NAME is the Meta template name; Twilio requires TWILIO_ORDER_CONFIRMATION_CONTENT_SID (HX...) from Content Template Builder."
-    : "Twilio WhatsApp templates require TWILIO_ORDER_CONFIRMATION_CONTENT_SID (HX...) from Content Template Builder."
+    ? "WHATSAPP_TEMPLATE_ORDER_CONFIRMATION_NAME is the Meta template name; Twilio uses the Tentados Content Template SID (HX...)."
+    : "Twilio WhatsApp uses the approved Tentados Content Template SID (HX...)."
 
   return new Error(`WhatsApp confirmation disabled for twilio: missing ${missing.join(", ")}. ${hint}`)
 }

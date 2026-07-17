@@ -33,7 +33,7 @@ const twilioEnv = {
 
 const twilioTemplateEnv = {
   ...twilioEnv,
-  TWILIO_ORDER_CONFIRMATION_CONTENT_SID: "HX_order_confirmation",
+  TWILIO_TENTADOS_ORDER_CONFIRMATION_CONTENT_SID: "HX_order_confirmation",
 }
 
 type SentInput = Parameters<NonNullable<SendWebOrderWhatsappConfirmationDeps["send"]>>[0]
@@ -68,7 +68,7 @@ test("cliente Twilio envía Content Template con ContentSid y ContentVariables s
     TWILIO_ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID,
     TWILIO_AUTH_TOKEN: process.env.TWILIO_AUTH_TOKEN,
     TWILIO_WHATSAPP_FROM: process.env.TWILIO_WHATSAPP_FROM,
-    TWILIO_ORDER_CONFIRMATION_CONTENT_SID: process.env.TWILIO_ORDER_CONFIRMATION_CONTENT_SID,
+    TWILIO_TENTADOS_ORDER_CONFIRMATION_CONTENT_SID: process.env.TWILIO_TENTADOS_ORDER_CONFIRMATION_CONTENT_SID,
   }
   const originalFetch = globalThis.fetch
   let postedBody: URLSearchParams | undefined
@@ -77,7 +77,7 @@ test("cliente Twilio envía Content Template con ContentSid y ContentVariables s
     process.env.TWILIO_ACCOUNT_SID = "AC_test"
     process.env.TWILIO_AUTH_TOKEN = "token"
     process.env.TWILIO_WHATSAPP_FROM = "whatsapp:+14155238886"
-    process.env.TWILIO_ORDER_CONFIRMATION_CONTENT_SID = "HX_order_confirmation"
+    process.env.TWILIO_TENTADOS_ORDER_CONFIRMATION_CONTENT_SID = "HX_order_confirmation"
     globalThis.fetch = (async (_url, init) => {
       postedBody = init?.body as URLSearchParams
       return new Response(JSON.stringify({ sid: "SM_template" }), { status: 201 })
@@ -176,7 +176,7 @@ test("loguea diagnóstico seguro antes de reservar confirmación", async () => {
     hasTwilioSid: false,
     hasTwilioToken: false,
     hasTwilioFrom: false,
-    hasTwilioContentSid: false,
+    hasTwilioContentSid: true,
     hasMetaToken: true,
     hasPhoneNumberId: true,
     hasOrderConfirmationTemplate: true,
@@ -420,7 +420,11 @@ test("si Twilio está configurado pero falta Content SID marca failed y no enví
       items: [{ type: "cake", flavor: "Lotus", qty: 1 }],
     },
     {
-      env: { ...twilioEnv, WHATSAPP_TEMPLATE_ORDER_CONFIRMATION_NAME: "order_confirmation" },
+      env: {
+        ...twilioEnv,
+        TWILIO_TENTADOS_ORDER_CONFIRMATION_CONTENT_SID: "",
+        WHATSAPP_TEMPLATE_ORDER_CONFIRMATION_NAME: "order_confirmation",
+      },
       logger,
       reserve: async (input) => {
         reservationProvider = input.provider
@@ -439,7 +443,7 @@ test("si Twilio está configurado pero falta Content SID marca failed y no enví
   assert.deepEqual(result, { ok: true, skipped: "disabled" })
   assert.equal(reservationProvider, "twilio")
   assert.equal(sent, false)
-  assert.match(failedError, /TWILIO_ORDER_CONFIRMATION_CONTENT_SID/)
+  assert.match(failedError, /TWILIO_TENTADOS_ORDER_CONFIRMATION_CONTENT_SID/)
   assert.match(failedError, /Content SID|Content Template/i)
   assert.equal(events.some((event) => event.args[0] === "whatsapp_confirmation_skipped_disabled"), true)
 })

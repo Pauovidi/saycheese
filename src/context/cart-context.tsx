@@ -22,6 +22,7 @@ interface CartContextType {
 }
 
 const CartContext = createContext<CartContextType | undefined>(undefined)
+const CART_STORAGE_KEY = "tentados-cart"
 
 export function CartProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<CartItem[]>([])
@@ -29,7 +30,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const [hydrated, setHydrated] = useState(false)
 
   useEffect(() => {
-    const stored = localStorage.getItem("saycheese-cart")
+    const stored = localStorage.getItem(CART_STORAGE_KEY)
     if (stored) {
       try {
         setItems(JSON.parse(stored))
@@ -42,7 +43,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (hydrated) {
-      localStorage.setItem("saycheese-cart", JSON.stringify(items))
+      localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(items))
     }
   }, [items, hydrated])
 

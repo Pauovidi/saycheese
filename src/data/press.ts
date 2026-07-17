@@ -13,7 +13,7 @@ export const pressArticles: PressArticle[] = [
   {
     id: "1",
     title: "Tentados: la galería de arte que se come",
-    slug: "saycheese-galeria-arte-que-se-come",
+    slug: "tentados-galeria-arte-que-se-come",
     outlet: "El País Gastro",
     date: "2025-11-15",
     excerpt:
@@ -37,7 +37,7 @@ export const pressArticles: PressArticle[] = [
   {
     id: "3",
     title: "El fenómeno Tentados arrasa en redes",
-    slug: "fenomeno-saycheese-arrasa-redes",
+    slug: "fenomeno-tentados-arrasa-redes",
     outlet: "Vogue Living",
     date: "2025-09-20",
     excerpt:
@@ -61,7 +61,7 @@ export const pressArticles: PressArticle[] = [
   {
     id: "5",
     title: "Entrevista: los creadores de Tentados",
-    slug: "entrevista-creadores-saycheese",
+    slug: "entrevista-creadores-tentados",
     outlet: "Bon Viveur",
     date: "2025-07-05",
     excerpt:

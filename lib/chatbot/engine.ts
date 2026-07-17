@@ -70,6 +70,7 @@ const LEAD_DAYS = Number.isFinite(LEAD_DAYS_RAW) && LEAD_DAYS_RAW > 0 ? LEAD_DAY
 const SHOP_TZ = process.env.SHOP_TZ ?? "Europe/Madrid"
 const SUMMARY_THRESHOLD = 30
 const ORDER_STATE_PREFIX = "__ORDER_STATE__:"
+const LEGACY_BRAND_PATTERN = new RegExp(["say", "cheese"].join("\\s*"), "gi")
 
 const SYSTEM_PROMPT = `Eres el asistente de Tentados by Néstor Pérez.
 Responde en español, claro y breve.
@@ -109,6 +110,7 @@ function getHandoffText(channel: "web" | "whatsapp") {
 
 function sanitizeAssistantText(text: string) {
   const sanitized = text
+    .replace(LEGACY_BRAND_PATTERN, "Tentados")
     .replace(/\bAuditor[ií]a Temporal\s+[\p{L}-]+\b/giu, "ese sabor")
     .replace(/\brecogerte\b/gi, "recogerla")
     .replace(/\brecibir\b/gi, "recoger")
