@@ -26,18 +26,21 @@ export type TwilioWhatsAppConfig = {
 
 export type TwilioWhatsAppEnv = Record<string, string | undefined>
 
+export const TENTADOS_ORDER_CONFIRMATION_CONTENT_SID = "HX04135f9e73b8859987d4326b995bf4c7"
+
 export function getTwilioWhatsAppConfig(env: TwilioWhatsAppEnv = process.env): TwilioWhatsAppConfig {
   const accountSid = env.TWILIO_ACCOUNT_SID
   const authToken = env.TWILIO_AUTH_TOKEN
   const from = env.TWILIO_WHATSAPP_FROM
-  const orderConfirmationContentSid = env.TWILIO_ORDER_CONFIRMATION_CONTENT_SID
+  const orderConfirmationContentSid =
+    env.TWILIO_TENTADOS_ORDER_CONFIRMATION_CONTENT_SID ?? TENTADOS_ORDER_CONFIRMATION_CONTENT_SID
   const required: Array<[string, string | undefined]> = [
     ["TWILIO_ACCOUNT_SID", accountSid],
     ["TWILIO_AUTH_TOKEN", authToken],
     ["TWILIO_WHATSAPP_FROM", from],
   ]
   const missing = required.flatMap(([key, value]) => (value ? [] : [key]))
-  const templateMissing = orderConfirmationContentSid ? [] : ["TWILIO_ORDER_CONFIRMATION_CONTENT_SID"]
+  const templateMissing = orderConfirmationContentSid ? [] : ["TWILIO_TENTADOS_ORDER_CONFIRMATION_CONTENT_SID"]
 
   return { accountSid, authToken, from, orderConfirmationContentSid, missing, templateMissing }
 }

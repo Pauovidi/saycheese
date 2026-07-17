@@ -2,7 +2,7 @@
 
 ## Catalogo de tartas
 
-El catalogo editable de tartas ya no usa `saycheese-admin/catalog/tartas.json` como fuente viva. La fuente de verdad es Postgres:
+El catálogo editable de tartas usa Postgres como única fuente viva:
 
 - `public.cake_flavors`
 - `public.cake_flavor_revisions`
@@ -33,7 +33,7 @@ SMTP_PORT=465
 SMTP_SECURE=true
 SMTP_USER=tu-cuenta@gmail.com
 SMTP_PASS=<app-password-de-16-caracteres>
-SMTP_FROM="SayCheese <tu-cuenta@gmail.com>"
+SMTP_FROM="Tentados <hola@tentadosbynestorperez.com>"
 ```
 
 ### Vercel

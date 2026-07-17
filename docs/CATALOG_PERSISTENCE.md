@@ -7,7 +7,7 @@ La fuente de verdad del catalogo editable de tartas y sabores es Supabase Postgr
 - `public.cake_flavors`: estado actual del catalogo.
 - `public.cake_flavor_revisions`: historico/auditoria de importaciones, altas, ediciones y borrados.
 
-El JSON legacy `saycheese-admin/catalog/tartas.json` ya no se lee ni escribe durante el CRUD normal. Queda solo para importacion inicial, backup manual o comparacion temporal.
+El catálogo editable se lee y escribe exclusivamente en Postgres. Los antiguos JSON de importación ya no forman parte del flujo operativo.
 
 ## Tablas
 
@@ -45,7 +45,7 @@ SUPABASE_SERVICE_ROLE_KEY=<service-role-key>
 pnpm catalog:import:legacy
 ```
 
-El script descarga `saycheese-admin/catalog/tartas.json`, valida el documento legacy e inserta/actualiza `cake_flavors` por `slug`. No borra sabores que no aparezcan en el JSON. Crea una revision `import_legacy_json` solo si ese sabor no la tenia ya, por eso puede ejecutarse mas de una vez.
+La importación inicial desde JSON quedó retirada una vez consolidado el catálogo en Postgres. Las revisiones históricas se conservan en `cake_flavor_revisions`.
 
 Si faltan variables o el JSON no es valido, falla antes de tocar datos.
 

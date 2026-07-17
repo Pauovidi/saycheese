@@ -9,7 +9,7 @@ import {
   type CatalogImageVariant,
 } from "@/lib/admin/catalog-image-utils"
 
-export const CATALOG_IMAGES_BUCKET = "saycheese-product-images"
+export const CATALOG_IMAGES_BUCKET = "tentados-product-images"
 
 export async function ensureCatalogImagesBucket() {
   const supabase = getAdminClient()

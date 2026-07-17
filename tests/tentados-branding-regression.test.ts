@@ -1,9 +1,11 @@
 import test from "node:test"
 import assert from "node:assert/strict"
-import { readFileSync } from "node:fs"
+import { existsSync, readFileSync, readdirSync } from "node:fs"
+import { extname, join } from "node:path"
+import { fileURLToPath } from "node:url"
 
 import { buildFlavorListMessage } from "../lib/chatbot/products"
-import { BUSINESS_LEGAL_NAME, PICKUP_ONLY_COPY, STORE_ADDRESS } from "../src/data/business"
+import { BUSINESS_EMAIL, BUSINESS_LEGAL_NAME, PICKUP_ONLY_COPY, STORE_ADDRESS } from "../src/data/business"
 import { faqs } from "../src/data/faqs"
 
 function readSource(path: string) {
@@ -13,7 +15,17 @@ function readSource(path: string) {
 const oldDistanceCopyPattern = new RegExp(`${["3", "K[mM]"].join("\\s+")}|${["a la", "redonda"].join(" ")}`)
 const forbiddenDeliveryCopyPattern = /Zona Teide|3 Km|3 km|a la redonda/
 const oldBrandBylinePattern = new RegExp(`${["Say", "Cheese"].join("")} by|${["Say", "Cheese"].join(" ")} by`)
+const legacyBrandPattern = new RegExp(["say", "cheese"].join("\\s*"), "i")
 const oldAwardClaimPattern = new RegExp(["Prem", "iada"].join(""), "i")
+
+function collectCustomerFacingTextFiles(root: string): string[] {
+  const allowedExtensions = new Set([".ts", ".tsx", ".js", ".mjs", ".json", ".md", ".sql"])
+  return readdirSync(root, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(root, entry.name)
+    if (entry.isDirectory()) return collectCustomerFacingTextFiles(path)
+    return allowedExtensions.has(extname(entry.name)) ? [path] : []
+  })
+}
 
 test("mantiene la marca visible Tentados en header, footer y metadatos", () => {
   const visibleBrandSources = [
@@ -26,6 +38,20 @@ test("mantiene la marca visible Tentados en header, footer y metadatos", () => {
   assert.equal(BUSINESS_LEGAL_NAME, "Tentados by Néstor Pérez")
   assert.match(visibleBrandSources, /Tentados by Néstor Pérez/)
   assert.doesNotMatch(visibleBrandSources, oldBrandBylinePattern)
+})
+
+test("no conserva la marca anterior en código, documentación ni contenido público", () => {
+  const roots = ["app", "docs", "lib", "scripts", "src", "supabase"].map((path) =>
+    fileURLToPath(new URL(`../${path}`, import.meta.url))
+  )
+  const files = roots.flatMap(collectCustomerFacingTextFiles)
+  files.push(fileURLToPath(new URL("../README_CHATBOT.md", import.meta.url)))
+  files.push(fileURLToPath(new URL("../README_SUPABASE.md", import.meta.url)))
+
+  const matches = files.filter((path) => legacyBrandPattern.test(readFileSync(path, "utf8")))
+  assert.deepEqual(matches, [])
+  assert.equal(existsSync(fileURLToPath(new URL("../public/images/fachada.webp", import.meta.url))), false)
+  assert.equal(BUSINESS_EMAIL, "hola@tentadosbynestorperez.com")
 })
 
 test("top bar comunica Uber Eats en Zona Telde sin copy de distancia anterior", () => {

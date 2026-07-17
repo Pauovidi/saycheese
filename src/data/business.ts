@@ -13,7 +13,7 @@ export const STORE_ADDRESS = "C. Abián, 4, 35212 Marpequeña, Las Palmas"
 export const STORE_ADDRESS_COPY = `Tienda física y obrador: ${STORE_ADDRESS}.`
 export const BUSINESS_LEGAL_NAME = "Tentados by Néstor Pérez"
 export const BUSINESS_NIF = "54269855K"
-export const BUSINESS_EMAIL = "Saycheesebynp@gmail.com"
+export const BUSINESS_EMAIL = "hola@tentadosbynestorperez.com"
 
 export const DELIVERY_POLICY_COPY =
   "Solo recogida en tienda, salvo si estás en Zona Telde, donde Uber Eats te la deja en casita."
