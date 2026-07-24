@@ -3,6 +3,7 @@ import "server-only"
 import OpenAI from "openai"
 
 import { resolveConversationCommand } from "@/lib/chatbot/commands"
+import { buildHumanSupportPhoneReplyIfIntent } from "@/lib/chatbot/contact"
 import { formatDateEs } from "@/lib/chatbot/dates"
 import {
   clearConversationState,
@@ -78,6 +79,7 @@ No inventes datos de producto. Si faltan ingredientes o alérgenos confirmados, 
 No inventes drops, camisetas, tallas ni stock. Las camisetas/drops se responden con la fuente determinista de Drops; WhatsApp no crea pedidos de camisetas.
 Política obligatoria: ${PICKUP_ONLY_COPY}
 Dirección oficial obligatoria: ${STORE_ADDRESS || "sin dirección configurada"}. Nunca des una dirección distinta.
+Teléfono humano oficial: ${HUMAN_SUPPORT_PHONE_DISPLAY}. Nunca presentes el teléfono del cliente como teléfono del negocio.
 Nunca uses "recogerte" ni "recibir" para pedidos; usa "recoger"/"recogida".
 Plazo mínimo obligatorio: ${LEAD_DAYS} días naturales.
 Nunca confirmes ni crees un pedido si falta el nombre del cliente.
@@ -444,6 +446,13 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
     await saveMessage(userId, "user", message)
     await saveMessage(userId, "assistant", locationReply)
     return { text: locationReply }
+  }
+
+  const contactPhoneReply = buildHumanSupportPhoneReplyIfIntent(message)
+  if (contactPhoneReply) {
+    await saveMessage(userId, "user", message)
+    await saveMessage(userId, "assistant", contactPhoneReply)
+    return { text: contactPhoneReply }
   }
 
   const pauseState = await getPauseState(userId)
