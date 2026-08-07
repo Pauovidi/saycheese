@@ -17,6 +17,7 @@ import { buildUnavailableFlavorMessage, resolveFlavorAvailability } from "@/lib/
 import { computeReminderAt } from "@/lib/chatbot/reminders"
 import { normalizePhoneOrNull } from "@/lib/phone"
 import { getOrderPickupDateErrorMessage, validateOrderPickupDate } from "@/lib/pickup-date-validation"
+import { clearActiveOrderStateByPhone } from "@/lib/chatbot/memory"
 import { createClient } from "@/lib/supabase/server"
 
 const orderItemSchema = z.object({
@@ -147,6 +148,14 @@ export async function createOrder(payload: z.infer<typeof createOrderSchema>) {
   if (itemsError) {
     await supabase.from("orders").delete().eq("id", order.id)
     throw new Error(itemsError.message)
+  }
+
+  if (phone) {
+    try {
+      await clearActiveOrderStateByPhone(phone)
+    } catch (error) {
+      console.error("[admin-order] could_not_clear_chat_order_state", error)
+    }
   }
 
   revalidatePath("/admin/produccion")

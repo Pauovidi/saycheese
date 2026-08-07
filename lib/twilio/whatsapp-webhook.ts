@@ -7,6 +7,10 @@ type ChatHandler = (input: {
   channel: "whatsapp"
 }) => Promise<{ text: string }>
 
+type TwilioWhatsappDependencies = {
+  claimMessageSid?: (messageSid: string) => Promise<boolean>
+}
+
 const EMPTY_MESSAGE_REPLY = "Cuéntame qué necesitas y te respondo por aquí."
 const ERROR_FALLBACK_REPLY =
   "Ahora mismo no puedo responderte. Si quieres, vuelve a escribir en unos minutos y te ayudamos por aquí."
@@ -30,7 +34,9 @@ function escapeXml(value: string) {
 }
 
 export function createTwilioXmlResponse(message: string) {
-  const xml = `<?xml version="1.0" encoding="UTF-8"?><Response><Message>${escapeXml(message)}</Message></Response>`
+  const xml = message
+    ? `<?xml version="1.0" encoding="UTF-8"?><Response><Message>${escapeXml(message)}</Message></Response>`
+    : `<?xml version="1.0" encoding="UTF-8"?><Response></Response>`
   return new NextResponse(xml, {
     status: 200,
     headers: {
@@ -40,11 +46,16 @@ export function createTwilioXmlResponse(message: string) {
   })
 }
 
-export async function handleTwilioWhatsappPost(request: Request, handleMessage: ChatHandler) {
+export async function handleTwilioWhatsappPost(
+  request: Request,
+  handleMessage: ChatHandler,
+  dependencies: TwilioWhatsappDependencies = {}
+) {
   try {
     const formData = await request.formData()
     const body = readFormValue(formData, "Body")
     const from = readFormValue(formData, "From")
+    const messageSid = readFormValue(formData, "MessageSid")
     const normalizedUserId = normalizeWhatsappUserId(from)
 
     if (!normalizedUserId) {
@@ -53,6 +64,10 @@ export async function handleTwilioWhatsappPost(request: Request, handleMessage: 
 
     if (!body.trim()) {
       return createTwilioXmlResponse(EMPTY_MESSAGE_REPLY)
+    }
+
+    if (messageSid && dependencies.claimMessageSid && !(await dependencies.claimMessageSid(messageSid))) {
+      return createTwilioXmlResponse("")
     }
 
     const result = await handleMessage({
