@@ -3,6 +3,7 @@ import test from "node:test"
 
 import {
   hasCancelOrderHandoffIntent,
+  hasExistingOrderIncidentIntent,
   isWhatsappConversationResetCommand,
   resolveConversationCommand,
 } from "../lib/chatbot/commands"
@@ -17,6 +18,30 @@ test("detecta cancelación de pedido como handoff humano", () => {
   ]) {
     assert.equal(hasCancelOrderHandoffIntent(message), true)
     assert.equal(resolveConversationCommand("web", message), "cancel_order_handoff")
+  }
+})
+
+test("deriva incidencias de recogida o cambios de un pedido existente", () => {
+  for (const message of [
+    "Por motivo de las colas me es imposible ir a buscar la tarta mañana",
+    "No puedo recoger mi pedido",
+    "Quiero cambiar la fecha de recogida",
+    "Tengo un problema con el encargo",
+    "Voy a llegar tarde",
+  ]) {
+    assert.equal(hasExistingOrderIncidentIntent(message), true, message)
+    assert.equal(resolveConversationCommand("whatsapp", message), "existing_order_handoff", message)
+  }
+})
+
+test("no deriva mensajes normales de pedido nuevo", () => {
+  for (const message of [
+    "Quiero encargar una tarta para mañana",
+    "Voy a buscar una tarta grande",
+    "¿Qué sabores tienen?",
+    "Disculpa por las molestias",
+  ]) {
+    assert.equal(hasExistingOrderIncidentIntent(message), false, message)
   }
 })
 

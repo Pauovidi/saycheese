@@ -265,6 +265,31 @@ test("pregunta de sabores gana al flujo pendiente de nombre", async () => {
   assert.doesNotMatch(reply.text, /me falta tu nombre/)
 })
 
+test("una disculpa no reemplaza el nombre aunque el flujo lo esté esperando", async () => {
+  const state: OrderState = {
+    inOrderFlow: true,
+    flavor: "clasica",
+    format: "tarta",
+    finalDate: "2026-06-17",
+    customerName: "Sergio Jiménez",
+    awaitingName: true,
+  }
+
+  const reply = await sendJuneWhatsapp(state, "Disculpa por las molestias")
+
+  assert.equal(reply.kind, "reply")
+  assert.equal(state.customerName, "Sergio Jiménez")
+  assert.doesNotMatch(reply.text, /De acuerdo, Disculpa/i)
+})
+
+test("un texto arbitrario no se guarda como nombre si el bot no lo estaba pidiendo", async () => {
+  const state: OrderState = { inOrderFlow: true, finalDate: "2026-06-17" }
+
+  await sendJuneWhatsapp(state, "Cheesecake de happy hippo")
+
+  assert.equal(state.customerName, undefined)
+})
+
 test("corrección explícita reemplaza sabor y mantiene fecha y tamaño", async () => {
   for (const message of ["no, clásica", "mejor clásica"]) {
     const state: OrderState = {

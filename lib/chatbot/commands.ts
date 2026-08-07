@@ -5,7 +5,7 @@ export function normalizeChatCommand(text: string) {
     .replace(/[\u0300-\u036f]/g, "")
 }
 
-export type ConversationCommandIntent = "whatsapp_reset" | "cancel_order_handoff" | null
+export type ConversationCommandIntent = "whatsapp_reset" | "cancel_order_handoff" | "existing_order_handoff" | null
 
 export function isWhatsappConversationResetCommand(channel: "web" | "whatsapp", message: string) {
   if (channel !== "whatsapp") return false
@@ -26,9 +26,29 @@ export function hasCancelOrderHandoffIntent(message: string) {
   ].some((pattern) => pattern.test(normalized))
 }
 
+export function hasExistingOrderIncidentIntent(message: string) {
+  const normalized = normalizeChatCommand(message)
+  const mentionsPickupOrOrder = /\b(recoger|recogida|buscar|pedido|encargo|reserva|tarta)\b/.test(normalized)
+  const cannotCollect = [
+    /\bno\s+(?:puedo|podre|voy\s+a\s+poder)\s+(?:ir\s+a\s+)?(?:recoger|buscar)\b/,
+    /\bme\s+es\s+imposible\s+(?:ir\s+a\s+)?(?:recoger|buscar|ir)\b/,
+    /\bimposible\s+(?:ir\s+a\s+)?(?:recoger|buscar)\b/,
+  ].some((pattern) => pattern.test(normalized))
+  const wantsChange = /\b(cambiar|modificar|aplazar|retrasar)\b/.test(normalized) && mentionsPickupOrOrder
+  const pickupProblem =
+    /\b(problema|incidencia|retraso|colas?)\b/.test(normalized) && mentionsPickupOrOrder
+  const arrivesLate = /\b(?:llego|llegare|voy\s+a\s+llegar)\s+tarde\b/.test(normalized)
+
+  return cannotCollect || wantsChange || pickupProblem || arrivesLate
+}
+
 export function resolveConversationCommand(channel: "web" | "whatsapp", message: string): ConversationCommandIntent {
   if (hasCancelOrderHandoffIntent(message)) {
     return "cancel_order_handoff"
+  }
+
+  if (hasExistingOrderIncidentIntent(message)) {
+    return "existing_order_handoff"
   }
 
   if (isWhatsappConversationResetCommand(channel, message)) {

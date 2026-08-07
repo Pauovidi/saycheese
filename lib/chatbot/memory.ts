@@ -2,6 +2,7 @@ import "server-only"
 
 import { buildPhoneSearchVariants, normalizePhone } from "@/lib/phone"
 import { getAdminClient } from "@/lib/supabase/admin"
+import { serializeOrderState } from "@/lib/chatbot/order-state"
 
 type Channel = "web" | "whatsapp"
 
@@ -152,8 +153,51 @@ export async function loadContext(userId: string) {
 
   return {
     summary: state?.summary ?? null,
-    messagesLastN: [...(messages ?? [])].reverse().map((m) => ({ role: m.role as MessageRole, content: m.content })),
+    messagesLastN: [...(messages ?? [])].reverse().map((m) => ({
+      role: m.role as MessageRole,
+      content: m.content,
+      createdAt: m.created_at,
+    })),
   }
+}
+
+export async function clearActiveOrderStateByPhone(phone?: string) {
+  const variants = buildChatUserPhoneVariants(phone)
+  if (!variants.length) return
+
+  const supabase = getAdminClient()
+  const { data: users, error: usersError } = await supabase
+    .from("chat_users")
+    .select("id, phone")
+    .in("phone", variants)
+
+  if (usersError) throw new Error(usersError.message)
+  if (!users?.length) return
+
+  const rows = users.map((user) => ({
+    user_id: user.id,
+    role: "system" as const,
+    content: serializeOrderState({ phone: user.phone ?? phone, inOrderFlow: false }),
+  }))
+  const { error } = await supabase.from("chat_messages").insert(rows)
+  if (error) throw new Error(error.message)
+}
+
+export async function claimInboundWhatsappMessage(messageSid: string) {
+  if (!messageSid.trim()) return true
+
+  const supabase = getAdminClient()
+  const { error } = await supabase.from("chat_inbound_messages").insert({ message_sid: messageSid.trim() })
+  if (!error) return true
+  if (error.code === "23505") return false
+
+  // La migración es aditiva: durante un despliegue escalonado no se bloquea WhatsApp.
+  if (error.code === "42P01" || /chat_inbound_messages/i.test(error.message)) {
+    console.warn("[chat-inbound] dedupe_table_unavailable", { code: error.code })
+    return true
+  }
+
+  throw new Error(error.message)
 }
 
 export async function saveMessage(userId: string, role: MessageRole, content: string) {

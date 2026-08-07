@@ -34,6 +34,7 @@ import {
 import type { Product } from "@/src/data/products"
 
 export type OrderState = {
+  updatedAt?: string
   inOrderFlow?: boolean
   flavor?: string
   format?: "tarta" | "cajita"
@@ -434,13 +435,18 @@ export async function processOrderConversationTurn(input: ProcessOrderConversati
     acceptedSuggestedDate = tryAcceptPendingSuggestedDate(state, now, leadDays, shopTz)
   }
   const additionalCakeDecisionIntent = state.awaitingAdditionalCakeDecision ? getAdditionalCakeDecisionIntent(message) : "unknown"
+  const hasExplicitCustomerName = /\b(?:me\s+llamo|mi\s+nombre\s+es|a\s+nombre\s+de|nombre\s*[:\-])\b/i.test(message)
+  const hasSeparateCustomerNameSegment = /[.!?;\n]/.test(message) && Boolean(product || format || parsedDate || email || messagePhone)
+  const canExtractCustomerName = Boolean(state.awaitingName || hasExplicitCustomerName || hasSeparateCustomerNameSegment)
   const customerName =
     additionalCakeDecisionIntent === "close"
       ? undefined
-      : extractCustomerName(message, {
-          blockedNormalizedTerms: blockedCustomerNameTermsForProduct(product),
-          allowSegmentExtraction: Boolean(product || format || parsedDate || email || messagePhone),
-        })
+      : canExtractCustomerName
+        ? extractCustomerName(message, {
+            blockedNormalizedTerms: blockedCustomerNameTermsForProduct(product),
+            allowSegmentExtraction: Boolean(product || format || parsedDate || email || messagePhone),
+          })
+        : undefined
   const hasStructuredContribution = Boolean(product || format || parsedDate || acceptedSuggestedDate || customerName || email || messagePhone)
 
   if (hasFlavorCorrectionIntent(message) && state.flavor && !product && !format && !parsedDate && !customerName) {

@@ -16,6 +16,7 @@ import {
   setPauseState,
   updateSummary,
 } from "@/lib/chatbot/memory"
+import { extractFreshOrderState, ORDER_STATE_PREFIX, serializeOrderState } from "@/lib/chatbot/order-state"
 import {
   extractPhoneFromText,
   normalizeChatText,
@@ -70,7 +71,6 @@ const LEAD_DAYS_RAW = Number.parseInt(process.env.CHATBOT_LEAD_DAYS ?? "3", 10)
 const LEAD_DAYS = Number.isFinite(LEAD_DAYS_RAW) && LEAD_DAYS_RAW > 0 ? LEAD_DAYS_RAW : 3
 const SHOP_TZ = process.env.SHOP_TZ ?? "Europe/Madrid"
 const SUMMARY_THRESHOLD = 30
-const ORDER_STATE_PREFIX = "__ORDER_STATE__:"
 const LEGACY_BRAND_PATTERN = new RegExp(["say", "cheese"].join("\\s*"), "gi")
 
 const SYSTEM_PROMPT = `Eres el asistente de Tentados by Néstor Pérez.
@@ -120,23 +120,8 @@ function sanitizeAssistantText(text: string) {
   return hasUnsafeStoreAddressClaim(sanitized) ? buildStoreLocationMessage() : sanitized
 }
 
-function extractOrderState(messages: { role: string; content: string }[]): OrderState {
-  const stateMessage = [...messages]
-    .reverse()
-    .find((message) => message.role === "system" && message.content.startsWith(ORDER_STATE_PREFIX))
-
-  if (!stateMessage) return {}
-
-  try {
-    const parsed = JSON.parse(stateMessage.content.slice(ORDER_STATE_PREFIX.length)) as OrderState
-    return parsed ?? {}
-  } catch {
-    return {}
-  }
-}
-
 async function persistOrderState(userId: string, state: OrderState) {
-  await saveMessage(userId, "system", `${ORDER_STATE_PREFIX}${JSON.stringify(state)}`)
+  await saveMessage(userId, "system", serializeOrderState(state))
 }
 
 function hasResetOrderIntent(text: string) {
@@ -458,6 +443,9 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
   const pauseState = await getPauseState(userId)
   if (pauseState.botPausedUntil && pauseState.botPausedUntil > new Date()) {
     await saveMessage(userId, "user", message)
+    if (channel === "whatsapp") {
+      return { text: "" }
+    }
     await saveMessage(userId, "assistant", handoffText)
     return { text: handoffText }
   }
@@ -471,6 +459,15 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
     return { text: cancelOrderHandoffText }
   }
 
+  if (conversationCommand === "existing_order_handoff") {
+    await activateHandoff(userId, channel, "Incidencia con pedido existente")
+    const incidentText = buildHumanSupportMessage(
+      "Siento la incidencia. Para revisar o cambiar tu pedido, te atiende una persona del equipo aquí:",
+      channel
+    )
+    return saveAndReply(userId, incidentText, resetOrderState({ phone: messagePhone }, channel))
+  }
+
   if (shouldRequestHandoff(message)) {
     const handoff = await activateHandoff(userId, channel, "Solicitud explícita")
     await saveMessage(userId, "assistant", handoff.message)
@@ -478,8 +475,8 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
   }
 
   const context = await loadContext(userId)
-  const state = extractOrderState(context.messagesLastN)
   const now = new Date()
+  const state = extractFreshOrderState(context.messagesLastN, now)
   const nonSystemMessages = context.messagesLastN.filter((item) => item.role !== "system")
   const isOpeningConversation = nonSystemMessages.length <= 1
 
