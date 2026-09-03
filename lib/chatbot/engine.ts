@@ -4,6 +4,7 @@ import OpenAI from "openai"
 
 import { resolveConversationCommand } from "@/lib/chatbot/commands"
 import { buildHumanSupportPhoneReplyIfIntent } from "@/lib/chatbot/contact"
+import { buildStoreHoursReplyIfIntent } from "@/lib/chatbot/hours"
 import { formatDateEs } from "@/lib/chatbot/dates"
 import {
   clearConversationState,
@@ -38,7 +39,7 @@ import {
 } from "@/lib/chatbot/order-flow"
 import { buildDropsReplyIfIntent } from "@/lib/chatbot/drops"
 import { cancelChatOrder, createChatOrder } from "@/lib/chatbot/orders"
-import { sendWebOrderWhatsappConfirmation } from "@/lib/chatbot/whatsapp-confirmation"
+import { buildWebOrderWhatsappConfirmationMessage, sendWebOrderWhatsappConfirmation } from "@/lib/chatbot/whatsapp-confirmation"
 import {
   buildCatalogForMessage,
   buildFlavorsAndSizesMessage,
@@ -58,6 +59,7 @@ import {
   PICKUP_ONLY_COPY,
   STORE_ADDRESS,
   STORE_HOURS_TEXT,
+  STORE_PICKUP_HOURS_TEXT,
 } from "@/src/data/business"
 
 type HandleMessageInput = {
@@ -148,10 +150,6 @@ async function detectProductMention(text: string) {
   }
 
   return undefined
-}
-
-function hasScheduleIntent(text: string) {
-  return /horario|abris|abierto|cerrais/i.test(normalize(text))
 }
 
 function hasAllergensIntent(text: string) {
@@ -361,7 +359,7 @@ async function finalizeOrderFromState(userId: string, state: OrderState, channel
   ) {
     return saveAndReply(
       userId,
-      `Ese pedido ya estaba creado ✅ Recogida el ${formatDateEs(state.finalDate ?? "", SHOP_TZ)}. ${PICKUP_ONLY_COPY}`,
+      `Ese pedido ya estaba creado ✅ Recogida el ${formatDateEs(state.finalDate ?? "", SHOP_TZ)}. ${PICKUP_ONLY_COPY}\n\n${STORE_PICKUP_HOURS_TEXT}`,
       resetOrderState(state, channel)
     )
   }
@@ -406,7 +404,7 @@ async function finalizeOrderFromState(userId: string, state: OrderState, channel
 
   return saveAndReply(
     userId,
-    `${created.reusedExisting ? "Ese pedido ya estaba creado ✅" : "Pedido creado ✅"} Recogida el ${formatDateEs(created.deliveryDate, SHOP_TZ)}. ${PICKUP_ONLY_COPY}`,
+    `${created.reusedExisting ? "Ese pedido ya estaba creado ✅" : "Pedido creado ✅"} Recogida el ${formatDateEs(created.deliveryDate, SHOP_TZ)}. ${PICKUP_ONLY_COPY}\n\n${STORE_PICKUP_HOURS_TEXT}`,
     nextState
   )
 }
@@ -424,6 +422,12 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
     await saveMessage(userId, "user", message)
     await saveMessage(userId, "assistant", WHATSAPP_RESET_REPLY)
     return { text: WHATSAPP_RESET_REPLY }
+  }
+
+  const hoursReply = buildStoreHoursReplyIfIntent(message)
+  if (hoursReply && !conversationCommand && !shouldRequestHandoff(message)) {
+    await saveMessage(userId, "user", message)
+    return saveAndReply(userId, hoursReply)
   }
 
   const locationReply = buildStoreLocationReplyIfIntent(message)
@@ -501,10 +505,6 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
     )
   }
 
-  if (hasScheduleIntent(message)) {
-    return saveAndReply(userId, STORE_HOURS_TEXT)
-  }
-
   if (hasAllergensIntent(message)) {
     return saveAndReply(userId, await buildProductFactsReply(message, channel))
   }
@@ -536,6 +536,7 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
 
   const openai = getOpenAIClient()
   let safetyEscalate = false
+  let confirmedOrderReply: string | null = null
 
   const tools: OpenAI.Responses.Tool[] = [
     {
@@ -651,6 +652,10 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
           items: toolItems,
           reusedExisting: created.reusedExisting,
         })
+        confirmedOrderReply = buildWebOrderWhatsappConfirmationMessage({
+          deliveryDate: created.deliveryDate,
+          items: toolItems,
+        })
       }
       return created
     }
@@ -691,6 +696,10 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
       if (call.type !== "function_call") continue
       const result = await toolRunner(call.name, call.arguments ?? "{}", phone)
       outputs.push({ type: "function_call_output", call_id: call.call_id, output: JSON.stringify(result) })
+    }
+
+    if (confirmedOrderReply) {
+      return saveAndReply(userId, confirmedOrderReply)
     }
 
     response = await openai.responses.create({

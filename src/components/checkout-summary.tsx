@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { earliestPickupDateISO, formatDateEs } from "@/lib/chatbot/date-rules"
 import { getOrderPickupDateErrorMessage, validateOrderPickupDate } from "@/lib/pickup-date-validation"
-import { CLOSED_PICKUP_DAYS_COPY, getCustomerFacingFormatLabel, PICKUP_ONLY_COPY } from "@/src/data/business"
+import { CLOSED_PICKUP_DAYS_COPY, getCustomerFacingFormatLabel, PICKUP_ONLY_COPY, STORE_PICKUP_HOURS_TEXT } from "@/src/data/business"
 import { useCart } from "@/src/context/cart-context"
 
 const checkoutSchema = z.object({
@@ -78,6 +78,7 @@ export function CheckoutSummary({ leadDays, shopTimeZone }: CheckoutSummaryProps
           </h2>
         </div>
 
+        <p className="whitespace-pre-line text-sm leading-relaxed text-emerald-900">{STORE_PICKUP_HOURS_TEXT}</p>
         <p className="text-sm text-emerald-900/80">{PICKUP_ONLY_COPY}</p>
 
         <div className="flex flex-wrap gap-3">

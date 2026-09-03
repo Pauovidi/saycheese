@@ -36,16 +36,17 @@ const ORDER_ITEM_TYPE_LABELS: Record<OrderItemType, string> = {
   drop: CUSTOMER_FACING_FORMAT_LABELS.drop,
 }
 
-export const STORE_HOURS_LINES = [
-  "Horario:",
+const STORE_OPENING_HOURS_LINES = [
   "Miércoles: 16:30–20:30",
   "Jueves: 16:30–20:30",
   "Viernes: 16:30–20:30",
   "Sábado: 10:00–14:00 y 16:30–20:30",
   "Domingo: 10:00–14:00",
   "Lunes y martes: cerrado.",
-  PICKUP_ONLY_COPY,
 ] as const
+
+export const STORE_PICKUP_HOURS_TEXT = ["Horario de recogida:", ...STORE_OPENING_HOURS_LINES].join("\n")
+export const STORE_HOURS_LINES = ["Horario:", ...STORE_OPENING_HOURS_LINES, PICKUP_ONLY_COPY] as const
 
 export const STORE_HOURS_TEXT = STORE_HOURS_LINES.join("\n")
 export const STORE_HOURS_INLINE_TEXT = STORE_HOURS_LINES.join(" ")

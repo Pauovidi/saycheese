@@ -9,6 +9,8 @@ import {
 import { normalizeSpanishWhatsappDestination, sendTwilioWhatsAppTemplate } from "../lib/twilio/client"
 import { normalizeSpanishMetaWhatsappRecipient } from "../lib/whatsapp/cloud-api"
 
+import { STORE_PICKUP_HOURS_TEXT } from "../src/data/business"
+
 const metaEnv = {
   WHATSAPP_ACCESS_TOKEN: "meta-token",
   WHATSAPP_PHONE_NUMBER_ID: "phone-number-id",
@@ -145,6 +147,7 @@ test("con Twilio faltante y Meta presente usa Meta", async () => {
   if (first?.provider !== "meta") assert.fail("expected Meta send")
   assert.equal(first.to, "34600000000")
   assert.match(first.body, /Pedido confirmado/i)
+  assert.ok(first.body.includes(STORE_PICKUP_HOURS_TEXT))
   assert.equal(events.some((event) => event.args[0] === "whatsapp_confirmation_sent"), true)
 })
 
@@ -216,7 +219,7 @@ test("con Twilio configurado y Content SID usa template aunque falte Meta", asyn
   assert.equal(first.template.contentSid, "HX_order_confirmation")
   assert.deepEqual(first.template.contentVariables, {
     "1": "tarta grande de Lotus",
-    "2": "Recogida en tienda el 12/05/2026",
+    "2": `Recogida en tienda el 12/05/2026. ${STORE_PICKUP_HOURS_TEXT.replace(/\s+/g, " ")}`,
   })
 })
 
@@ -389,6 +392,7 @@ test("mensaje incluye sabor, tamaño, fecha y recogida en tienda", () => {
   assert.match(message, /cajita/)
   assert.match(message, /Recogida en tienda/)
   assert.match(message, /12\/05\/2026/)
+  assert.ok(message.includes(STORE_PICKUP_HOURS_TEXT))
 })
 
 test("mensaje de confirmación resume todos los items de un pedido multi-tarta", () => {
@@ -534,7 +538,7 @@ test("pedido chatbot web crea intento sent vía Twilio template mock", async () 
         assert.equal(input.template.contentSid, "HX_order_confirmation")
         assert.deepEqual(input.template.contentVariables, {
           "1": "tarta grande de Lotus",
-          "2": "Recogida en tienda el 12/05/2026",
+          "2": `Recogida en tienda el 12/05/2026. ${STORE_PICKUP_HOURS_TEXT.replace(/\s+/g, " ")}`,
         })
         return { sid: "SM_web_chatbot" }
       },
@@ -620,7 +624,7 @@ test("Twilio template conserva resumen multi-item en variables", async () => {
   assert.equal(result.ok, true)
   assert.deepEqual(contentVariables, {
     "1": "tarta grande de Lotus x2, cajita de Pistacho",
-    "2": "Recogida en tienda el 12/05/2026",
+    "2": `Recogida en tienda el 12/05/2026. ${STORE_PICKUP_HOURS_TEXT.replace(/\s+/g, " ")}`,
   })
 })
 

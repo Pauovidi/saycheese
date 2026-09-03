@@ -13,6 +13,7 @@ import {
   type MetaWhatsAppEnv,
   type MetaWhatsAppMessageResult,
 } from "@/lib/whatsapp/cloud-api"
+import { STORE_PICKUP_HOURS_TEXT } from "@/src/data/business"
 import { getAdminClient } from "@/lib/supabase/admin"
 
 type Channel = "web" | "whatsapp"
@@ -100,7 +101,8 @@ function buildItemsText(items: WebOrderConfirmationItem[]) {
 }
 
 function buildPickupSummary(deliveryDate?: string | null) {
-  return deliveryDate ? `Recogida en tienda el ${formatIsoDateEs(deliveryDate)}` : `Recogida en tienda. Plazo mínimo: ${LEAD_DAYS} días`
+  const pickupDateText = deliveryDate ? `Recogida en tienda el ${formatIsoDateEs(deliveryDate)}` : `Recogida en tienda. Plazo mínimo: ${LEAD_DAYS} días`
+  return `${pickupDateText}.\n\n${STORE_PICKUP_HOURS_TEXT}`
 }
 
 function formatIsoDateEs(value: string) {
@@ -114,7 +116,7 @@ export function buildWebOrderWhatsappConfirmationMessage(input: {
   deliveryDate?: string | null
   items: WebOrderConfirmationItem[]
 }) {
-  const pickupText = `${buildPickupSummary(input.deliveryDate)}.`
+  const pickupText = buildPickupSummary(input.deliveryDate)
 
   return `¡Pedido confirmado! ${buildItemsText(input.items)}. ${pickupText}`
 }
