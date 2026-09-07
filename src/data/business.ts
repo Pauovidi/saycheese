@@ -15,8 +15,10 @@ export const BUSINESS_LEGAL_NAME = "Tentados by Néstor Pérez"
 export const BUSINESS_NIF = "54269855K"
 export const BUSINESS_EMAIL = "hola@tentadosbynestorperez.com"
 
-export const DELIVERY_POLICY_COPY = "Solo recogida en tienda."
+export const DELIVERY_POLICY_COPY =
+  "Solo recogida en tienda, salvo si estás en Zona Telde, donde Uber Eats te la deja en casita."
 export const PICKUP_ONLY_COPY = DELIVERY_POLICY_COPY
+export const CHATBOT_PICKUP_ONLY_COPY = "Solo recogida en tienda."
 export const FORMAT_SIZE_COPY = "Siempre trabajamos con 2 tamaños: grande y cajita."
 export const CLOSED_PICKUP_DAYS_COPY = "lunes y martes estamos cerrados"
 
@@ -48,6 +50,7 @@ export const STORE_PICKUP_HOURS_TEXT = ["Horario de recogida:", ...STORE_OPENING
 export const STORE_HOURS_LINES = ["Horario:", ...STORE_OPENING_HOURS_LINES, PICKUP_ONLY_COPY] as const
 
 export const STORE_HOURS_TEXT = STORE_HOURS_LINES.join("\n")
+export const CHATBOT_STORE_HOURS_TEXT = ["Horario:", ...STORE_OPENING_HOURS_LINES, CHATBOT_PICKUP_ONLY_COPY].join("\n")
 export const STORE_HOURS_INLINE_TEXT = STORE_HOURS_LINES.join(" ")
 export const OPEN_PICKUP_WEEKDAY_INDEXES = [0, 3, 4, 5, 6] as const
 

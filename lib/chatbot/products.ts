@@ -1,7 +1,7 @@
 import {
   buildHumanSupportMessage,
   getCustomerFacingFormatLabel,
-  PICKUP_ONLY_COPY,
+  CHATBOT_PICKUP_ONLY_COPY,
 } from "@/src/data/business"
 import {
   buildProductsFromFlavorRecords,
@@ -345,7 +345,7 @@ ${flavorLines.join("\n")}
 Trabajamos con 2 tamaños:
 ${sizeLines.join("\n")}
 
-${PICKUP_ONLY_COPY}
+${CHATBOT_PICKUP_ONLY_COPY}
 Plazo mínimo: ${leadDays} días.`
 }
 

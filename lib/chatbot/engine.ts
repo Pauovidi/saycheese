@@ -56,9 +56,9 @@ import {
   HUMAN_SUPPORT_PHONE_E164,
   HUMAN_SUPPORT_PHONE_DISPLAY,
   HUMAN_SUPPORT_WHATSAPP_LINK,
-  PICKUP_ONLY_COPY,
+  CHATBOT_PICKUP_ONLY_COPY,
   STORE_ADDRESS,
-  STORE_HOURS_TEXT,
+  CHATBOT_STORE_HOURS_TEXT,
   STORE_PICKUP_HOURS_TEXT,
 } from "@/src/data/business"
 
@@ -79,7 +79,7 @@ const SYSTEM_PROMPT = `Eres el asistente de Tentados by Néstor Pérez.
 Responde en español, claro y breve.
 No inventes datos de producto. Si faltan ingredientes o alérgenos confirmados, ofrece atención humana.
 No inventes drops, camisetas, tallas ni stock. Las camisetas/drops se responden con la fuente determinista de Drops; WhatsApp no crea pedidos de camisetas.
-Política obligatoria: ${PICKUP_ONLY_COPY}
+Política obligatoria: ${CHATBOT_PICKUP_ONLY_COPY}
 Dirección oficial obligatoria: ${STORE_ADDRESS || "sin dirección configurada"}. Nunca des una dirección distinta.
 Teléfono humano oficial: ${HUMAN_SUPPORT_PHONE_DISPLAY}. Nunca presentes el teléfono del cliente como teléfono del negocio.
 Nunca uses "recogerte" ni "recibir" para pedidos; usa "recoger"/"recogida".
@@ -359,7 +359,7 @@ async function finalizeOrderFromState(userId: string, state: OrderState, channel
   ) {
     return saveAndReply(
       userId,
-      `Ese pedido ya estaba creado ✅ Recogida el ${formatDateEs(state.finalDate ?? "", SHOP_TZ)}. ${PICKUP_ONLY_COPY}\n\n${STORE_PICKUP_HOURS_TEXT}`,
+      `Ese pedido ya estaba creado ✅ Recogida el ${formatDateEs(state.finalDate ?? "", SHOP_TZ)}. ${CHATBOT_PICKUP_ONLY_COPY}\n\n${STORE_PICKUP_HOURS_TEXT}`,
       resetOrderState(state, channel)
     )
   }
@@ -404,7 +404,7 @@ async function finalizeOrderFromState(userId: string, state: OrderState, channel
 
   return saveAndReply(
     userId,
-    `${created.reusedExisting ? "Ese pedido ya estaba creado ✅" : "Pedido creado ✅"} Recogida el ${formatDateEs(created.deliveryDate, SHOP_TZ)}. ${PICKUP_ONLY_COPY}\n\n${STORE_PICKUP_HOURS_TEXT}`,
+    `${created.reusedExisting ? "Ese pedido ya estaba creado ✅" : "Pedido creado ✅"} Recogida el ${formatDateEs(created.deliveryDate, SHOP_TZ)}. ${CHATBOT_PICKUP_ONLY_COPY}\n\n${STORE_PICKUP_HOURS_TEXT}`,
     nextState
   )
 }
@@ -591,7 +591,7 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
   const toolRunner = async (name: string, rawArgs: string, fallbackPhone?: string) => {
     const args = (rawArgs ? JSON.parse(rawArgs) : {}) as Record<string, unknown>
 
-    if (name === "get_store_hours") return { hours: STORE_HOURS_TEXT }
+    if (name === "get_store_hours") return { hours: CHATBOT_STORE_HOURS_TEXT }
     if (name === "get_flavors_and_sizes") {
       const flavorsAndSizes = await listFlavorsAndSizes()
       const catalog = buildCatalogForMessage(flavorsAndSizes)

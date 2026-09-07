@@ -5,7 +5,7 @@ import { extname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 
 import { buildFlavorListMessage } from "../lib/chatbot/products"
-import { BUSINESS_EMAIL, BUSINESS_LEGAL_NAME, PICKUP_ONLY_COPY, STORE_ADDRESS } from "../src/data/business"
+import { BUSINESS_EMAIL, BUSINESS_LEGAL_NAME, CHATBOT_PICKUP_ONLY_COPY, PICKUP_ONLY_COPY, STORE_ADDRESS } from "../src/data/business"
 import { faqs } from "../src/data/faqs"
 
 function readSource(path: string) {
@@ -17,7 +17,6 @@ const forbiddenDeliveryCopyPattern = /Zona Teide|3 Km|3 km|a la redonda/
 const oldBrandBylinePattern = new RegExp(`${["Say", "Cheese"].join("")} by|${["Say", "Cheese"].join(" ")} by`)
 const legacyBrandPattern = new RegExp(["say", "cheese"].join("\\s*"), "i")
 const oldAwardClaimPattern = new RegExp(["Prem", "iada"].join(""), "i")
-const removedDeliveryVendorPattern = new RegExp(["ub", "er", "ea", "ts"].join("\\s*"), "i")
 
 function collectCustomerFacingTextFiles(root: string): string[] {
   const allowedExtensions = new Set([".ts", ".tsx", ".js", ".mjs", ".json", ".md", ".sql"])
@@ -55,30 +54,26 @@ test("no conserva la marca anterior en código, documentación ni contenido púb
   assert.equal(BUSINESS_EMAIL, "hola@tentadosbynestorperez.com")
 })
 
+test("top bar comunica Uber Eats en Zona Telde sin copy de distancia anterior", () => {
+  const header = readSource("src/components/site-header.tsx")
 
-test("no conserva referencias al anterior proveedor de reparto", () => {
-  const roots = ["app", "lib", "src"].map((path) => fileURLToPath(new URL(`../${path}`, import.meta.url)))
-  const matches = roots.flatMap(collectCustomerFacingTextFiles).filter((path) =>
-    removedDeliveryVendorPattern.test(readFileSync(path, "utf8"))
-  )
-  const oldLogoName = ["ub", "er", "-", "ea", "ts", "-icon-logo.png"].join("")
-
-  assert.deepEqual(matches, [])
-  assert.equal(existsSync(fileURLToPath(new URL(`../public/images/${oldLogoName}`, import.meta.url))), false)
+  assert.match(header, /Con Uber Eats recibe tu tarta en casa \(Zona Telde\)/)
+  assert.doesNotMatch(header, oldDistanceCopyPattern)
 })
 
-test("FAQ y fuente central informan que los pedidos son solo para recogida", () => {
+test("FAQ y fuente central de envíos usan Zona Telde sin cobertura antigua", () => {
   const shippingFaq = faqs.find((faq) => faq.question.includes("envíos"))
   const faqText = faqs.map((faq) => `${faq.question} ${faq.answer}`).join("\n")
 
   assert.ok(shippingFaq)
-  assert.equal(PICKUP_ONLY_COPY, "Solo recogida en tienda.")
+  assert.equal(PICKUP_ONLY_COPY, "Solo recogida en tienda, salvo si estás en Zona Telde, donde Uber Eats te la deja en casita.")
   assert.equal(shippingFaq.answer, PICKUP_ONLY_COPY)
+  assert.match(faqText, /Zona Telde/)
   assert.doesNotMatch(faqText, oldDistanceCopyPattern)
   assert.doesNotMatch(faqText, forbiddenDeliveryCopyPattern)
 })
 
-test("chatbot conserva sabores y el aviso de recogida en tienda", () => {
+test("chatbot conserva sabores sin mencionar reparto externo", () => {
   const reply = buildFlavorListMessage(
     [
       {
@@ -97,7 +92,8 @@ test("chatbot conserva sabores y el aviso de recogida en tienda", () => {
   assert.match(reply, /Tarta del mes: Dubai pistacho/)
   assert.match(reply, /Grande: 35 €/)
   assert.match(reply, /Cajita: 12 €/)
-  assert.match(reply, /Solo recogida en tienda/)
+  assert.ok(reply.includes(CHATBOT_PICKUP_ONLY_COPY))
+  assert.doesNotMatch(reply, /Uber Eats/)
   assert.doesNotMatch(reply, /Zona Teide/)
   assert.doesNotMatch(reply, oldDistanceCopyPattern)
   assert.doesNotMatch(reply, forbiddenDeliveryCopyPattern)

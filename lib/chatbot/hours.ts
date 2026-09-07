@@ -1,5 +1,5 @@
 import { normalizeChatText } from "@/lib/chatbot/order-intake"
-import { STORE_HOURS_TEXT } from "@/src/data/business"
+import { CHATBOT_STORE_HOURS_TEXT } from "@/src/data/business"
 
 const STORE_HOURS_PATTERNS = [
   /\bhorarios?\b/,
@@ -12,5 +12,5 @@ export function buildStoreHoursReplyIfIntent(message: string) {
   const normalized = normalizeChatText(message)
   const closingOrder = /\b(?:cierra|cierre|cerrado|cerrada)\s+(?:(?:el|mi|este|la)\s+)?(?:pedido|encargo|reserva)\b|\b(?:pedido|encargo|reserva)\s+cerrad[oa]\b/.test(normalized)
   if (closingOrder && !/\b(?:hora|horarios?)\b/.test(normalized)) return null
-  return STORE_HOURS_PATTERNS.some((pattern) => pattern.test(normalized)) ? STORE_HOURS_TEXT : null
+  return STORE_HOURS_PATTERNS.some((pattern) => pattern.test(normalized)) ? CHATBOT_STORE_HOURS_TEXT : null
 }

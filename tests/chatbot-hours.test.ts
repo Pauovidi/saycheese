@@ -4,7 +4,7 @@ import { resolve } from "node:path"
 import test from "node:test"
 
 import { buildStoreHoursReplyIfIntent } from "../lib/chatbot/hours"
-import { STORE_HOURS_TEXT, STORE_PICKUP_HOURS_TEXT } from "../src/data/business"
+import { CHATBOT_STORE_HOURS_TEXT, STORE_HOURS_TEXT, STORE_PICKUP_HOURS_TEXT } from "../src/data/business"
 import { faqs } from "../src/data/faqs"
 
 const questions = [
@@ -25,8 +25,10 @@ const questions = [
 test("responde preguntas de apertura, cierre y recogida con el horario exacto de los FAQ", () => {
   const faq = faqs.find(({ question }) => /horario/i.test(question))
   assert.ok(faq)
+  assert.match(faq.answer, /Uber Eats/)
   for (const question of questions) {
-    assert.equal(buildStoreHoursReplyIfIntent(question), faq.answer, question)
+    assert.equal(buildStoreHoursReplyIfIntent(question), CHATBOT_STORE_HOURS_TEXT, question)
+    assert.doesNotMatch(buildStoreHoursReplyIfIntent(question) ?? "", /Uber Eats/, question)
   }
 })
 

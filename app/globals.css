@@ -62,3 +62,41 @@
     @apply bg-background text-foreground;
   }
 }
+
+.uber-eats-ticker {
+  overflow: hidden;
+}
+
+.uber-eats-ticker__track {
+  display: flex;
+  width: max-content;
+  animation: uber-eats-ticker 28s linear infinite;
+}
+
+.uber-eats-ticker__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding-inline: 1.75rem;
+  white-space: nowrap;
+}
+
+@keyframes uber-eats-ticker {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .uber-eats-ticker__track {
+    animation: none;
+    transform: none;
+  }
+
+  .uber-eats-ticker__item:nth-child(n + 2) {
+    display: none;
+  }
+}
