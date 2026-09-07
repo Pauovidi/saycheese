@@ -24,9 +24,7 @@ export default function TerminosPage() {
             vigente en el momento de la compra.
           </p>
           <p>
-            Los pedidos son para recogida en tienda, salvo si estás en Zona
-            Telde, donde Uber Eats puede dejarte la tarta en casa.
-            No ofrecemos cobertura de entrega fuera de esa zona.
+            Los pedidos son exclusivamente para recogida en tienda.
           </p>
           <p>
             Al tratarse de productos alimentarios perecederos, no se aceptan

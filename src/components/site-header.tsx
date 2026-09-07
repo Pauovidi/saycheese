@@ -11,37 +11,6 @@ const navLinks = [
   { href: "/faqs", label: "FAQ" },
 ]
 
-const uberEatsTopBarText =
-  "Con Uber Eats recibe tu tarta en casa (Zona Telde)"
-
-function UberEatsTopBar() {
-  const tickerItems = Array.from({ length: 8 }, (_, index) => (
-    <span key={index} className="uber-eats-ticker__item">
-      <Image
-        src="/images/uber-eats-icon-logo.png"
-        alt=""
-        width={28}
-        height={29}
-        className="h-6 w-6 rounded-[6px] object-contain"
-        aria-hidden="true"
-      />
-      <span>{uberEatsTopBarText}</span>
-    </span>
-  ))
-
-  return (
-    <div
-      className="uber-eats-ticker border-b border-primary/20 bg-primary-foreground py-2 text-xs font-semibold uppercase tracking-[0.14em] text-primary"
-      aria-label={uberEatsTopBarText}
-    >
-      <div className="uber-eats-ticker__track" aria-hidden="true">
-        {tickerItems}
-      </div>
-      <p className="sr-only">{uberEatsTopBarText}</p>
-    </div>
-  )
-}
-
 export function SiteHeader({ showDropsLink = false }: { showDropsLink?: boolean }) {
   const { totalItems, openCart } = useCart()
   const [mobileOpen, setMobileOpen] = useState(false)
@@ -52,7 +21,6 @@ export function SiteHeader({ showDropsLink = false }: { showDropsLink?: boolean 
   return (
     <>
       <header className="sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur-sm">
-        <UberEatsTopBar />
         <div className="mx-auto flex min-h-20 max-w-[1600px] items-center justify-between gap-4 px-6 py-3 lg:px-10">
           {/* Logo */}
           <Link href="/" className="min-w-0 flex-shrink-0">
