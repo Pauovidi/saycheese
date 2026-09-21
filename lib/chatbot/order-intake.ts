@@ -1,5 +1,10 @@
 export type OrderFormat = "tarta" | "cajita"
 
+export type ExplicitCakeOrderPart = {
+  format: OrderFormat
+  flavorQuery: string
+}
+
 export function normalizeChatText(text: string) {
   return text
     .toLowerCase()
@@ -19,6 +24,24 @@ export function parseOrderFormat(text: string): OrderFormat | undefined {
   if (/\b(cajita|caja|pequena|pequeña|pequeno|pequeño|mini|individual)\b/.test(normalized)) return "cajita"
   if (/\b(tarta|grande|mediana|mediano)\b/.test(normalized)) return "tarta"
   return undefined
+}
+
+export function parseExplicitCakeOrderParts(text: string): ExplicitCakeOrderPart[] {
+  const parts: ExplicitCakeOrderPart[] = []
+  const formatPattern = "grande|tarta|mediana|mediano|cajita|caja|pequena|pequeña|pequeno|pequeño|mini|individual"
+  const pattern = new RegExp(
+    `\\b(?:una|un|la|el)?\\s*(${formatPattern})\\s+(?:de\\s+)?([^,.;!?]+?)(?=\\s+y\\s+(?:una|un|la|el)?\\s*(?:${formatPattern})\\s+(?:de\\s+)?|$)`,
+    "giu"
+  )
+
+  for (const match of text.matchAll(pattern)) {
+    const format = parseOrderFormat(match[1] ?? "")
+    const flavorQuery = match[2]?.trim()
+    if (!format || !flavorQuery) continue
+    parts.push({ format, flavorQuery })
+  }
+
+  return parts
 }
 
 function cleanCustomerNameCandidate(value: string) {
@@ -266,6 +289,7 @@ export function hasMultipleCakeOrderIntent(text: string) {
     /\b(?:dos|2|tres|3|cuatro|4)\s+(?:tartas|cajitas)\b/,
     /\bvarias\s+(?:tartas|cajitas)\b/,
     /\bmas\s+de\s+una\s+(?:tarta|cajita)\b/,
+    /\b(?:grande|tarta|cajita|caja)\b[\s\S]*\by\s+(?:una|un)?\s*(?:grande|tarta|cajita|caja)\b/,
   ].some((pattern) => pattern.test(normalized))
 }
 

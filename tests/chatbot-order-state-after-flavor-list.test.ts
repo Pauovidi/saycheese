@@ -488,6 +488,27 @@ test("multi-item mantiene el estado entre tartas", async () => {
   assert.equal(close.kind, "finalize")
 })
 
+test("registra dos formatos y sabores pedidos en el mismo mensaje", async () => {
+  const state: OrderState = {}
+  const deps = createDeps([
+    ...flavor("oreo", "Oreo"),
+    ...flavor("mango-maracuya", "Mango-maracuyá"),
+  ])
+
+  const options = { channel: "whatsapp" as const, now: new Date("2026-09-21T10:00:00+02:00") }
+  await send(state, "quiero reservar una grande de Oreo y una cajita de mango", deps, options)
+  await send(state, "sábado 26 de septiembre", deps, options)
+  const reply = await send(state, "Néstor", deps, options)
+
+  assert.equal(reply.kind, "reply")
+  assert.deepEqual(buildPendingOrderItems(state), [
+    { type: "cake", flavor: "oreo", qty: 1 },
+    { type: "box", flavor: "mango-maracuya", qty: 1 },
+  ])
+  assert.match(reply.text, /una grande de Oreo y una cajita de Mango-maracuyá/)
+  assert.match(reply.text, /añadir otra tarta/)
+})
+
 test("tarta del mes activa se puede pedir si está disponible", async () => {
   const state: OrderState = {}
 

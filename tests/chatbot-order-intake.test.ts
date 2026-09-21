@@ -8,6 +8,7 @@ import {
   hasExplicitNewOrderIntent,
   hasMultipleCakeOrderIntent,
   hasRecentOrderGuard,
+  parseExplicitCakeOrderParts,
   parseOrderFormat,
 } from "../lib/chatbot/order-intake"
 import { findExplicitFlavorSelection, findProductBySlugOrFlavor } from "../lib/chatbot/products"
@@ -48,6 +49,11 @@ test("detecta cuando el usuario quiere varias tartas en el mismo pedido", () => 
   assert.equal(hasMultipleCakeOrderIntent("quiero dos tartas para el viernes"), true)
   assert.equal(hasMultipleCakeOrderIntent("quiero varias cajitas"), true)
   assert.equal(hasMultipleCakeOrderIntent("quiero una tarta"), false)
+  assert.equal(hasMultipleCakeOrderIntent("una grande de Oreo y una cajita de mango"), true)
+  assert.deepEqual(parseExplicitCakeOrderParts("Quiero reservar una grande de Oreo y una cajita de mango"), [
+    { format: "tarta", flavorQuery: "Oreo" },
+    { format: "cajita", flavorQuery: "mango" },
+  ])
 })
 
 test("distingue entre añadir otra tarta y cerrar el pedido", () => {

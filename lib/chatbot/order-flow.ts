@@ -8,6 +8,7 @@ import {
   hasMultipleCakeOrderIntent,
   hasRecentOrderGuard,
   normalizeChatText,
+  parseExplicitCakeOrderParts,
   parseOrderFormat,
 } from "@/lib/chatbot/order-intake"
 import {
@@ -39,6 +40,7 @@ export type OrderState = {
   flavor?: string
   format?: "tarta" | "cajita"
   pendingItems?: ChatOrderItem[]
+  pendingDraftItems?: ChatOrderItem[]
   phone?: string
   customerName?: string
   customerEmail?: string
@@ -281,6 +283,38 @@ async function buildContextualOrderReply(
   })
 }
 
+async function buildContextualOrderReplyForItems(
+  state: OrderState,
+  items: ChatOrderItem[],
+  channel: "web" | "whatsapp",
+  tz: string,
+  deps: Required<OrderFlowDependencies>
+) {
+  const labels = await Promise.all(
+    items.map((item) =>
+      buildOrderItemLabel(
+        {
+          flavor: item.flavor,
+          format: item.type === "box" ? "cajita" : "tarta",
+        },
+        deps
+      )
+    )
+  )
+  const itemLabel = labels.length > 1
+    ? `${labels.slice(0, -1).join(", ")} y ${labels[labels.length - 1]}`
+    : labels[0] ?? "el pedido"
+  const dateLabel = state.finalDate ? formatDateEs(state.finalDate, tz) : null
+  const missing = buildMissingFieldsPrompt(state, channel, { preferContinuationTone: Boolean(state.finalDate || state.flavor || state.format) })
+
+  return buildContextualOrderReplyText({
+    customerName: state.customerName,
+    itemLabel,
+    dateLabel,
+    missingPrompt: missing,
+  })
+}
+
 function resetCurrentCakeSelection(state: OrderState) {
   state.flavor = undefined
   state.format = undefined
@@ -338,6 +372,28 @@ export async function processOrderConversationTurn(input: ProcessOrderConversati
 
   const flavorSelection = await deps.resolveAvailableFlavorSelection(message)
   const explicitFlavorSelection = flavorSelection.kind === "matched" ? flavorSelection.product : undefined
+  const explicitCakeParts = parseExplicitCakeOrderParts(message)
+  const explicitCakeItems: ChatOrderItem[] = []
+  if (explicitCakeParts.length > 1 && !state.awaitingAdditionalCakeDecision) {
+    const selections = await Promise.all(
+      explicitCakeParts.map(async (part) => ({
+        part,
+        selection: await deps.resolveAvailableFlavorSelection(`${part.format} de ${part.flavorQuery}`),
+      }))
+    )
+
+    if (selections.every((entry) => entry.selection.kind === "matched")) {
+      for (const entry of selections) {
+        if (entry.selection.kind !== "matched") continue
+        explicitCakeItems.push({
+          type: entry.part.format === "cajita" ? "box" : "cake",
+          flavor: entry.selection.product.category,
+          qty: 1,
+        })
+      }
+    }
+  }
+  const hasExplicitMultipleCakeItems = explicitCakeItems.length > 1
   const activeOrder = state.inOrderFlow || state.awaitingConfirm || state.awaitingName || state.awaitingAdditionalCakeDecision
 
   if (hasExplicitFlavorQuestion(message)) {
@@ -372,7 +428,8 @@ export async function processOrderConversationTurn(input: ProcessOrderConversati
   const orderFlow =
     hasOrderIntent(message) ||
     activeOrder ||
-    Boolean(explicitFlavorSelection)
+    Boolean(explicitFlavorSelection) ||
+    hasExplicitMultipleCakeItems
 
   if (!orderFlow) {
     return { kind: "unhandled", state }
@@ -383,6 +440,7 @@ export async function processOrderConversationTurn(input: ProcessOrderConversati
     state.flavor = undefined
     state.format = undefined
     state.pendingItems = undefined
+    state.pendingDraftItems = undefined
     state.customerName = undefined
     state.customerEmail = undefined
     state.desiredDate = undefined
@@ -403,14 +461,22 @@ export async function processOrderConversationTurn(input: ProcessOrderConversati
 
   state.inOrderFlow = true
   const multipleCakeIntro =
-    hasMultipleCakeOrderIntent(message) && !state.expectsMultipleCakes && !buildPendingOrderItems(state).length
+    (hasMultipleCakeOrderIntent(message) || hasExplicitMultipleCakeItems) &&
+    !state.expectsMultipleCakes &&
+    !buildPendingOrderItems(state).length
       ? MULTIPLE_CAKES_INTRO
       : null
   if (multipleCakeIntro) {
     state.expectsMultipleCakes = true
   }
 
-  if (flavorSelection.kind === "ambiguous") {
+  if (hasExplicitMultipleCakeItems) {
+    state.pendingDraftItems = explicitCakeItems
+    state.flavor = explicitCakeItems[0]?.flavor
+    state.format = explicitCakeItems[0]?.type === "box" ? "cajita" : "tarta"
+  }
+
+  if (flavorSelection.kind === "ambiguous" && !hasExplicitMultipleCakeItems) {
     return {
       kind: "reply",
       text: mergeIntroReply(multipleCakeIntro, buildAmbiguousFlavorMessage(flavorSelection.choices)),
@@ -418,7 +484,9 @@ export async function processOrderConversationTurn(input: ProcessOrderConversati
     }
   }
 
-  const product = explicitFlavorSelection ?? await detectProductMention(message, deps)
+  const product = hasExplicitMultipleCakeItems
+    ? await deps.findProductBySlugOrFlavor(explicitCakeItems[0]?.flavor ?? "")
+    : explicitFlavorSelection ?? await detectProductMention(message, deps)
   const unavailableFlavor = product ? undefined : await deps.findUnavailableFlavorByQuery(message)
   if (unavailableFlavor) {
     return {
@@ -428,7 +496,7 @@ export async function processOrderConversationTurn(input: ProcessOrderConversati
     }
   }
 
-  const format = parseOrderFormat(message)
+  const format = hasExplicitMultipleCakeItems ? explicitCakeParts[0]?.format : parseOrderFormat(message)
   const parsedDate = parseSpanishDesiredDate(message, now, shopTz)
   let acceptedSuggestedDate = false
   if (isPendingSuggestedDateAcceptance(message, state, shopTz)) {
@@ -602,8 +670,12 @@ export async function processOrderConversationTurn(input: ProcessOrderConversati
 
   const currentCakeItem = buildCurrentCakeItem(state)
   if (currentCakeItem) {
-    const completedCakeReply = await buildContextualOrderReply(state, channel, shopTz, deps)
-    state.pendingItems = appendOrderItem(buildPendingOrderItems(state), currentCakeItem)
+    const itemsToAppend = state.pendingDraftItems?.length ? state.pendingDraftItems : [currentCakeItem]
+    const completedCakeReply = itemsToAppend.length > 1
+      ? await buildContextualOrderReplyForItems(state, itemsToAppend, channel, shopTz, deps)
+      : await buildContextualOrderReply(state, channel, shopTz, deps)
+    state.pendingItems = itemsToAppend.reduce((items, item) => appendOrderItem(items, item), buildPendingOrderItems(state))
+    state.pendingDraftItems = undefined
     resetCurrentCakeSelection(state)
     state.awaitingAdditionalCakeDecision = true
 

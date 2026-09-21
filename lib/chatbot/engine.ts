@@ -250,6 +250,7 @@ function resetOrderState(state: OrderState, channel: "web" | "whatsapp"): OrderS
     flavor: undefined,
     format: undefined,
     pendingItems: undefined,
+    pendingDraftItems: undefined,
     phone: channel === "whatsapp" ? state.phone : undefined,
     customerName: undefined,
     customerEmail: undefined,
