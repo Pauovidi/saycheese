@@ -207,8 +207,8 @@ test("mensaje combinado día, sabor genérico y tamaño rellena slots sin repeti
   assert.equal(state.finalDate, "2026-06-17")
   assert.equal(state.flavor, "clasica")
   assert.equal(state.format, "tarta")
-  assert.match(reply.text, /miércoles 17\/06/)
   assert.match(reply.text, /me falta tu nombre/)
+  assert.doesNotMatch(reply.text, /miércoles 17\/06/)
   assert.doesNotMatch(reply.text, /Para qué día|Queso Azul/i)
 })
 
@@ -221,8 +221,8 @@ test("día 17 de junio mantiene sabor y tamaño previos sin cambiar a queso azul
   assert.equal(state.finalDate, "2026-06-17")
   assert.equal(state.flavor, "clasica")
   assert.equal(state.format, "tarta")
-  assert.match(reply.text, /miércoles 17\/06/)
   assert.match(reply.text, /me falta tu nombre/)
+  assert.doesNotMatch(reply.text, /miércoles 17\/06/)
   assert.doesNotMatch(reply.text, /Queso Azul/i)
 })
 
@@ -305,7 +305,7 @@ test("corrección explícita reemplaza sabor y mantiene fecha y tamaño", async 
     assert.equal(state.flavor, "clasica")
     assert.equal(state.format, "tarta")
     assert.equal(state.finalDate, "2026-06-17")
-    assert.match(reply.text, /miércoles 17\/06/)
+    assert.doesNotMatch(reply.text, /miércoles 17\/06/)
     assert.doesNotMatch(reply.text, /Queso Azul/i)
   }
 })
@@ -356,7 +356,8 @@ test("una cajita de queso para el 17 rellena formato, sabor y fecha", async () =
   assert.equal(state.format, "cajita")
   assert.equal(state.flavor, "clasica")
   assert.equal(state.finalDate, "2026-06-17")
-  assert.match(reply.text, /cajita de Clásica/)
+  assert.match(reply.text, /me falta tu nombre/)
+  assert.doesNotMatch(reply.text, /cajita de Clásica/)
 })
 
 test("fecha antes y sabor parcial después conserva la fecha del pedido activo", async () => {

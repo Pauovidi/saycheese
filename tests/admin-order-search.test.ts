@@ -11,6 +11,7 @@ import {
   normalizeOrderSearchText,
   orderPhoneMatchesSearch,
 } from "../lib/admin/order-search"
+import { isActiveOrderForDay, sortAdminOrdersForDay } from "../lib/admin/order-history"
 
 test("acepta búsquedas por nombre aunque no haya teléfono", () => {
   assert.equal(isOrderSearchQueryValid("Pau"), true)
@@ -49,4 +50,16 @@ test("deduplica resultados y deja primero el más reciente", () => {
     deduped.map((order) => order.id),
     ["2", "1"]
   )
+})
+
+test("prioriza pedidos pendientes de hoy y conserva el resto en histórico", () => {
+  const today = "2026-09-21"
+  const orders = sortAdminOrdersForDay([
+    { id: "old", delivery_date: "2026-09-20", status: "pending", created_at: "2026-09-21T10:00:00.000Z" },
+    { id: "done", delivery_date: today, status: "done", created_at: "2026-09-21T11:00:00.000Z" },
+    { id: "active", delivery_date: today, status: "pending", created_at: "2026-09-21T09:00:00.000Z" },
+  ], today)
+
+  assert.equal(isActiveOrderForDay(orders[0], today), true)
+  assert.deepEqual(orders.map((order) => order.id), ["active", "done", "old"])
 })

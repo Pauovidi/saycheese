@@ -5,6 +5,7 @@ import { toast } from "sonner"
 
 import { cancelOrder, markOrderDone, reopenOrder, searchOrders } from "@/actions/orders"
 import { buildAdminOrderItemLines, type ProductionCatalogFlavor } from "@/lib/admin/production-presentation"
+import { isActiveOrderForDay } from "@/lib/admin/order-history"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { CancelOrderDialog } from "@/src/components/admin/cancel-order-dialog"
@@ -18,6 +19,7 @@ type OrderItem = {
 
 type OrderResult = {
   id: string
+  created_at?: string | null
   delivery_date: string
   customer_name: string | null
   customer_email: string | null
@@ -39,7 +41,7 @@ function StatusBadge({ status }: { status: string }) {
   return <span className="rounded bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-700">PENDIENTE</span>
 }
 
-export function AdminOrderSearch({ flavorCatalog }: { flavorCatalog: ProductionCatalogFlavor[] }) {
+export function AdminOrderSearch({ flavorCatalog, todayISO }: { flavorCatalog: ProductionCatalogFlavor[]; todayISO: string }) {
   const [searchQuery, setSearchQuery] = useState("")
   const [results, setResults] = useState<OrderResult[]>([])
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
@@ -125,36 +127,54 @@ export function AdminOrderSearch({ flavorCatalog }: { flavorCatalog: ProductionC
       {!errorMessage && results.length === 0 ? (
         <p className="text-sm text-muted-foreground">No hay resultados.</p>
       ) : (
-        <div className="space-y-4">
-          {results.map((order) => (
-            <article key={order.id} className="rounded border border-border p-3">
-              <p className="text-sm font-semibold">
-                Entrega: <span className="font-normal">{order.delivery_date}</span>
-              </p>
-              <p className="text-sm text-muted-foreground">
-                {order.customer_name || "Sin nombre"} · {order.customer_email || "Sin email"} · {order.phone || "Sin teléfono"}
-              </p>
-              <div className="mt-2">
-                <StatusBadge status={order.status} />
-              </div>
+        <div className="space-y-8">
+          {(() => {
+            const activeResults = results.filter((order) => isActiveOrderForDay(order, todayISO))
+            const historicalResults = results.filter((order) => !isActiveOrderForDay(order, todayISO))
 
-              <ul className="mt-2 list-disc pl-5 text-sm">
-                {buildAdminOrderItemLines(order.order_items, flavorCatalog).map((line, idx) => (
-                  <li key={`${order.id}-${idx}`}>{line}</li>
-                ))}
-              </ul>
+            const renderOrder = (order: OrderResult) => (
+              <article key={order.id} className="rounded border border-border p-3">
+                <p className="text-sm font-semibold">
+                  Entrega: <span className="font-normal">{order.delivery_date}</span>
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  {order.customer_name || "Sin nombre"} · {order.customer_email || "Sin email"} · {order.phone || "Sin teléfono"}
+                </p>
+                <div className="mt-2">
+                  <StatusBadge status={order.status} />
+                </div>
 
-              <div className="mt-3 flex flex-wrap gap-2">
-                {order.status === "pending" ? <MarkDoneDialog orderId={order.id} onConfirm={handleDone} /> : null}
-                {order.status === "done" ? (
-                  <Button size="sm" variant="outline" onClick={() => handleReopen(order.id)}>
-                    Reabrir
-                  </Button>
-                ) : null}
-                {order.status !== "cancelled" ? <CancelOrderDialog orderId={order.id} onConfirm={handleCancel} /> : null}
-              </div>
-            </article>
-          ))}
+                <ul className="mt-2 list-disc pl-5 text-sm">
+                  {buildAdminOrderItemLines(order.order_items, flavorCatalog).map((line, idx) => (
+                    <li key={`${order.id}-${idx}`}>{line}</li>
+                  ))}
+                </ul>
+
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {order.status === "pending" ? <MarkDoneDialog orderId={order.id} onConfirm={handleDone} /> : null}
+                  {order.status === "done" ? (
+                    <Button size="sm" variant="outline" onClick={() => handleReopen(order.id)}>
+                      Reabrir
+                    </Button>
+                  ) : null}
+                  {order.status !== "cancelled" ? <CancelOrderDialog orderId={order.id} onConfirm={handleCancel} /> : null}
+                </div>
+              </article>
+            )
+
+            return (
+              <>
+                <div>
+                  <h3 className="mb-3 text-sm font-semibold text-foreground">Pedidos activos de hoy</h3>
+                  {activeResults.length === 0 ? <p className="text-sm text-muted-foreground">No hay pedidos activos para hoy.</p> : <div className="space-y-4">{activeResults.map(renderOrder)}</div>}
+                </div>
+                <div>
+                  <h3 className="mb-3 text-sm font-semibold text-foreground">Histórico de pedidos</h3>
+                  {historicalResults.length === 0 ? <p className="text-sm text-muted-foreground">No hay pedidos históricos en esta búsqueda.</p> : <div className="space-y-4">{historicalResults.map(renderOrder)}</div>}
+                </div>
+              </>
+            )
+          })()}
         </div>
       )}
     </section>

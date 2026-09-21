@@ -6,6 +6,7 @@ import { toast } from "sonner"
 
 import { cancelOrder, markOrderDone, reopenOrder } from "@/actions/orders"
 import { buildAdminOrderItemLines, type ProductionCatalogFlavor } from "@/lib/admin/production-presentation"
+import { isActiveOrderForDay } from "@/lib/admin/order-history"
 import { Button } from "@/components/ui/button"
 import { CancelOrderDialog } from "@/src/components/admin/cancel-order-dialog"
 import { MarkDoneDialog } from "@/src/components/admin/mark-done-dialog"
@@ -28,6 +29,7 @@ type LatestOrder = {
 
 type LatestOrdersProps = {
   initialOrders: LatestOrder[]
+  todayISO: string
   flavorCatalog: ProductionCatalogFlavor[]
 }
 
@@ -43,7 +45,7 @@ function StatusBadge({ status }: { status: string }) {
   return <span className="rounded bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-700">PENDIENTE</span>
 }
 
-export function LatestOrders({ initialOrders, flavorCatalog }: LatestOrdersProps) {
+export function LatestOrders({ initialOrders, todayISO, flavorCatalog }: LatestOrdersProps) {
   const router = useRouter()
   const [orders, setOrders] = useState(initialOrders)
   const [, startTransition] = useTransition()
@@ -93,46 +95,56 @@ export function LatestOrders({ initialOrders, flavorCatalog }: LatestOrdersProps
     })
   }
 
+  const activeOrders = orders.filter((order) => isActiveOrderForDay(order, todayISO))
+  const historicalOrders = orders.filter((order) => !isActiveOrderForDay(order, todayISO))
+
+  function renderOrder(order: LatestOrder) {
+    return (
+      <article key={order.id} className="rounded border border-border p-3">
+        <p className="text-sm font-semibold">
+          Entrega: <span className="font-normal">{order.delivery_date}</span>
+        </p>
+        <p className="text-sm text-muted-foreground">
+          {order.customer_name || "Sin nombre"} · {order.customer_email || "Sin email"} · {order.phone || "Sin teléfono"}
+        </p>
+        <div className="mt-2">
+          <StatusBadge status={order.status} />
+        </div>
+        <ul className="mt-2 list-disc pl-5 text-sm">
+          {buildAdminOrderItemLines(order.order_items, flavorCatalog).map((line, idx) => (
+            <li key={`${order.id}-${idx}`}>{line}</li>
+          ))}
+        </ul>
+
+        <div className="mt-3 flex flex-wrap gap-2">
+          {order.status === "pending" ? <MarkDoneDialog orderId={order.id} onConfirm={handleDone} /> : null}
+          {order.status === "done" ? (
+            <Button size="sm" variant="outline" onClick={() => handleReopen(order.id)}>
+              Reabrir
+            </Button>
+          ) : null}
+          {order.status !== "cancelled" ? <CancelOrderDialog orderId={order.id} onConfirm={handleCancel} /> : null}
+        </div>
+      </article>
+    )
+  }
+
+  function renderGroup(title: string, group: LatestOrder[], emptyText: string) {
+    return (
+      <div>
+        <h3 className="mb-3 text-sm font-semibold text-foreground">{title}</h3>
+        {group.length === 0 ? <p className="text-sm text-muted-foreground">{emptyText}</p> : <div className="space-y-4">{group.map(renderOrder)}</div>}
+      </div>
+    )
+  }
+
   return (
     <section className="mt-8 rounded-lg border border-border bg-card p-4">
-      <h2 className="mb-4 text-sm font-bold uppercase tracking-wider text-foreground">
-        Últimos pedidos
-      </h2>
-
-      {orders.length === 0 ? (
-        <p className="text-sm text-muted-foreground">Todavía no hay pedidos.</p>
-      ) : (
-        <div className="space-y-4">
-          {orders.map((order) => (
-            <article key={order.id} className="rounded border border-border p-3">
-              <p className="text-sm font-semibold">
-                Entrega: <span className="font-normal">{order.delivery_date}</span>
-              </p>
-              <p className="text-sm text-muted-foreground">
-                {order.customer_name || "Sin nombre"} · {order.customer_email || "Sin email"} · {order.phone || "Sin teléfono"}
-              </p>
-              <div className="mt-2">
-                <StatusBadge status={order.status} />
-              </div>
-              <ul className="mt-2 list-disc pl-5 text-sm">
-                {buildAdminOrderItemLines(order.order_items, flavorCatalog).map((line, idx) => (
-                  <li key={`${order.id}-${idx}`}>{line}</li>
-                ))}
-              </ul>
-
-              <div className="mt-3 flex flex-wrap gap-2">
-                {order.status === "pending" ? <MarkDoneDialog orderId={order.id} onConfirm={handleDone} /> : null}
-                {order.status === "done" ? (
-                  <Button size="sm" variant="outline" onClick={() => handleReopen(order.id)}>
-                    Reabrir
-                  </Button>
-                ) : null}
-                {order.status !== "cancelled" ? <CancelOrderDialog orderId={order.id} onConfirm={handleCancel} /> : null}
-              </div>
-            </article>
-          ))}
-        </div>
-      )}
+      <h2 className="mb-4 text-sm font-bold uppercase tracking-wider text-foreground">Pedidos</h2>
+      <div className="space-y-8">
+        {renderGroup("Pedidos activos de hoy", activeOrders, "No hay pedidos activos para hoy.")}
+        {renderGroup("Histórico de pedidos", historicalOrders, "Todavía no hay pedidos históricos.")}
+      </div>
     </section>
   )
 }

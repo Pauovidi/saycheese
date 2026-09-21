@@ -77,6 +77,20 @@ export function buildContextualOrderReplyText(input: {
   missingPrompt?: string
 }) {
   const customerName = typeof input.customerName === "string" ? input.customerName.trim() : ""
+  const missingNameOnly = input.missingPrompt === "Para dejarlo confirmado me falta tu nombre."
+
+  if (!customerName && missingNameOnly) {
+    return "De acuerdo. Para dejarlo confirmado me falta tu nombre."
+  }
+
+  if (customerName && !input.missingPrompt) {
+    const itemAndDate = input.dateLabel
+      ? `te apunto ${input.itemLabel} para el ${input.dateLabel}.`
+      : `te apunto ${input.itemLabel}.`
+
+    return `Perfecto ${customerName}, ${itemAndDate}`
+  }
+
   const salutationSuffix = customerName ? `, ${customerName}` : ""
   const prefix = input.dateLabel
     ? `De acuerdo${salutationSuffix}. Te apunto ${input.itemLabel} para el ${input.dateLabel}.`

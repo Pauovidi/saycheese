@@ -59,6 +59,28 @@ test("expone un fallback corto para entradas ambiguas dentro del flujo", () => {
   assert.equal(ORDER_LOW_CONFIDENCE_RECOVERY, "No lo he entendido bien. ¿Puedes repetírmelo?")
 })
 
+test("pide solo el nombre sin repetir el producto ni la fecha", () => {
+  assert.equal(
+    buildContextualOrderReplyText({
+      itemLabel: "una grande de Hippo",
+      dateLabel: "domingo 20/09",
+      missingPrompt: "Para dejarlo confirmado me falta tu nombre.",
+    }),
+    "De acuerdo. Para dejarlo confirmado me falta tu nombre."
+  )
+})
+
+test("confirma el pedido con el nombre antes de preguntar si añade otra tarta", () => {
+  assert.equal(
+    buildContextualOrderReplyText({
+      customerName: "Antonio David",
+      itemLabel: "una grande de Hippo",
+      dateLabel: "domingo 20/09",
+    }),
+    "Perfecto Antonio David, te apunto una grande de Hippo para el domingo 20/09."
+  )
+})
+
 test("mantiene el copy mínimo para varias tartas en un mismo pedido", () => {
   assert.equal(MULTIPLE_CAKES_INTRO, "Perfecto. Te las voy apuntando una a una para no equivocarme. Vamos con la primera.")
   assert.equal(ADD_ANOTHER_CAKE_PROMPT, "¿Quieres cerrar el pedido o añadir otra tarta?")

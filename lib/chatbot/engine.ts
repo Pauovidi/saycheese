@@ -74,6 +74,7 @@ const LEAD_DAYS = Number.isFinite(LEAD_DAYS_RAW) && LEAD_DAYS_RAW > 0 ? LEAD_DAY
 const SHOP_TZ = process.env.SHOP_TZ ?? "Europe/Madrid"
 const SUMMARY_THRESHOLD = 30
 const LEGACY_BRAND_PATTERN = new RegExp(["say", "cheese"].join("\\s*"), "gi")
+const conversationLocks = new Map<string, Promise<void>>()
 
 const SYSTEM_PROMPT = `Eres el asistente de Tentados by Néstor Pérez.
 Responde en español, claro y breve.
@@ -409,7 +410,7 @@ async function finalizeOrderFromState(userId: string, state: OrderState, channel
   )
 }
 
-export async function handleMessage({ sessionId, message, phone, channel }: HandleMessageInput) {
+async function handleMessageUnlocked({ sessionId, message, phone, channel }: HandleMessageInput) {
   const model = process.env.OPENAI_MODEL ?? "gpt-4.1-mini"
   const messagePhone = phone ?? extractPhoneFromText(message)
   const conversationCommand = resolveConversationCommand(channel, message)
@@ -724,5 +725,30 @@ export async function handleMessage({ sessionId, message, phone, channel }: Hand
   await maybeSummarizeConversation(openai, userId, [...context.messagesLastN, { role: "user", content: message }, { role: "assistant", content: text }])
 
   return { text }
+}
+
+export async function handleMessage(input: HandleMessageInput) {
+  const lockKey = `${input.channel}:${input.sessionId}`
+  const previous = conversationLocks.get(lockKey)
+  let release!: () => void
+  const current = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const tail = previous ? previous.then(() => current) : current
+
+  conversationLocks.set(lockKey, tail)
+
+  if (previous) {
+    await previous
+  }
+
+  try {
+    return await handleMessageUnlocked(input)
+  } finally {
+    release()
+    if (conversationLocks.get(lockKey) === tail) {
+      conversationLocks.delete(lockKey)
+    }
+  }
 }
 

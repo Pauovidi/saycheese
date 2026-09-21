@@ -7,6 +7,7 @@ import { LatestOrders } from "@/src/components/admin/latest-orders"
 import { AdminOrderSearch } from "@/src/components/admin/order-search"
 import { ProductionPanel } from "@/src/components/admin/production-panel"
 import { getCatalogFlavors } from "@/src/data/products-store"
+import { getCurrentShopDateISO } from "@/lib/admin/order-history"
 
 type OrderItem = {
   type: "cake" | "box" | "drop"
@@ -31,9 +32,9 @@ export default async function ProduccionPage() {
   const { data, error } = await supabase
     .from("orders")
     .select("id, created_at, delivery_date, customer_name, customer_email, phone, status, order_items(type, flavor, qty)")
-    .neq("status", "cancelled")
+    .order("delivery_date", { ascending: true })
     .order("created_at", { ascending: false })
-    .limit(30)
+    .limit(100)
 
   const orders = ((error ? [] : data) ?? []) as AdminOrder[]
 
@@ -51,6 +52,7 @@ export default async function ProduccionPage() {
       <ProductionPanel />
 
       <AdminOrderSearch
+        todayISO={getCurrentShopDateISO()}
         flavorCatalog={flavors.map((flavor) => ({
           category: flavor.category,
           label: flavor.label,
@@ -58,6 +60,7 @@ export default async function ProduccionPage() {
       />
       <LatestOrders
         initialOrders={orders}
+        todayISO={getCurrentShopDateISO()}
         flavorCatalog={flavors.map((flavor) => ({
           category: flavor.category,
           label: flavor.label,

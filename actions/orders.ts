@@ -17,6 +17,7 @@ import { buildUnavailableFlavorMessage, resolveFlavorAvailability } from "@/lib/
 import { computeReminderAt } from "@/lib/chatbot/reminders"
 import { normalizePhoneOrNull } from "@/lib/phone"
 import { getOrderPickupDateErrorMessage, validateOrderPickupDate } from "@/lib/pickup-date-validation"
+import { getCurrentShopDateISO, sortAdminOrdersForDay } from "@/lib/admin/order-history"
 import { clearActiveOrderStateByPhone } from "@/lib/chatbot/memory"
 import { createClient } from "@/lib/supabase/server"
 
@@ -235,10 +236,9 @@ export async function searchOrders(query: string) {
       const { data, error } = await supabase
         .from("orders")
         .select(ORDER_SEARCH_SELECT)
-        .neq("status", "cancelled")
         .like("phone_normalized", `%${phoneQuery}%`)
         .order("created_at", { ascending: false })
-        .limit(20)
+        .limit(100)
 
       if (!error) {
         resultSets.push((data ?? []) as SearchOrderResult[])
@@ -249,7 +249,6 @@ export async function searchOrders(query: string) {
       const { data: fallbackPhoneData, error: fallbackPhoneError } = await supabase
         .from("orders")
         .select(ORDER_SEARCH_SELECT)
-        .neq("status", "cancelled")
         .not("phone", "is", null)
         .order("created_at", { ascending: false })
         .limit(200)
@@ -265,12 +264,11 @@ export async function searchOrders(query: string) {
       const { data, error } = await supabase
         .from("orders")
         .select(ORDER_SEARCH_SELECT)
-        .neq("status", "cancelled")
         .or(
           `customer_name.ilike.%${escapedTextQuery}%,customer_email.ilike.%${escapedTextQuery}%,notes.ilike.%${escapedTextQuery}%`
         )
         .order("created_at", { ascending: false })
-        .limit(20)
+        .limit(100)
 
       if (error) {
         return { ok: false, error: error.message, results: [] as unknown[] }
@@ -294,10 +292,9 @@ export async function searchOrders(query: string) {
         const { data: flavorOrders, error: flavorOrdersError } = await supabase
           .from("orders")
           .select(ORDER_SEARCH_SELECT)
-          .neq("status", "cancelled")
-          .in("id", orderIds)
-          .order("created_at", { ascending: false })
-          .limit(20)
+        .in("id", orderIds)
+        .order("created_at", { ascending: false })
+          .limit(100)
 
         if (flavorOrdersError) {
           return { ok: false, error: flavorOrdersError.message, results: [] as unknown[] }
@@ -307,7 +304,9 @@ export async function searchOrders(query: string) {
       }
     }
 
-    return { ok: true, results: dedupeAdminSearchOrders(resultSets.flat()).slice(0, 20) }
+    const todayISO = getCurrentShopDateISO()
+    const deduped = dedupeAdminSearchOrders(resultSets.flat())
+    return { ok: true, results: sortAdminOrdersForDay(deduped, todayISO).slice(0, 100) }
   } catch (error) {
     const message = error instanceof Error ? error.message : "Error al buscar pedidos"
     return { ok: false, error: message, results: [] as unknown[] }
